@@ -1135,6 +1135,12 @@ async function route({ request: req, env, params }) {
           await db.prepare('UPDATE jobs SET status=?, finished=?, result=? WHERE id=?').bind(good ? 'done' : 'error', now(), clean(body.text, 3000), job.id).run();
           return ok();
         }
+        if (job.kind === 'open') {   // the phone asked the computer to open a page: keep the address, don't drop a chat bubble
+          await db.prepare('UPDATE jobs SET status=?, finished=?, result=? WHERE id=?').bind(good ? 'done' : 'error', now(), clean(body.text, 500), job.id).run();
+          if (body.page) await db.prepare('UPDATE bots SET page=? WHERE id=? AND user_id=?').bind(clean(body.page, 500), job.bot_id, U).run();
+          if (!good) await addMsg(db, U, job.conv, 'sys', clean(body.text, 500) || '⚠ 無法打開瀏覽器');
+          return ok();
+        }
         let text = clean(body.text, 20000) || (good ? '（完成，無回覆內容）' : '⚠ 執行失敗');
         if (good && job.kind === 'chat' && text.includes('【回覆】')) text = text.slice(text.lastIndexOf('【回覆】') + 4).trim() || '（完成）';   // drop the running commentary before the reply
         // 📝任務更新：… 📝結束 — the bot learned what its standing job is; save it as its 指定任務
@@ -1830,9 +1836,13 @@ async function route({ request: req, env, params }) {
         page = link ? (/^https?:\/\//.test(link) ? link : 'https://' + link) : '';
         link = page ? 'octa:open ' + page : 'octa:open';
       } else if (link && !/^https?:\/\//.test(link)) link = 'https://' + link;
-      // don't stack duplicates if the button is pressed again before the computer picks it up
-      if (await db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND bot_id=? AND kind='open' AND status='pending'").bind(U, bot.id).first()) return J({ ok: true, queued: true });
+      // a second address typed before the computer picks up the first replaces it, instead of being dropped
+      const pending = await db.prepare("SELECT id FROM jobs WHERE user_id=? AND bot_id=? AND kind='open' AND status='pending'").bind(U, bot.id).first();
       await addMsg(db, U, conv, 'sys', body.hide ? `把「${bot.name}」的瀏覽器收到背景` : body.expand ? `打開「${bot.name}」的瀏覽器${page ? '：' + page : ''}` : `在電腦上顯示「${bot.name}」的瀏覽器${link ? '：' + link : ''}`);
+      if (pending) {
+        await db.prepare('UPDATE jobs SET url=?, conv=?, created=? WHERE id=?').bind(link || null, conv, now(), pending.id).run();
+        return J({ ok: true, queued: true });
+      }
       await db.prepare("INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,kind,url) VALUES (?,?,?,'[]','',?,'open',?)").bind(U, conv, bot.id, now(), link || null).run();
       return ok();
     }

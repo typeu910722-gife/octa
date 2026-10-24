@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.18",
+  "date": "2026-10-25",
+  "notes": [
+   "手機可以操控電腦上的網址：輸入網址就在電腦的瀏覽器打開，並看到目前網址和畫面"
+  ],
+  "notes_en": [
+   "The phone can control the address open on the computer: type a URL and the computer's browser opens it, then shows the address and the picture"
+  ]
+ },
+ {
   "v": "3.0.17",
   "date": "2026-10-24",
   "notes": [

@@ -836,6 +836,7 @@ async function refresh(){
     if(prevTop!==null)notifyNew(prevTop);
     S.loaded=true;
     render(false);
+    if(!$('veil').hidden&&$('remoteUrl'))paintRemote(false);   // the phone is watching the address open on the computer
     if(prevEng!==JSON.stringify(S.engines)&&!$('veil').hidden&&$('veil').querySelector('.ais'))openAI();   // an AI just got installed on the host
   }catch(e){}
 }
@@ -1237,6 +1238,7 @@ let atSel=0;
 function slashItems(){const c=conv(cur);if(!c)return [];const ids=isG(cur)?c.members:[cur];
   const items=[{k:'browser',t:'/瀏覽器',d:I18N.t(showBrowserLabel())},{k:'hide',t:'/收起瀏覽器',d:I18N.t('收到背景')},{k:'stop',t:'/停止',d:I18N.t('停止目前的工作')},
     {k:'shots',t:'/截圖',d:I18N.t('看最後的畫面')},{k:'edit',t:'/任務設定',d:I18N.t('名稱、任務、排程、記憶')},{k:'clear',t:'/清空對話',d:I18N.t('清空對話紀錄')}];
+  if(phoneRemote())items.splice(1,0,{k:'url',t:'/網址',d:'操控電腦上的網址'});
   for(const id of ids)for(const k of ((S.skills||{})[id]||[]))items.push({k:'skill',t:'/'+k.name,d:'🧩 '+(isG(cur)?bot(id)?.name+' · ':'')+I18N.t('技能'),v:k.name,b:id});
   ((S.quick||{})[cur]||[]).forEach(q=>items.push({k:'quick',t:'⚡ '+(q.length>30?q.slice(0,30)+'…':q),d:I18N.t('常用指令'),v:q}));
   return items}
@@ -1253,7 +1255,8 @@ $('msg').addEventListener('blur',()=>setTimeout(()=>$('atpop').hidden=true,150))
 $('atpop').addEventListener('mousedown',e=>{const s2=e.target.closest('[data-slash]');if(s2){e.preventDefault();runSlash(slashItems().filter(x=>x.t.toLowerCase().includes(($('msg').value.slice(1)||'').toLowerCase()))[+s2.dataset.slash]);return}
   const b=e.target.closest('[data-pick]');if(b){e.preventDefault();atPick(b.dataset.pick)}});
 function runSlash(x){if(!x)return;$('msg').value='';grow();$('atpop').hidden=true;const c=conv(cur);if(!c)return;const first=isG(cur)?c.members.find(bot):cur;
-  ({browser:()=>openBrowser(first),hide:()=>openBrowser(first,'',true),stop:()=>api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()}),
+  ({browser:()=>phoneRemote()?remoteUrl(isG(cur)?c.members.filter(bot):[cur]):openBrowser(first),hide:()=>openBrowser(first,'',true),stop:()=>api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()}),
+    url:()=>remoteUrl(isG(cur)?c.members.filter(bot):[cur]),
     shots:()=>shotSheet(isG(cur)?c.members.filter(bot):[cur]),edit:()=>sheet(isG(cur)?'g':'b',true),clear:()=>clearConv(cur),
     skill:()=>sendMsg((isG(cur)?'@'+bot(x.b)?.name+' ':'')+'請執行技能「'+x.v+'」'),quick:()=>sendMsg(x.v)})[x.k]?.()}
 $('msg').addEventListener('keydown',e=>{
@@ -1442,12 +1445,14 @@ function sheet(kind,edit){
 function alertSheet(t,p){$('veil').innerHTML=`<div class="sheet"><h2>${esc(t)}</h2><p>${esc(p)}</p><div class="acts"><button class="btn" id="sx">知道了</button></div></div>`;$('veil').hidden=false;$('sx').onclick=closeSheet}
 const ago=t=>{const m=Math.round((Date.now()-t)/60000),rt=new Intl.RelativeTimeFormat(I18N.lang,{numeric:'auto'});return m<60?rt.format(-m,'minute'):m<1440?rt.format(-Math.round(m/60),'hour'):rt.format(-Math.round(m/1440),'day')};
 /* ---------- bot browsers ---------- */
-async function openBrowser(id,url,hide){const b=bot(id);if(!b)return;
-  try{await api('open','POST',{bot:id,conv:cur,url:url||'',hide:!!hide,expand:!hide});toast(I18N.t(!S.runnerOnline?'主機電腦離線，連上後就會處理':hide?'已收到背景':(window.octaDesktop?'已打開':'已請電腦版打開瀏覽器')));refresh()}
-  catch(e){toast(e.message)}}
+async function openBrowser(id,url,hide){const b=bot(id);if(!b)return false;
+  try{await api('open','POST',{bot:id,conv:cur,url:url||'',hide:!!hide,expand:!hide});toast(I18N.t(!S.runnerOnline?'主機電腦離線，連上後就會處理':hide?'已收到背景':(window.octaDesktop?'已打開':'已請電腦版打開瀏覽器')));refresh();return true}
+  catch(e){toast(e.message);return false}}
+const phoneRemote=()=>phoneUI()&&!window.octaDesktop;
 $('browser').onclick=e=>{
   const c=conv(cur);if(!c)return;e.stopPropagation();
   const ids=isG(cur)?c.members.filter(bot):[cur];
+  if(phoneRemote()){remoteUrl(ids);return}
   const one=id=>{const b=bot(id);return b.browser==='mine'
     ?`<div class="lab" data-u>${esc(b.name)}</div><button data-a="note" data-v="${id}"><span class="ck">ⓘ</span>使用你的 Chrome（在 Chrome 看它的分頁群組）</button>`
     :`${isG(cur)?`<div class="lab" data-u>${esc(b.name)}</div>`:''}<button data-a="open" data-v="${id}"><span class="ck">🖥</span>${showBrowserLabel()}</button><button data-a="hide" data-v="${id}"><span class="ck">⤓</span>收到背景</button>${isG(cur)?'':`<button data-a="url" data-v="${id}"><span class="ck">🔗</span>讓它打開網址…</button>`}`};
@@ -1459,6 +1464,39 @@ function urlSheet(id){const b=bot(id);
   <div class="acts"><button type="button" class="no" id="sx">取消</button><button class="btn">在電腦上開啟</button></div></form>`;
   $('veil').hidden=false;$('uu').focus();$('uu').select();$('sx').onclick=closeSheet;
   $('uf').onsubmit=ev=>{ev.preventDefault();const u=$('uu').value.trim();closeSheet();openBrowser(id,u)}}
+const shownPage=p=>p&&!/^(data:|about:|chrome:)/.test(p)?p:'';
+function remoteUrl(ids){
+  const list=ids.filter(id=>bot(id));if(!list.length)return;
+  $('veil').innerHTML=`<form class="sheet" id="remoteUrl" data-ids="${esc(list.join(','))}"><h2>電腦上的網址</h2>
+  <p>在這裡輸入網址，電腦上這個機器人的瀏覽器就會打開。登入仍在電腦上完成。</p>
+  ${list.length>1?`<label class="field">機器人<select id="ruBot">${list.map(id=>`<option value="${esc(id)}">${esc(bot(id).name)}</option>`).join('')}</select></label>`:''}
+  <div class="bw" id="ruView"></div>
+  <label class="field">要打開的網址<input id="uu" inputmode="url" autocomplete="url" placeholder="https://" required></label>
+  <p id="ruStat"></p>
+  <div class="row2"><button class="btn" type="submit">在電腦上打開</button><button class="ghost" type="button" id="ruShow">顯示電腦上的瀏覽器</button><button class="ghost" type="button" id="ruHide">收到背景</button></div>
+  <div class="acts"><button type="button" class="no" id="sx">關閉</button></div></form>`;
+  $('veil').hidden=false;paintRemote(true);$('uu').focus();
+  $('sx').onclick=closeSheet;
+  if($('ruBot'))$('ruBot').onchange=()=>paintRemote(true);
+  $('ruShow').onclick=()=>sendRemote(false);
+  $('ruHide').onclick=()=>sendRemote(true);
+  $('remoteUrl').onsubmit=async ev=>{ev.preventDefault();const u=$('uu').value.trim();if(!u)return;const ok=await sendRemote(false,u);
+    if($('ruStat'))$('ruStat').textContent=ok?'已送到電腦。打開後，這裡的網址和畫面會自己更新。':'沒有送到電腦'}};
+function remoteBot(){const form=$('remoteUrl');if(!form)return '';return $('ruBot')?.value||String(form.dataset.ids||'').split(',')[0]}
+async function sendRemote(hide,url){const id=remoteBot();if(!id)return false;return openBrowser(id,hide?'':(url||''),!!hide)}
+function paintRemote(fill){
+  const form=$('remoteUrl');if(!form||$('veil').hidden)return;
+  const id=remoteBot(),b=bot(id);if(!b)return;
+  const page=shownPage(b.page),view=$('ruView'),shot=String(b.shot_ts||'');
+  if(view.dataset.bot!==id||view.dataset.shot!==shot){
+    view.dataset.bot=id;view.dataset.shot=shot;
+    view.innerHTML=`<div class="hd"><span class="av sm" data-u>${avOf(b.id)}</span><b data-u>${esc(b.name)}</b></div>
+      <div class="meta" id="ruPage">電腦目前：${page?`<span data-u>${esc(page)}</span>`:'還沒有網址'}</div>
+      ${b.shot_ts?`<img class="shot" alt="${esc(b.name)} 在電腦上的畫面" id="ruShot">`:`<div class="noshot">電腦打開網頁後，畫面會出現在這裡。</div>`}`;
+    if(b.shot_ts)api('shot/'+id).then(d=>d.file?fileData(d.file):d).then(d=>{const im=$('ruShot');if(im&&d.data&&view.dataset.shot===shot)im.src=`data:${d.mime};base64,${d.data}`}).catch(()=>{});
+  }else{const meta=$('ruPage');if(meta)meta.innerHTML=`電腦目前：${page?`<span data-u>${esc(page)}</span>`:'還沒有網址'}`}
+  const input=$('uu');if(fill&&input&&document.activeElement!==input)input.value=page||'';
+}
 function shotSheet(ids){
   $('veil').innerHTML=`<div class="sheet"><h2>機器人的瀏覽器</h2>
   <p>${window.octaDesktop?'平常縮成圓角小卡，可以拖到你要的位置停住。點一下打開，按「收回」就縮回去，聊天不會被擋住。你看得到游標和點擊，登入也在同一個畫面。收到背景後它繼續在裡面工作。':'每個機器人在電腦版 OCTA 裡有自己的瀏覽器，平常縮成圓角小卡，可以拖到想放的位置。按下面的按鈕就會把它顯示出來，你可以看它在做什麼、幫它登入。'}</p>

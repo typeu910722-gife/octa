@@ -1147,13 +1147,15 @@ async function browserSnapshot(port, since) {   // screenshot + address of the t
     return { url: p.url, jpeg };
   });
 }
+const realPage = u => (u && !/^(about:|data:|chrome:)/.test(u)) ? u : '';
 async function showBrowser(port, url, hide, expand) {
   const embed = [...browsers.values()].some(b => b.port === port && b.embed);
   if (embed) await cfg.embed?.show?.(port, hide ? false : (expand ? 'open' : true));
   return cdp(port, async send => {
     let targetId = pickLivePage(await pagesOf(send))?.targetId;
     if (url || !targetId) targetId = (await send('Target.createTarget', { url: url || 'about:blank' })).targetId;
-    if (hide || !targetId) return;   // handing back: the window stays where it is on the desktop
+    const seen = async () => realPage((await pagesOf(send)).find(p => p.targetId === targetId)?.url);
+    if (hide || !targetId) return seen();   // handing back: the window stays where it is on the desktop
     const { windowId } = await send('Browser.getWindowForTarget', { targetId });
     await send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'normal' } }).catch(() => { });
     if (!embed) {
@@ -1161,11 +1163,32 @@ async function showBrowser(port, url, hide, expand) {
       if (bounds.left < -5000) await send('Browser.setWindowBounds', { windowId, bounds: { left: 60, top: 40, width: 1200, height: 820 } });   // windows from older versions sat off-screen
     }
     await send('Target.activateTarget', { targetId });
+    return seen();
   });
+}
+async function rememberOpen(port, job) {   // the phone is waiting for the address and a picture of what the computer opened
+  let seen = '', jpeg = null;
+  for (let i = 0; i < 8; i++) {
+    const live = await browserSnapshot(port).catch(() => null);
+    const url = realPage(live?.url);
+    if (url) seen = url;
+    if (live?.jpeg) jpeg = live.jpeg;
+    if (jpeg && (seen || i === 7)) break;
+    await pause(400);
+  }
+  if (jpeg) {
+    try {
+      const conv = job.conv?.id ? job.conv : job.bot;
+      const p = freeName(join(convDir(conv), '截圖'), safeName(job.bot.name) + '-畫面.jpeg');
+      writeFileSync(p, jpeg);
+      await api('runner/shot', { id: job.id, path: rel(p), name: basename(p), size: jpeg.length });
+    } catch (e) { log('截圖儲存失敗：' + e.message); }
+  }
+  return seen;
 }
 async function openJob(job) {
   if (typeof job.shareBrowser === 'boolean') shareBrowser = job.shareBrowser;
-  const done = (ok, text) => { log(`🌐 ${job.bot.name}：${text}`); return api('runner/done', { id: job.id, ok, text }).catch(() => { }); };
+  const done = (ok, text, page) => { log(`🌐 ${job.bot.name}：${text}`); return api('runner/done', { id: job.id, ok, text, ...(page ? { page } : {}) }).catch(() => { }); };
   const hide = job.url === 'octa:hide';
   const expand = String(job.url || '').startsWith('octa:open');
   const page = expand ? String(job.url).slice('octa:open'.length).trim() : (hide ? '' : (job.url || ''));
@@ -1173,13 +1196,14 @@ async function openJob(job) {
     const ports = [...new Set([browsers.get(job.bot.id)?.port, cfg.embed && job.bot.browser !== 'mine' ? embedPortOf(job.bot.id) : 0, portOf(job.bot.id)].filter(Boolean))];
     if (hide && (await Promise.all(ports.map(p => cdpInfo(p)))).every(v => !v)) return done(true, '我的瀏覽器已經收起來了。');
     const port = await ensureBrowser(job.bot, { show: !hide, expand });
-    await showBrowser(port, page, hide, expand);
+    const landed = realPage(await showBrowser(port, page, hide, expand));
     touchBrowser(job.bot.id);
     if (hide && shareBrowser) await syncOut(port);   // signed in by hand: every bot gets it
+    if (hide) return done(true, '我的瀏覽器已收到背景，我會繼續在裡面工作。');
+    const seen = await rememberOpen(port, job);
     const where = browsers.get(job.bot.id)?.embed ? (expand ? 'OCTA 視窗裡，按「收回」會縮回角落' : 'OCTA 視窗的角落縮圖，點一下可以打開') : '電腦上';
-    return done(true, hide ? '我的瀏覽器已收到背景，我會繼續在裡面工作。'
-      : busyBots.has(job.bot.id) ? `我的瀏覽器已經在${where}，我正在裡面工作，先別操作；要幫我登入請等我停下來。`
-      : `我的瀏覽器已經在${where}。需要登入就直接在裡面登入，好了回來按「登入好了，繼續」。`);
+    return done(true, busyBots.has(job.bot.id) ? `我的瀏覽器已經在${where}，我正在裡面工作，先別操作；要幫我登入請等我停下來。`
+      : `我的瀏覽器已經在${where}。需要登入就直接在裡面登入，好了回來按「登入好了，繼續」。`, seen || landed || realPage(page));
   } catch (e) { return done(false, '⚠ 無法打開瀏覽器：' + e.message); }
 }
 // ---------- 監看網頁: check pages in the bot's own browser, start the routine only when they change ----------

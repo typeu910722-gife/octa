@@ -358,6 +358,54 @@ test('dragging a message copies it, and replace removes the original', async () 
   assert.match(api, /body\.expand/);
 });
 
+test('a phone can replace the address waiting on the computer, and the open result saves the page without a bot reply', async () => {
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'phoneurl', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const bot = await call(db, 'POST', 'bots', { token, body: { name: '瀏覽', task: '開網頁' } });
+  assert.equal(bot.status, 200, JSON.stringify(bot.data));
+  const id = bot.data.id;
+  const first = await call(db, 'POST', 'open', { token, body: { bot: id, conv: id, url: 'example.com', expand: true } });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  const row = db.raw.prepare("SELECT url, status FROM jobs WHERE kind='open'").get();
+  assert.equal(row.url, 'octa:open https://example.com');
+  assert.equal(row.status, 'pending');
+  const second = await call(db, 'POST', 'open', { token, body: { bot: id, conv: id, url: 'https://manager.line.biz/', expand: true } });
+  assert.equal(second.status, 200);
+  assert.equal(second.data.queued, true);
+  const rows = db.raw.prepare("SELECT url, status FROM jobs WHERE kind='open'").all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].url, 'octa:open https://manager.line.biz/');
+  const runner = await call(db, 'POST', 'runner-token', { token, body: { label: 'desk' } });
+  const rt = runner.data.token;
+  const next = await call(db, 'POST', 'runner/next', { token: rt, body: { slots: 1, wait: false } });
+  assert.equal(next.status, 200, JSON.stringify(next.data));
+  assert.equal(next.data.job.kind, 'open');
+  assert.equal(next.data.job.url, 'octa:open https://manager.line.biz/');
+  const before = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  const replies = before.data.msgs.filter(m => m.by === id).length;
+  const done = await call(db, 'POST', 'runner/done', { token: rt, body: { id: next.data.job.id, ok: true, text: '我的瀏覽器已經在電腦上。', page: 'https://manager.line.biz/account' } });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  const state = await call(db, 'GET', 'state', { token });
+  assert.equal(state.data.bots.find(b => b.id === id).page, 'https://manager.line.biz/account');
+  const after = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.equal(after.data.msgs.filter(m => m.by === id).length, replies);
+  const again = await call(db, 'POST', 'open', { token, body: { bot: id, conv: id, url: 'https://a.example/', expand: true } });
+  assert.equal(again.status, 200);
+  const nxt2 = await call(db, 'POST', 'runner/next', { token: rt, body: { slots: 1, wait: false } });
+  const bad = await call(db, 'POST', 'runner/done', { token: rt, body: { id: nxt2.data.job.id, ok: false, text: '⚠ 無法打開瀏覽器：離線' } });
+  assert.equal(bad.status, 200);
+  const msgs = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.ok(msgs.data.msgs.some(m => m.by === 'sys' && m.text.includes('無法打開')));
+  const src = readFileSync(join(import.meta.dirname, '..', 'public', 'octa-runner.mjs'), 'utf8');
+  assert.match(src, /rememberOpen/);
+  assert.match(src, /browserSnapshot\(port\)/);
+  assert.match(src, /\.\.\.\(page \? \{ page \} : \{\}\)/);
+  const api = readFileSync(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js'), 'utf8');
+  assert.match(api, /job\.kind === 'open'/);
+  assert.match(api, /UPDATE jobs SET url=\?, conv=\?/);
+});
+
 function openD1From(raw) {
   const norm = a => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? +v : v));
   class Stmt {

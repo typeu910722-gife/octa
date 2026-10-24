@@ -36,6 +36,17 @@ test('back goes up one level on a phone instead of leaving the page', () => {
   assert.match(page, /if\(dy>110\)closeSheet\(\)/);
 });
 
+test('the phone can type an address for the computer browser', () => {
+  assert.match(page, /const phoneRemote=\(\)=>phoneUI\(\)&&!window\.octaDesktop/);
+  assert.match(page, /id="remoteUrl"/);
+  assert.match(page, /電腦上的網址/);
+  assert.match(page, /在電腦上打開/);
+  assert.match(page, /function paintRemote\(fill\)/);
+  assert.match(page, /if\(phoneRemote\(\)\)\{remoteUrl\(ids\);return\}/);
+  assert.match(page, /t:'\/網址'/);
+  assert.match(page, /已送到電腦。打開後，這裡的網址和畫面會自己更新。/);
+});
+
 test('chats get day separators and the phone send key is the round arrow', () => {
   assert.match(page, /function dayLabel\(ts\)/);
   assert.match(page, /I18N\.t\('昨天'\)/);
