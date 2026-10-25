@@ -280,6 +280,16 @@ form.in .send,form.in .clip{height:46px}
 .appr .no{background:none;border:1px solid var(--line2);border-radius:10px;padding:7px 12px;color:var(--mute);font-size:13px}
 .appr.done{color:var(--faint);font-size:12px}
 .att{display:flex;gap:6px;flex-wrap:wrap;padding:0 20px 6px}
+.replybar{display:none;align-items:center;gap:8px;margin:0 20px;padding:8px 8px 8px 10px;border-left:3px solid var(--gold);background:var(--panel);border-radius:0 12px 12px 0}
+.replybar:not([hidden]){display:flex}
+.replybar .rq{min-width:0;flex:1}
+.replybar b{display:block;font-size:12px;color:var(--gold);font-weight:500}
+.replybar .rq span{display:block;font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.replybar button{border:0;background:none;color:var(--mute);font-size:18px;line-height:1;padding:4px 6px}
+.qref{display:flex;flex-direction:column;align-items:flex-start;gap:1px;margin:0 0 6px;padding:4px 8px;border:0;border-left:3px solid var(--gold);background:transparent;color:var(--mute);font:inherit;font-size:12px;line-height:1.4;text-align:left;max-width:100%;cursor:pointer}
+.qref b{color:var(--gold);font-weight:500}
+.qref span{overflow:hidden;max-height:2.8em}
+.m.qhit .bub{outline:2px solid var(--gold)}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);background:var(--panel);border-radius:99px;padding:3px 6px 3px 10px;font-size:12px;color:var(--mute);max-width:220px}
 .chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip button{border:0;background:none;color:var(--faint);padding:0 4px}
@@ -304,6 +314,7 @@ pre.code{max-width:100%;box-sizing:border-box;margin:0;background:var(--bg);bord
   .app:not(.chat) .pane{display:none}
   .back{display:block}
   .ph,form.in{padding-left:max(16px,env(safe-area-inset-left,0px))}
+  .replybar{margin-left:max(16px,env(safe-area-inset-left,0px));margin-right:max(16px,env(safe-area-inset-right,0px))}
   .msgs,.mention{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   .task{margin-left:max(16px,env(safe-area-inset-left,0px));margin-right:16px}
 }
@@ -569,6 +580,8 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
 @media (prefers-reduced-motion:reduce){.buddy-hit img{animation:none}}
 .pane:has(#buddy:not([hidden])) .msgs{padding-bottom:196px}
 @media (max-width:760px){.buddy{bottom:88px;width:132px}.buddy-hit{width:124px;height:124px}.buddy-say{font-size:11px}.pane:has(#buddy:not([hidden])) .msgs{padding-bottom:156px}}
+.pane:has(#buddy:not([hidden])) .replybar{margin-left:200px}
+@media (max-width:760px){.pane:has(#buddy:not([hidden])) .replybar{margin-left:max(156px,env(safe-area-inset-left,0px))}}
 .look{display:grid;gap:18px}
 .look h3{margin:0}
 .look .toggle{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--card)}
@@ -731,6 +744,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
     <div class="quick" id="quick"></div>
     <div class="atpop" id="atpop" hidden></div>
     <div class="att" id="att"></div>
+    <div class="replybar" id="replybar" hidden><div class="rq"><b id="replyWho"></b><span id="replyBit"></span></div><button type="button" id="replyx" aria-label="取消回覆">×</button></div>
     <form class="in" id="f" hidden><button type="button" class="clip" id="clip" aria-label="附加檔案">＋</button><input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.docx" hidden><textarea id="msg" rows="1" placeholder="輸入指示…"></textarea><button type="button" class="clip" id="mic" aria-label="語音輸入" hidden>🎙</button><button class="send" aria-label="送出"><span class="sl">送出</span><span class="sa2" aria-hidden="true">↑</span></button></form>
     <div class="note" id="note" hidden></div>
     <div class="buddy" id="buddy" hidden data-face="smile" data-look="base" data-extra="none" data-mood="">
@@ -1025,7 +1039,7 @@ function render(scroll){
   const c=cur&&conv(cur);
   ['ph','task','msgs','f','note'].forEach(k=>$(k).hidden=!c);if(!c)$('offb').hidden=true;$('blank').hidden=!!c;
   if(!c)setHTML($('blank'),!S.loaded?'':S.bots.length?'選一個人，直接跟他說。檔案丟進來就會附上，文字拖進輸入框就會貼上。':`<div class="guidecard"><div>還沒有機器人。取個名字，然後直接跟它說要做什麼。</div><button class="btn" onclick="openGuide()">開始設定</button></div>`);
-  if(!c){$('mention').innerHTML='';$('quick').innerHTML='';$('quick')._h='';buddySync();return}
+  if(!c){$('mention').innerHTML='';$('quick').innerHTML='';$('quick')._h='';paintReply();buddySync();return}
   const g=isG(cur);
   $('pav').className='av'+(g?' grp':'')+(!g&&busyIn(cur).some(x=>x.status==='running')?' awake':'');if(g)$('pav').textContent=c.members.length;else $('pav').innerHTML=avOf(c.id);$('pav').toggleAttribute('data-u',!g)
   $('pname').textContent=c.name;
@@ -1054,9 +1068,9 @@ function render(scroll){
   let prevDay='';
   const row=m=>{
     if(m.by==='sys')return `<div class="sys">${esc(m.text)}<span class="ts">${hm(m.ts)}</span></div>`;
-    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}" data-mid="${m.id}"><div class="bx"><div class="bub"${m.tmp?'':' draggable="true" data-dragmsg="1" title="拖到別的機器人就能複製"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
+    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' draggable="true" data-dragmsg="1" title="拖到別的機器人就能複製"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
-    return `<div class="m" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}<div class="bub md${long&&!open?' long':''}" draggable="true" data-dragmsg="1" title="拖到別的機器人就能複製" data-u>${md(m.text)}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
+    return `<div class="m" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}<div class="bub md${long&&!open?' long':''}" draggable="true" data-dragmsg="1" title="拖到別的機器人就能複製" data-u>${md(m.text)}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
   // a date line whenever the day changes, like a phone's message app
   mh+=convMsgs(cur).map(m=>{const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day">${esc(dayLabel(m.ts))}</div>`}return sep+row(m)}).join('');
   const bz=busyIn(cur);
@@ -1067,6 +1081,7 @@ function render(scroll){
   else if(changed){if(atBottom)box.scrollTo({top:box.scrollHeight,behavior:'smooth'});else $('jump').hidden=false}
   if(atBottom||switched||scroll){markSeen(cur)}
   $('note').textContent=S.runnerOnline?'在你的電腦上工作':'電腦沒開，訊息先排著';
+  paintReply();
   buddySync();
 }
 
@@ -1185,7 +1200,7 @@ function focusBrowser(){
   const paneOn=!matchMedia('(max-width:760px)').matches||$('app').classList.contains('chat');
   const id=paneOn&&cur&&bot(cur)?cur:'';
   window.octaDesktop?.focusBot?.(id)?.catch?.(()=>{})}
-function openConv(id){saveDraft();cur=id;try{localStorage.setItem('ebot_cur',cur)}catch(e){}
+function openConv(id){saveDraft();if(replyTo&&replyTo.conv!==id)replyTo=null;cur=id;try{localStorage.setItem('ebot_cur',cur)}catch(e){}
   if(!$('app').classList.contains('chat'))navPush('chat');
   pending=[];renderAtt();loadDraft();render(true);$('app').classList.add('chat');
   focusBrowser();
@@ -1239,6 +1254,7 @@ $('quick').onclick=e=>{const b=e.target.closest('[data-q]');if(!b)return;const q
   if(e.shiftKey||$('msg').value.trim()){const i=$('msg');i.value=(i.value?i.value+'\n':'')+q;grow();i.focus()}else sendMsg(q)};
 $('mention').onclick=e=>{const b=e.target.closest('button');if(!b)return;const i=$('msg');i.value=(i.value+' @'+b.dataset.at+' ').trimStart();i.focus()};
 $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).then(()=>{toast('已停止');refresh()});
+  const jp=e.target.closest('[data-jump]');if(jp){const el=document.querySelector(`#msgs [data-mid="${jp.dataset.jump}"]`);if(el){el.scrollIntoView({block:'center',behavior:'smooth'});el.classList.add('qhit');setTimeout(()=>el.classList.remove('qhit'),1200)}return}
   if(e.target.id==='older'){const box=$('msgs'),h0=box.scrollHeight,id=cur;e.target.disabled=true;
     loadMsgs(id,'older').then(()=>{if(cur!==id)return;render(false);box.scrollTop=box.scrollHeight-h0}).catch(()=>{e.target.disabled=false});return}
   const cp=e.target.closest('[data-copy-msg]');if(cp){const m=convMsgs(cur).find(x=>String(x.id)===cp.dataset.copyMsg);if(m)navigator.clipboard?.writeText(m.text).then(()=>toast('已複製')).catch(()=>{});return}
@@ -1331,15 +1347,15 @@ async function addFiles(list){for(const file of list.slice(0,Math.max(0,6-pendin
       fileCache[r.id]=Promise.resolve({name,mime,data})}   // the sent message shows the picture at once, without downloading it again
     catch(err){pending.splice(pending.indexOf(item),1);$('note').textContent=err.message}
     renderAtt()}}
-async function sendMsg(v,files=[],meta){const c=cur,fs=meta||pending.filter(f=>files.includes(f.id)).map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size}));
+async function sendMsg(v,files=[],meta,reply){const c=cur,fs=meta||pending.filter(f=>files.includes(f.id)).map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size}));
   const mc=MSG[c]||(MSG[c]={list:[],more:false,loaded:false});
-  mc.list.push({id:'tmp'+Date.now(),tmp:true,conv:c,by:'me',text:v||'（附件）',files:fs,ts:Date.now()});render(true);
-  try{await api('messages','POST',{conv:c,text:v,files});refresh();return true}
+  mc.list.push({id:'tmp'+Date.now(),tmp:true,conv:c,by:'me',text:v||'（附件）',files:fs,ts:Date.now(),reply:reply||null});render(true);
+  try{await api('messages','POST',{conv:c,text:v,files,reply:reply||undefined});refresh();return true}
   catch(err){mc.list=mc.list.filter(m=>!m.tmp);render(false);toast(err.message);return false}}
 $('f').onsubmit=async e=>{e.preventDefault();const v=$('msg').value.trim();
   if(pending.some(f=>f.up))return;const files=pending.map(f=>f.id);if(!v&&!files.length)return;
-  const keep=pending;$('msg').value='';grow();try{localStorage.removeItem(draftKey())}catch(e){}
-  const ok=await sendMsg(v,files);if(ok)keep.forEach(dropUrl);pending=ok?[]:keep;renderAtt();if(!ok){$('msg').value=v;grow()}};
+  const keep=pending,rid=replyTo&&replyTo.conv===cur?replyTo.id:null;$('msg').value='';grow();try{localStorage.removeItem(draftKey())}catch(e){}
+  const ok=await sendMsg(v,files,undefined,rid);if(ok){replyTo=null;paintReply();keep.forEach(dropUrl)}pending=ok?[]:keep;renderAtt();if(!ok){$('msg').value=v;grow()}};
 // paste or drop files straight into the chat; dragged text lands in the box
 function insertText(text){const el=$('msg'),s=el.selectionStart??el.value.length,end=el.selectionEnd??s;
   el.value=el.value.slice(0,s)+text+el.value.slice(end);const n=s+text.length;el.focus();el.setSelectionRange(n,n);grow();saveDraft()}
@@ -1568,9 +1584,22 @@ function holdOn(root,find,open){
   root.addEventListener('click',e=>{if(lpHit){e.stopPropagation();e.preventDefault()}},true)}
 holdOn($('list'),t=>t.closest('.iw[data-drag]'),(row,e)=>itemMenu(e?pointAnchor(e.clientX,e.clientY):row.querySelector('.more')||row,row.dataset.drag));
 holdOn($('msgs'),t=>t.closest('[data-dragmsg]'),(bub,e)=>{const m=convMsgs(cur).find(x=>String(x.id)===String(bub.closest('[data-mid]')?.dataset.mid));if(m)msgMenu(e?pointAnchor(e.clientX,e.clientY):bub,m)});
+let replyTo=null;
+function quoteHtml(m){if(!m?.reply)return '';
+  const src=convMsgs(m.conv||cur).find(x=>String(x.id)===String(m.reply));
+  const who=src?nameOf(src.by):'先前的訊息';
+  const bit=src?String(src.text||'').replace(/\s+/g,' ').trim().slice(0,80):'';
+  return `<button type="button" class="qref" data-jump="${m.reply}"><b>${esc(who)}</b><span>${esc(bit||'（這則沒有留在目前畫面上）')}</span></button>`}
+function paintReply(){const bar=$('replybar');if(!bar)return;const on=!!(replyTo&&replyTo.conv===cur);bar.hidden=!on;if(!on)return;
+  $('replyWho').textContent='回覆 '+replyTo.who;$('replyBit').textContent=replyTo.text||'（這則沒有文字）'}
+function setReply(m){if(!m||m.tmp)return;
+  replyTo={id:m.id,conv:cur,who:nameOf(m.by),text:String(m.text||'').replace(/\s+/g,' ').trim().slice(0,80)};
+  paintReply();$('msg').focus()}
+$('replyx').onclick=()=>{replyTo=null;paintReply();$('msg').focus()};
 function msgMenu(anchor,m){if(!m||m.tmp)return;
-  popMenu(anchor,`<button data-a="cp"><span class="ck">⧉</span>複製文字</button><button data-a="frag"><span class="ck">✂</span>選取片段</button><button data-a="to"><span class="ck">➦</span>傳給別的機器人…</button>${m.by==='me'?'<button data-a="again"><span class="ck">↻</span>再傳一次</button>':''}`,
-   {cp:()=>navigator.clipboard?.writeText(m.text||'').then(()=>toast(I18N.t('已複製'))).catch(()=>{}),
+  popMenu(anchor,`<button data-a="re"><span class="ck">↩</span>回覆這則</button><button data-a="cp"><span class="ck">⧉</span>複製文字</button><button data-a="frag"><span class="ck">✂</span>選取片段</button><button data-a="to"><span class="ck">➦</span>傳給別的機器人…</button>${m.by==='me'?'<button data-a="again"><span class="ck">↻</span>再傳一次</button>':''}`,
+   {re:()=>setReply(m),
+    cp:()=>navigator.clipboard?.writeText(m.text||'').then(()=>toast(I18N.t('已複製'))).catch(()=>{}),
     frag:()=>fragmentSheet(m),
     to:()=>pickTarget(m),
     again:()=>sendMsg(m.text==='（附件）'?'':m.text,(m.files||[]).map(f=>f.id),m.files||[])})}

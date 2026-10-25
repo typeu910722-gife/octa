@@ -272,7 +272,8 @@ export function buildPrompt(job, here) {
   const small = (job.bot.engine || 'claude') === 'opencode', hist = small ? job.history.slice(-8) : job.history, cut = small ? 300 : 600;
   hist.forEach((h, i) => {
     const recent = i >= hist.length - (small ? 2 : 4), t = recent || h.text.length <= cut ? h.text : h.text.slice(0, cut) + '…（較早的訊息，已截短）';
-    lines.push(`【${h.who}】${t}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : ''));
+    const quote = h.replyText ? `（回覆${h.replyWho ? '「' + h.replyWho + '」' : ''}：${h.replyText}）\n` : '';
+    lines.push(`【${h.who}】${quote}${t}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : ''));
   });
   lines.push('', ...dayInfo(job), '', ...workNotes(job));
   lines.push('', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop(), '', turnGuide(), '', whoAmI(job), '現在請處理這則指示：', job.prompt);

@@ -84,8 +84,9 @@ const localNow = (env, t = now()) => {
 };
 const bump = (db, userId) => db.prepare('UPDATE users SET rev=rev+1 WHERE id=?').bind(userId).run();
 
-async function addMsg(db, userId, conv, by, text, files = null) {
-  await db.prepare('INSERT INTO messages (user_id,conv,by_,text,files,ts) VALUES (?,?,?,?,?,?)').bind(userId, conv, by, text, files && files.length ? JSON.stringify(files) : null, now()).run();
+async function addMsg(db, userId, conv, by, text, files = null, reply = null) {
+  const rid = Number.isInteger(reply) && reply > 0 ? reply : null;
+  await db.prepare('INSERT INTO messages (user_id,conv,by_,text,files,ts,reply) VALUES (?,?,?,?,?,?,?)').bind(userId, conv, by, text, files && files.length ? JSON.stringify(files) : null, now(), rid).run();
 }
 // chain: list of bot ids (all use `prompt`) or {b, p} steps
 async function addJob(db, userId, conv, chain, prompt, depth = 0) {
@@ -95,15 +96,17 @@ async function addJob(db, userId, conv, chain, prompt, depth = 0) {
     .bind(userId, conv, steps[0].b, JSON.stringify(steps.slice(1)), steps[0].p, now(), depth).run();
 }
 // a user message starts the bot (or the group's members). `text` is what was typed; an empty one still hands the files over.
-async function enqueueTurn(db, userId, conv, text, bot, group, bots) {
-  const prompt = text || '請處理我傳的附件。';
+async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
+  const prompt = [quoted?.note, text || '請處理我傳的附件。'].filter(Boolean).join('\n');
   let chain, ordered = false;
   if (bot) chain = [bot.id];
   else {
     const at = id => text.indexOf('@' + (bots.find(x => x.id === id)?.name || '\u0000'));
     const named = group.members.filter(id => at(id) >= 0).sort((a, b) => at(a) - at(b));
     chain = named.length ? named : group.members;
-    if (!named.length && !/你們|大家|各位|每位|每個|所有人|全部/.test(text)) {
+    const everyone = /你們|大家|各位|每位|每個|所有人|全部/.test(text);
+    if (!named.length && !everyone && quoted?.by && group.members.includes(quoted.by)) chain = [quoted.by];
+    else if (!named.length && !everyone) {
       const prev = (await db.prepare("SELECT by_,text FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 2").bind(userId, conv).all()).results[1];
       if (prev && group.members.includes(prev.by_) && asksUser(prev.text)) chain = [prev.by_];
     }
@@ -216,6 +219,7 @@ const MIGRATIONS = [
   'ALTER TABLE bots ADD COLUMN shot_file TEXT',
   'ALTER TABLE files ADD COLUMN conv TEXT', 'ALTER TABLE files ADD COLUMN loc TEXT', 'ALTER TABLE files ADD COLUMN path TEXT', 'ALTER TABLE files ADD COLUMN size INTEGER', 'ALTER TABLE files ADD COLUMN want INTEGER',
   'CREATE INDEX IF NOT EXISTS file_user ON files(user_id, loc)', 'CREATE INDEX IF NOT EXISTS ses_user ON sessions(user_id, kind)', 'CREATE INDEX IF NOT EXISTS msg_conv ON messages(user_id, conv, id)',
+  'ALTER TABLE messages ADD COLUMN reply INTEGER',
   'CREATE TABLE IF NOT EXISTS chunks (file_id TEXT NOT NULL, n INTEGER NOT NULL, data TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (file_id, n))',
   'CREATE TABLE IF NOT EXISTS logins (k TEXT PRIMARY KEY, fails INTEGER NOT NULL, until INTEGER NOT NULL)',
   'ALTER TABLE jobs ADD COLUMN progress TEXT', 'ALTER TABLE jobs ADD COLUMN tokens INTEGER',
@@ -234,7 +238,7 @@ const MIGRATIONS = [
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
-  try { await db.prepare('SELECT want FROM files LIMIT 0').all(); await db.prepare('SELECT k FROM logins LIMIT 0').all(); await db.prepare('SELECT progress, tokens FROM jobs LIMIT 0').all(); await db.prepare('SELECT hook, watch, wstate FROM routines LIMIT 0').all(); await db.prepare('SELECT pc FROM files LIMIT 0').all(); await db.prepare('SELECT bpc FROM bots LIMIT 0').all(); await db.prepare('SELECT pc, eng, tries FROM jobs LIMIT 0').all(); await db.prepare('SELECT fb FROM bots LIMIT 0').all(); await db.prepare('SELECT id, fb FROM code_tasks LIMIT 0').all(); schemaReady.add(db); return; } catch { }
+  try { await db.prepare('SELECT want FROM files LIMIT 0').all(); await db.prepare('SELECT k FROM logins LIMIT 0').all(); await db.prepare('SELECT progress, tokens FROM jobs LIMIT 0').all(); await db.prepare('SELECT hook, watch, wstate FROM routines LIMIT 0').all(); await db.prepare('SELECT pc FROM files LIMIT 0').all(); await db.prepare('SELECT bpc FROM bots LIMIT 0').all(); await db.prepare('SELECT pc, eng, tries FROM jobs LIMIT 0').all(); await db.prepare('SELECT fb FROM bots LIMIT 0').all(); await db.prepare('SELECT id, fb FROM code_tasks LIMIT 0').all(); await db.prepare('SELECT reply FROM messages LIMIT 0').all(); schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
 }
@@ -1403,8 +1407,8 @@ async function route({ request: req, env, params }) {
       const conv = clean(url.searchParams.get('conv'), 64), before = +url.searchParams.get('before') || 0, after = +url.searchParams.get('after') || 0;
       const lim = Math.min(100, +url.searchParams.get('limit') || 50);
       const rows = (await (after
-        ? db.prepare('SELECT id,conv,by_ AS by,text,files,ts FROM messages WHERE user_id=? AND conv=? AND id>? ORDER BY id LIMIT ?').bind(U, conv, after, lim)
-        : db.prepare('SELECT * FROM (SELECT id,conv,by_ AS by,text,files,ts FROM messages WHERE user_id=? AND conv=? AND id<? ORDER BY id DESC LIMIT ?) ORDER BY id').bind(U, conv, before || 9e15, lim)
+        ? db.prepare('SELECT id,conv,by_ AS by,text,files,ts,reply FROM messages WHERE user_id=? AND conv=? AND id>? ORDER BY id LIMIT ?').bind(U, conv, after, lim)
+        : db.prepare('SELECT * FROM (SELECT id,conv,by_ AS by,text,files,ts,reply FROM messages WHERE user_id=? AND conv=? AND id<? ORDER BY id DESC LIMIT ?) ORDER BY id').bind(U, conv, before || 9e15, lim)
       ).all()).results.map(x => ({ ...x, files: x.files ? JSON.parse(x.files) : [] }));
       return J({ msgs: rows, more: !after && rows.length === lim });
     }
@@ -1708,8 +1712,18 @@ async function route({ request: req, env, params }) {
       const files = fileIds.length ? (await db.prepare(`SELECT id,name,mime,size FROM files WHERE user_id=? AND id IN (${fileIds.map(() => '?').join(',')})`).bind(U, ...fileIds).all()).results : [];
       files.sort((x, y) => fileIds.indexOf(x.id) - fileIds.indexOf(y.id));   // keep the order they were attached in
       if (files.length) await db.prepare(`UPDATE files SET conv=? WHERE user_id=? AND conv IS NULL AND id IN (${files.map(() => '?').join(',')})`).bind(conv, U, ...files.map(f => f.id)).run();
-      await addMsg(db, U, conv, 'me', text || '（附件）', files);
-      await enqueueTurn(db, U, conv, text, bot, group, bots);
+      const want = Math.floor(+body.reply);
+      let quoted = null;
+      if (want > 0) {
+        const src = await db.prepare('SELECT id, by_, text FROM messages WHERE id=? AND user_id=? AND conv=?').bind(want, U, conv).first();
+        if (src) {
+          const who = src.by_ === 'me' ? '你自己' : src.by_ === 'sys' ? '系統' : (bots.find(b => b.id === src.by_)?.name || '那則訊息');
+          const bit = String(src.text || '').replace(/\s+/g, ' ').trim().slice(0, 160) || '（沒有文字）';
+          quoted = { by: src.by_, id: src.id, note: `（這則是在回覆「${who}」的這一則：${bit}。請針對這一則回答。）` };
+        }
+      }
+      await addMsg(db, U, conv, 'me', text || '（附件）', files, quoted?.id || null);
+      await enqueueTurn(db, U, conv, text, bot, group, bots, quoted);
       return ok();
     }
     if (path === 'messages/copy' && m === 'POST') {   // drag a message onto another bot: same text and its own copies of the files
@@ -2009,7 +2023,13 @@ async function jobPayload(env, db, U, job) {
   if (!bot) { await db.prepare("UPDATE jobs SET status='error' WHERE id=?").bind(job.id).run(); return null; }
   const group = groups.find(g => g.id === job.conv);
   const conv = group || bot;
-  const hist = (await db.prepare('SELECT id,by_,text,files FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT 30').bind(U, job.conv).all()).results.reverse();
+  const hist = (await db.prepare('SELECT id,by_,text,files,reply FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT 30').bind(U, job.conv).all()).results.reverse();
+  const seen = new Map(hist.map(h => [h.id, h]));
+  const missing = [...new Set(hist.map(h => h.reply).filter(id => id && !seen.has(id)))];
+  if (missing.length) {
+    const more = (await db.prepare(`SELECT id, by_, text FROM messages WHERE user_id=? AND conv=? AND id IN (${missing.map(() => '?').join(',')})`).bind(U, job.conv, ...missing).all()).results;
+    for (const row of more) seen.set(row.id, row);
+  }
   const fileIds = [...new Set(hist.flatMap(h => (h.files ? JSON.parse(h.files) : []).map(f => f.id)))];
   const where = fileIds.length ? (await db.prepare(`SELECT id,path FROM files WHERE user_id=? AND id IN (${fileIds.map(() => '?').join(',')})`).bind(U, ...fileIds).all()).results : [];
   const pathOf = id => where.find(w => w.id === id)?.path || null;
@@ -2039,6 +2059,9 @@ async function jobPayload(env, db, U, job) {
     lang: st.lang || 'zh-TW',
     colleagues: bots.filter(b => b.id !== bot.id).sort((a, b) => ((a.folder || null) === (bot.folder || null) ? 0 : 1) - ((b.folder || null) === (bot.folder || null) ? 0 : 1)).slice(0, 20).map(b => ({ id: b.id, name: b.name, task: b.task })),
     group: group ? { name: group.name, task: group.task, members: group.members.map(name), mode: turnsOf(group) ? 'turns' : 'parallel' } : null,
-    history: hist.map(h => ({ id: h.id, who: name(h.by_), text: h.text, files: (h.files ? JSON.parse(h.files) : []).map(f => ({ ...f, path: pathOf(f.id) })) }))
+    history: hist.map(h => {
+      const q = h.reply ? seen.get(h.reply) : null;
+      return { id: h.id, who: name(h.by_), text: h.text, replyWho: q ? name(q.by_) : '', replyText: q ? String(q.text || '').replace(/\s+/g, ' ').trim().slice(0, 160) : '', files: (h.files ? JSON.parse(h.files) : []).map(f => ({ ...f, path: pathOf(f.id) })) };
+    })
   };
 }

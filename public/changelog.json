@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.26",
+  "date": "2026-10-25",
+  "notes": [
+   "可以回覆對話裡的某一則。輸入框會帶出那一則，機器人會針對它回答；在群組裡只會交給說出那則的機器人"
+  ],
+  "notes_en": [
+   "You can reply to one message. The composer shows it, the bot answers that message, and in a group only the bot who wrote it is asked"
+  ]
+ },
+ {
   "v": "3.0.25",
   "date": "2026-10-25",
   "notes": [

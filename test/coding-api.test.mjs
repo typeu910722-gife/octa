@@ -468,6 +468,61 @@ test('a phone can replace the address waiting on the computer, and the open resu
   assert.match(api, /UPDATE jobs SET url=\?, conv=\?/);
 });
 
+test('a reply points at one message, and a group answer goes only to that bot', async () => {
+  const db = openD1();
+  db.raw.exec('ALTER TABLE messages DROP COLUMN reply');
+  const su = await call(db, 'POST', 'signup', { body: { name: 'rea', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const a = await call(db, 'POST', 'bots', { token, body: { name: '房務', task: '看房' } });
+  const b = await call(db, 'POST', 'bots', { token, body: { name: '清潔', task: '打掃' } });
+  const id = a.data.id;
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: id, text: '房況 302' } })).status, 200);
+  const listed = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  const origin = listed.data.msgs.find(m => m.text === '房況 302');
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: id, text: '這間先不要', reply: origin.id } })).status, 200);
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: id, text: '沒有那則', reply: 999999 } })).status, 200);
+  const msgs = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.equal(msgs.data.msgs.find(m => m.text === '這間先不要').reply, origin.id);
+  assert.equal(msgs.data.msgs.find(m => m.text === '沒有那則').reply, null);
+  const rt = await runnerOf(db, token);
+  const first = await claimChat(db, rt);
+  assert.equal(first.prompt, '房況 302');
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: first.id, ok: true, text: '收到房況' } })).status, 200);
+  const second = await claimChat(db, rt);
+  assert.match(second.prompt, /回覆「你自己」/);
+  assert.match(second.prompt, /房況 302/);
+  assert.match(second.prompt, /這間先不要/);
+  const hit = second.history.find(h => h.text === '這間先不要');
+  assert.match(hit.replyText, /房況 302/);
+  assert.equal(hit.replyWho, '使用者');
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: second.id, ok: true, text: '好，先跳過' } })).status, 200);
+  const third = await claimChat(db, rt);
+  assert.equal(third.prompt, '沒有那則');
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: third.id, ok: true, text: '好' } })).status, 200);
+  const g = await call(db, 'POST', 'groups', { token, body: { name: '館內', members: [a.data.id, b.data.id] } });
+  assert.equal(g.status, 200, JSON.stringify(g.data));
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: g.data.id, text: '@房務 今天掃哪幾間' } })).status, 200);
+  const job = await claimChat(db, rt);
+  assert.equal(job.bot.id, a.data.id);
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: job.id, ok: true, text: '302 和 303' } })).status, 200);
+  const gm = await call(db, 'GET', 'messages', { token, query: { conv: g.data.id } });
+  const said = gm.data.msgs.find(m => m.text === '302 和 303');
+  assert.equal(said.by, a.data.id);
+  const cross = await call(db, 'POST', 'messages', { token, body: { conv: id, text: '別的對話', reply: said.id } });
+  assert.equal(cross.status, 200);
+  const crossed = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.equal(crossed.data.msgs.find(m => m.text === '別的對話').reply, null);
+  const stray = await claimChat(db, rt);
+  assert.equal(stray.prompt, '別的對話');
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: stray.id, ok: true, text: '好' } })).status, 200);
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: g.data.id, text: '303 先不要', reply: said.id } })).status, 200);
+  const only = await claimChat(db, rt);
+  assert.equal(only.bot.id, a.data.id);
+  assert.match(only.prompt, /302 和 303/);
+  assert.match(only.prompt, /303 先不要/);
+  assert.equal(await claimChat(db, rt), null);
+});
+
 function openD1From(raw) {
   const norm = a => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? +v : v));
   class Stmt {

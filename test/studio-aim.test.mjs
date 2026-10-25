@@ -34,6 +34,18 @@ test('a capability question is something to learn, not a work-only refusal', () 
   assert.equal(text.includes('視窗右側'), false);
 });
 
+test('a reply in the history names the message it answers', () => {
+  const text = prompt({
+    prompt: '（這則是在回覆「測」的這一則：房況 302。請針對這一則回答。）\n這間先不要',
+    history: [
+      { who: '測', text: '房況 302' },
+      { who: '使用者', text: '這間先不要', replyWho: '測', replyText: '房況 302' }
+    ]
+  });
+  assert.match(text, /回覆「測」：房況 302/);
+  assert.match(text, /這間先不要/);
+});
+
 test('a standing task stays a specialty and does not ban new topics', () => {
   const text = prompt({ task: '每 30 分鐘看一次 LINE', group: { name: '工作室', members: ['測'], task: '', mode: 'serial' } });
   assert.match(text, /長期本業，不是能力上限/);

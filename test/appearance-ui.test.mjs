@@ -23,6 +23,9 @@ test('text size applies to the whole interface and is remembered on the device',
   assert.match(page, /xl:2/);
   assert.match(page, /function fragmentSheet/);
   assert.match(page, /選取片段/);
+  assert.match(page, /回覆這則/);
+  assert.match(page, /id="replybar"/);
+  assert.match(page, /data-jump/);
   assert.match(page, /id="frag"/);
   assert.match(page, /function buddySync/);
   assert.match(page, /主人！我來了～/);
@@ -76,8 +79,10 @@ test('attachments show as thumbnails or file cards before and after sending', ()
 
 test('the desktop version matches the changelog, and the appearance release is still recorded', () => {
   assert.equal(pkg.version, log[0].v);
-  assert.equal(log[0].v, '3.0.25');
-  assert.ok(log[0].notes.some(n => n.includes('比例')));
+  assert.equal(log[0].v, '3.0.26');
+  assert.ok(log[0].notes.some(n => n.includes('回覆對話裡的某一則')));
+  const ratio = log.find(x => x.v === '3.0.25');
+  assert.ok(ratio.notes.some(n => n.includes('比例')));
   const sheet = log.find(x => x.v === '3.0.24');
   assert.ok(sheet.notes.some(n => n.includes('角色圖')));
   assert.ok(sheet.notes.some(n => n.includes('瀏覽器')));

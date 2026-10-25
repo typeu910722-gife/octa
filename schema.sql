@@ -78,7 +78,8 @@ CREATE TABLE IF NOT EXISTS messages (
   by_ TEXT NOT NULL,             -- 'me' | 'sys' | bot id
   text TEXT NOT NULL,
   files TEXT,                    -- JSON [{id,name,mime}]
-  ts INTEGER NOT NULL
+  ts INTEGER NOT NULL,
+  reply INTEGER                  -- id of the message in this conversation this one answers
 );
 CREATE INDEX IF NOT EXISTS msg_user ON messages(user_id, id);
 CREATE INDEX IF NOT EXISTS msg_conv ON messages(user_id, conv, id);
