@@ -190,6 +190,22 @@ const asksUser = t => /❓/.test(String(t || '')) || (!/@\S/.test(String(t || ''
 // "Resets in 156h16m" or "5 小時後" → when that AI can be used again. Unknown windows wait an hour, not forever.
 const resetAt = t => {
   const s = String(t);
+  const dated = s.match(/resets?\s+([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,|\s)+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if (dated) {
+    const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+    const month = months[dated[1].slice(0, 3).toLowerCase()];
+    if (month != null) {
+      let hour = +dated[3];
+      const minute = dated[4] ? +dated[4] : 0;
+      const ap = dated[5].toLowerCase();
+      if (ap === 'pm' && hour < 12) hour += 12;
+      if (ap === 'am' && hour === 12) hour = 0;
+      const year = new Date().getUTCFullYear();
+      let utc = Date.UTC(year, month, +dated[2], hour - 8, minute);
+      if (utc < now() - 86400000) utc = Date.UTC(year + 1, month, +dated[2], hour - 8, minute);
+      if (utc > now()) return utc;
+    }
+  }
   const m = s.match(/resets? in\s*(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:in(?:ute)?s?)?)?/i);
   if (m && (m[1] || m[2])) return now() + ((+m[1] || 0) * 60 + (+m[2] || 0)) * 60000;
   const zh = s.match(/(\d+)\s*個?\s*小時/);

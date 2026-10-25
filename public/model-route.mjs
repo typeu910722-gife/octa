@@ -3,7 +3,7 @@
 
 // A short chat reply that is only "the quota is gone" (the model exited 0 and explained it).
 // Deliberately narrower than classifyModelFailure: 「人數已達上限」is a real answer, 「人流量不夠」is not an AI quota.
-const QUOTA_RE = /quota|usage limit|out of (extra )?credits|insufficient[_\s-]?credit|upgrade your (plan|subscription)|resource[_\s-]?exhausted|out of quota|usage exceeded|you(?:'ve| have) (?:reached|exceeded) your (?:quota|limit|usage|rate)|額度(用完|不足|已用完)|用量上限|流量(不夠|不足|用完|已用完|耗盡|用盡)|沒有(剩餘)?流量|配額(已)?(用完|不足|用盡|耗盡)|超出配額|資源已?耗盡/i;
+const QUOTA_RE = /quota|usage limit|weekly limit|daily limit|monthly limit|5[- ]hour limit|out of (extra )?credits|insufficient[_\s-]?credit|upgrade your (plan|subscription)|resource[_\s-]?exhausted|out of quota|usage exceeded|you(?:'ve| have) (?:reached|exceeded|hit) your (?:(?:weekly|daily|monthly|5[- ]hour) )?limit|you(?:'ve| have) (?:reached|exceeded) your (?:quota|usage|rate)|額度(用完|不足|已用完)|用量上限|流量(不夠|不足|用完|已用完|耗盡|用盡)|沒有(剩餘)?流量|配額(已)?(用完|不足|用盡|耗盡)|超出配額|資源已?耗盡/i;
 // 人流量、車流量、客流量、網路流量 are not an AI quota.
 const quotaText = s => String(s || '').replace(/(?:人|車|客|網路)流量/g, ' ');
 const RATE_RE = /\b429\b|too many requests|rate limit/i;
@@ -26,7 +26,11 @@ export function classifyModelFailure(text, flags = {}) {
 export function replyIsProviderRefusal(text, { files = 0 } = {}) {
   const raw = String(text || '');
   const visible = (raw.includes('【回覆】') ? raw.slice(raw.lastIndexOf('【回覆】') + 4) : raw).trim();
-  if (!visible || visible.length > REFUSAL_MAX || files > 0) return '';
+  if (!visible || files > 0) return '';
+  // Claude prints the weekly limit and then the whole task. The first line is still a refusal.
+  const first = quotaText((visible.split('\n').map(s => s.trim()).find(Boolean) || '').slice(0, 400));
+  if (QUOTA_RE.test(first)) return 'quota';
+  if (visible.length > REFUSAL_MAX) return '';
   const spoke = quotaText(visible);
   if (QUOTA_RE.test(spoke)) return 'quota';
   if (RATE_RE.test(spoke)) return 'rate_limit';

@@ -68,6 +68,10 @@ test('a quota refusal in Chinese switches, and a normal sentence that only looks
   assert.equal(replyIsProviderRefusal('好的，已打開頁面'), '');
   assert.equal(replyIsProviderRefusal('流量不夠', { files: 1 }), '');
   assert.equal(replyIsProviderRefusal('x'.repeat(900) + '流量不夠'), '');
+  const weekly = "You've hit your weekly limit - resets Oct 26, 11pm (Asia/Taipei)";
+  assert.equal(classifyModelFailure(weekly), 'quota');
+  assert.equal(replyIsProviderRefusal(weekly), 'quota');
+  assert.equal(replyIsProviderRefusal(weekly + '\n' + '規則'.repeat(500)), 'quota');
   const hop = decideRoute({ kind: 'quota', tries: 0, chain: [{ id: 'gemini' }, { id: 'claude|opus' }, { id: 'codex' }], index: 0, now });
   assert.equal(hop.action, 'switch');
   assert.equal(hop.index, 1);

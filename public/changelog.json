@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.31",
+  "date": "2026-10-25",
+  "notes": [
+   "每週額度用完會自動改叫備援，就算後面還接著一長段說明。瀏覽器縮小和展開時，拖動跟著游標走"
+  ],
+  "notes_en": [
+   "A weekly limit switches to the backup even when a long note follows it. Dragging the browser, collapsed or open, follows the pointer"
+  ]
+ },
+ {
   "v": "3.0.30",
   "date": "2026-10-25",
   "notes": [

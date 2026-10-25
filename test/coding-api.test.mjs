@@ -277,6 +277,26 @@ test('simulated model failures keep the chat queue and classify the route', asyn
   assert.ok(after.data.msgs.some(m => m.text === '這是真實回覆'));
 });
 
+test('a weekly limit reply still calls the backup when the task text follows it', async () => {
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'weeka', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const bot = await call(db, 'POST', 'bots', { token, body: { name: '貳寅首席', task: '看房', engine: 'claude', fb: ['gemini'] } });
+  await call(db, 'POST', 'messages', { token, body: { conv: bot.data.id, text: '整理今天的訂單' } });
+  const rt = await runnerOf(db, token);
+  const first = await claimChat(db, rt);
+  assert.equal(first.bot.engine, 'claude');
+  const text = "You've hit your weekly limit - resets Oct 26, 11pm (Asia/Taipei)\n" + '規則——只讀。'.repeat(200);
+  const done = await call(db, 'POST', 'runner/done', { token: rt, body: { id: first.id, ok: true, text } });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  const second = await claimChat(db, rt);
+  assert.equal(second.bot.engine, 'gemini');
+  assert.equal(second.prompt, '整理今天的訂單');
+  const msgs = await call(db, 'GET', 'messages', { token, query: { conv: bot.data.id } });
+  assert.equal(msgs.data.msgs.some(m => m.by === bot.data.id && /weekly limit/.test(m.text)), false);
+  assert.ok(msgs.data.msgs.some(m => m.by === 'sys' && m.text.includes('改由')));
+});
+
 test('a stopped chat and a code failure do not queue another model', async () => {
   const db = openD1();
   const su = await call(db, 'POST', 'signup', { body: { name: 'gia', pw: 'correcthorsebattery' } });

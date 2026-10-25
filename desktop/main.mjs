@@ -190,10 +190,9 @@ function sendFrame(bucket, extra) {
   const wc = bucket.chrome?.webContents;
   if (!wc || wc.isDestroyed()) return;
   const page = bucket.active?.webContents;
-  const drag = bucket.dragging && bucket.panelBox ? { dragging: true, x: bucket.panelBox.x, y: bucket.panelBox.y, w: bucket.panelBox.width, h: bucket.panelBox.height } : {};
   const tabs = bucket.tabs.map((v, i) => ({ i, on: v === bucket.active, title: tabTitle(v.webContents) }));
   const engines = ENGINE_IDS.map(id => ({ id, label: ENGINE_LABEL[id], on: id === (bucket.engine || 'chrome'), state: bucket.downloading === id ? 'down' : (ownedExe(id) ? 'ready' : 'none') }));
-  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...drag, ...extra });
+  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...extra });
 }
 function roundChrome(view, radius, solid) {
   if (!view) return;
@@ -276,17 +275,13 @@ function layoutEmbed() {
       holdOffscreen(bucket);
       continue;
     }
+    if (bucket.dragging && bucket.panelBox) {
+      placeDrag(bucket);
+      continue;
+    }
     if (bucket.shown === 'open') bucket.openAt = freshOpen(bucket.openAt);
     const at = bucket.shown === 'open' ? bucket.openAt : (bucket.thumbAt || savedThumbAt());
     const frames = embedFrames(w, h, bucket.shown, at, { tabs: bucket.tabs.length });
-    if (bucket.dragging && bucket.chrome) {
-      for (const v of bucket.tabs) parkView(bucket, v, bucket.shown === 'thumb' && v === bucket.active);
-      roundChrome(bucket.chrome, 0, false);
-      raiseView(bucket.chrome);
-      fitView(bucket.chrome, { x: 0, y: 0, width: w, height: h }, true);
-      sendFrame(bucket, {});
-      continue;
-    }
     if (bucket.shown === 'thumb' && !bucket.thumbTimer) startThumbs(bucket);
     placeBucket(bucket, frames);
   }
@@ -619,6 +614,18 @@ ipcMain.on('octa:browser-go', (e, raw) => {
   goTo(wc, raw);
   embedShow(bucket.port, 'open');
 });
+function placeDrag(bucket) {
+  if (!win || win.isDestroyed() || !bucket?.panelBox || !bucket.chrome) return;
+  const box = bucket.panelBox;
+  const [w, h] = win.getContentSize();
+  fitView(bucket.chrome, { x: box.x, y: box.y, width: box.width, height: box.height }, true);
+  if (bucket.shown !== 'open' || !bucket.active) return;
+  const frames = embedFrames(w, h, 'open', { x: box.x, y: box.y, w: box.width, h: box.height }, { tabs: bucket.tabs.length });
+  if (!frames.page) return;
+  try { bucket.host?.contentView.removeChildView(bucket.active); } catch { }
+  try { if (!win.contentView.children.includes(bucket.active)) win.contentView.addChildView(bucket.active); } catch { }
+  fitView(bucket.active, frames.page, true);
+}
 function panelFrom(bucket, w, h) {
   if (bucket.shown === 'open') {
     bucket.openAt = freshOpen(bucket.openAt);
@@ -754,10 +761,6 @@ ipcMain.on('octa:browser-drag-start', e => {
     const box = panelFrom(bucket, w, h);
     bucket.dragging = true;
     rememberPanel(bucket, box);
-    roundChrome(bucket.chrome, 0, false);
-    raiseView(bucket.chrome);
-    fitView(bucket.chrome, { x: 0, y: 0, width: w, height: h }, true);
-    for (const v of bucket.tabs) parkView(bucket, v, bucket.shown === 'thumb' && v === bucket.active);
     e.returnValue = { dragging: true, x: box.x, y: box.y, w: box.width, h: box.height };
   } catch (err) {
     logError('panel-drag', err);
@@ -779,7 +782,7 @@ ipcMain.on('octa:browser-drag-by', (e, delta) => {
       ? sidebarBox(w, h, { x: cur.x + dx, y: cur.y + dy, w: cur.width, h: cur.height })
       : thumbBox(w, h, { x: cur.x + dx, y: cur.y + dy }));
   rememberPanel(bucket, box);
-  sendFrame(bucket, {});
+  placeDrag(bucket);
 });
 ipcMain.on('octa:browser-drag-end', e => {
   if (!trusted(e)) return;

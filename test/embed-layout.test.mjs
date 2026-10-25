@@ -112,6 +112,10 @@ test('opening the browser keeps a toolbar and a closable tab row inside the pane
   assert.match(main, /octa:browser-tab/);
   assert.match(main, /octa:browser-go/);
   assert.match(main, /freshOpen/);
+  const drag = main.slice(main.indexOf("on('octa:browser-drag-start'"), main.indexOf("on('octa:browser-drag-by'"));
+  assert.match(drag, /rememberPanel/);
+  assert.doesNotMatch(drag, /width: w, height: h/);
+  assert.match(main, /function placeDrag/);
   assert.match(main, /octa:browser-close/);
   assert.match(main, /navigationHistory\.goBack/);
   assert.match(main, /tabs: bucket\.tabs\.length/);
