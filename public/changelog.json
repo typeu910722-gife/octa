@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.21",
+  "date": "2026-10-25",
+  "notes": [
+   "內建瀏覽器打開後是這個機器人的側邊視窗，可以拖、可以拉大小，只留在這個畫面裡。分頁可以關掉。換到別的機器人不會把瀏覽器帶過去"
+  ],
+  "notes_en": [
+   "The open built-in browser is that bot's side panel. It can be dragged and resized inside the window, its tabs can be closed, and it stays behind when you open another bot"
+  ]
+ },
+ {
   "v": "3.0.20",
   "date": "2026-10-25",
   "notes": [

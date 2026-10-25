@@ -1,28 +1,29 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { THUMB_RADIUS, dockLayout, embedFrames, isBlankUrl, thumbBox } from '../desktop/embed-layout.mjs';
+import { OPEN_BAR, PANEL_EDGE, TAB_ROW, THUMB_RADIUS, embedFrames, isBlankUrl, resizeBox, sidebarBox, thumbBox } from '../desktop/embed-layout.mjs';
 import { pickLivePage } from '../public/octa-runner.mjs';
 
-test('a wide window keeps the chat beside the browser', () => {
-  const lay = dockLayout(1920, 1000);
-  assert.equal(lay.mode, 'side');
-  assert.ok(lay.main.width >= 920);
-  assert.ok(lay.side.width >= 420);
-  assert.equal(lay.main.width + lay.side.width, 1920);
-  assert.equal(lay.side.x, lay.main.width);
+test('the opened browser is a side panel and the chat keeps the whole window', () => {
+  const lay = embedFrames(1920, 1000, 'open');
+  assert.equal(lay.mode, 'open');
+  assert.equal(lay.main.width, 1920);
   assert.equal(lay.main.height, 1000);
-  assert.equal(lay.side.height, 1000);
-});
-
-test('a narrower window puts the browser under the chat', () => {
-  const lay = dockLayout(1366, 768);
-  assert.equal(lay.mode, 'bottom');
-  assert.equal(lay.main.width, 1366);
-  assert.equal(lay.side.width, 1366);
-  assert.equal(lay.side.y, lay.main.height);
-  assert.equal(lay.main.height + lay.side.height, 768);
-  assert.ok(lay.main.height >= 380);
+  assert.equal(lay.box.y, 12);
+  assert.equal(lay.box.x, 1920 - lay.box.width - 12);
+  assert.ok(lay.box.width >= 360 && lay.box.width <= 520);
+  assert.equal(lay.chrome.x, lay.box.x);
+  assert.equal(lay.chrome.width, lay.box.width);
+  assert.equal(lay.chrome.height, lay.box.height);
+  assert.equal(lay.page.x, lay.box.x + PANEL_EDGE);
+  assert.equal(lay.page.y, lay.box.y + OPEN_BAR);
+  assert.equal(lay.page.width, lay.box.width - PANEL_EDGE * 2);
+  const narrow = embedFrames(1366, 768, 'open');
+  assert.equal(narrow.main.width, 1366);
+  assert.equal(narrow.main.height, 768);
+  assert.equal(narrow.box.x, 1366 - narrow.box.width - 12);
+  assert.ok(narrow.box.x >= 12);
+  assert.ok(narrow.page.y + narrow.page.height <= narrow.box.y + narrow.box.height);
 });
 
 test('the visible page is the real site, not the opening card', () => {
@@ -46,8 +47,12 @@ test('foreground tabs are the on-screen view', () => {
   assert.match(fn, /isBlankUrl/);
   assert.match(fn, /embedShow\(port, true\)/);
   assert.doesNotMatch(fn, /embedShow\(port, 'open'\)/);
-  assert.match(src, /dockLayout/);
+  assert.doesNotMatch(src, /dockLayout/);
   assert.match(src, /bucket\.shown === 'open' \? 'open' : 'thumb'/);
+  assert.match(src, /octa:focus-bot/);
+  assert.match(src, /bucket\.botId === focusBotId/);
+  const showFn = src.slice(src.indexOf('async function embedShow'), src.indexOf('async function embedStop'));
+  assert.doesNotMatch(showFn, /e\.shown = false/);
   const pkg = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8'));
   assert.ok(pkg.build.files.includes('browser-chrome.html'));
   assert.ok(pkg.build.files.includes('browser-preload.cjs'));
@@ -65,33 +70,70 @@ test('a thumbnail leaves the chat full width', () => {
   assert.ok(lay.chrome.width >= 120);
 });
 
-test('opening the browser docks it under a toolbar', () => {
-  const wide = embedFrames(1920, 1000, 'open');
-  assert.equal(wide.mode, 'open');
-  assert.ok(wide.main.width >= 920);
-  assert.equal(wide.chrome.height, 48);
-  assert.equal(wide.page.y, wide.chrome.y + wide.chrome.height);
-  assert.equal(wide.main.width + wide.page.width, 1920);
-  const tabs = embedFrames(1920, 1000, 'open', null, { tabs: 2 });
-  assert.equal(tabs.chrome.height, 76);
-  assert.equal(tabs.page.y, tabs.chrome.y + tabs.chrome.height);
-  assert.equal(tabs.chrome.height + tabs.page.height, wide.chrome.height + wide.page.height);
-  const narrow = embedFrames(1366, 768, 'open');
-  assert.equal(narrow.main.width, 1366);
-  assert.equal(narrow.chrome.y, narrow.main.height);
-  assert.equal(narrow.page.y, narrow.chrome.y + narrow.chrome.height);
-  assert.equal(narrow.main.height + narrow.chrome.height + narrow.page.height, 768);
+test('opening the browser keeps a toolbar and a closable tab row inside the panel', () => {
+  const tabs = embedFrames(1920, 1000, 'open', { x: 40, y: 80, w: 480, h: 640 }, { tabs: 1 });
+  assert.equal(tabs.main.width, 1920);
+  assert.equal(tabs.box.x, 40);
+  assert.equal(tabs.box.y, 80);
+  assert.equal(tabs.box.width, 480);
+  assert.equal(tabs.box.height, 640);
+  assert.equal(tabs.page.y, tabs.box.y + OPEN_BAR + TAB_ROW);
+  assert.equal(tabs.page.x, tabs.box.x + PANEL_EDGE);
+  assert.ok(tabs.page.width > 0 && tabs.page.height > 0);
   const html = readFileSync(new URL('../desktop/browser-chrome.html', import.meta.url), 'utf8');
   assert.match(html, /返回上一頁/);
   assert.match(html, /開啟新分頁/);
   assert.match(html, />編輯</);
   assert.match(html, /id="goBack"/);
+  assert.match(html, /關閉分頁/);
+  assert.match(html, /data-close/);
+  assert.match(html, /data-edge="se"/);
+  assert.match(html, /data-edge="nw"/);
   const main = readFileSync(new URL('../desktop/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /octa:browser-back/);
   assert.match(main, /octa:browser-tab/);
   assert.match(main, /octa:browser-go/);
+  assert.match(main, /octa:browser-close/);
   assert.match(main, /navigationHistory\.goBack/);
-  assert.match(main, /tabs: side\.tabs\?\.length/);
+  assert.match(main, /tabs: bucket\.tabs\.length/);
+  assert.match(main, /function closeEmbedTab/);
+  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(page, /function focusBrowser/);
+  assert.match(page, /focusBot/);
+  const preload = readFileSync(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
+  assert.match(preload, /octa:focus-bot/);
+});
+
+test('dragging and resizing the side panel stays inside the window', () => {
+  const moved = sidebarBox(1920, 1000, { x: 30, y: 40, w: 500, h: 700 });
+  assert.equal(moved.x, 30);
+  assert.equal(moved.y, 40);
+  assert.equal(moved.width, 500);
+  assert.equal(moved.height, 700);
+  const clamped = sidebarBox(1920, 1000, { x: 9000, y: -40, w: 9000, h: 9000 });
+  assert.equal(clamped.y, 12);
+  assert.ok(clamped.x >= 12);
+  assert.ok(clamped.x + clamped.width <= 1920 - 12);
+  assert.ok(clamped.y + clamped.height <= 1000 - 12);
+  const east = resizeBox(1920, 1000, { x: 800, y: 100, width: 400, height: 400 }, 'e', 1000, 0);
+  assert.equal(east.x, 800);
+  assert.equal(east.width, 1920 - 12 - 800);
+  assert.equal(east.height, 400);
+  const west = resizeBox(1920, 1000, { x: 100, y: 100, width: 400, height: 400 }, 'w', -200, 0);
+  assert.equal(west.x + west.width, 500);
+  assert.equal(west.x, 12);
+  const north = resizeBox(1920, 1000, { x: 100, y: 100, width: 400, height: 400 }, 'n', 0, -40);
+  assert.equal(north.y, 60);
+  assert.equal(north.height, 440);
+  assert.equal(north.x, 100);
+  const corner = resizeBox(1920, 1000, { x: 100, y: 100, width: 400, height: 400 }, 'se', 20, 30);
+  assert.equal(corner.x, 100);
+  assert.equal(corner.y, 100);
+  assert.equal(corner.width, 420);
+  assert.equal(corner.height, 430);
+  const tiny = resizeBox(1920, 1000, { x: 100, y: 100, width: 400, height: 400 }, 'e', -500, 0);
+  assert.ok(tiny.width >= 360);
+  assert.equal(tiny.x, 100);
 });
 
 test('a dragged thumbnail stays where it was put and stays on screen', () => {

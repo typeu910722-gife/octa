@@ -644,7 +644,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
     <h2>它會做什麼</h2>
     <div class="hgrid">
       <div><b>看得到畫面</b><span>遊戲、後台、分數，它看圖，不靠猜。圖裡沒有的數字，它會直說沒看到。</span></div>
-      <div><b>網頁縮成小卡</b><span>桌面版平常是一張圓角小卡，拖到你要的位置就停在那裡。點一下打開，按收回就縮回去。</span></div>
+      <div><b>網頁縮成小卡</b><span>桌面版平常是一張圓角小卡。打開後是這個機器人的側邊視窗，可以拖、可以拉大小，換到別的機器人不會跟著走。分頁可以關掉。</span></div>
       <div><b>重要的事先問你</b><span>付錢、刪除、傳給別人，它會停下來等你點頭。</span></div>
       <div><b>拖一下就過去</b><span>訊息、圖片、檔案拖到另一個機器人會先問你，也可以蓋掉原本那則。機器人拖進群組就直接加入。</span></div>
     </div>
@@ -1157,9 +1157,15 @@ async function sendFilesTo(convId,list){
   toast('已複製過去');await refresh();
   if(MSG[convId]?.loaded)await loadMsgs(convId,'new');
   if(cur===convId)render(true)}
+function focusBrowser(){
+  if($('app').hidden){window.octaDesktop?.focusBot?.('')?.catch?.(()=>{});return}
+  const paneOn=!matchMedia('(max-width:760px)').matches||$('app').classList.contains('chat');
+  const id=paneOn&&cur&&bot(cur)?cur:'';
+  window.octaDesktop?.focusBot?.(id)?.catch?.(()=>{})}
 function openConv(id){saveDraft();cur=id;try{localStorage.setItem('ebot_cur',cur)}catch(e){}
   if(!$('app').classList.contains('chat'))navPush('chat');
   pending=[];renderAtt();loadDraft();render(true);$('app').classList.add('chat');
+  focusBrowser();
   loadMsgs(id,MSG[id]?.loaded?'new':'first').then(()=>{if(cur===id)render(true)}).catch(()=>{});
   if(matchMedia('(min-width:761px)').matches)$('msg').focus()}
 const draftKey=()=>'octa_draft_'+cur;
@@ -1175,7 +1181,7 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key===','&&!$('app').hidden){e.preventDefault();openSettings()}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='n'&&!$('app').hidden&&window.octaDesktop){e.preventDefault();sheet('b')}
   if(e.altKey&&e.key.toLowerCase()==='n'&&!$('app').hidden){e.preventDefault();sheet('b')}
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('app').classList.remove('chat');$('q').focus();$('q').select()}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('app').classList.remove('chat');focusBrowser();$('q').focus();$('q').select()}
   if(e.key==='Escape'&&!$('veil').hidden&&!document.querySelector('.menu'))closeSheet()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cur)render(false)});
 function toast(t){let el=$('toast');if(!el){el=document.createElement('div');el.id='toast';el.className='toast';document.body.appendChild(el)}
@@ -1188,9 +1194,9 @@ function navPush(k){if(!phoneUI())return;if(navSkip>0){navQueue.push(k);return}N
 function navPop(k){const q=navQueue.lastIndexOf(k);if(q>=0){navQueue.splice(q,1);return}
   if(NAV.length&&NAV[NAV.length-1]===k){NAV.pop();navSkip++;try{history.back()}catch(e){navSkip--}}}
 window.addEventListener('popstate',()=>{if(navSkip>0){navSkip--;if(!navSkip)while(navQueue.length)navPush(navQueue.shift());return}const k=NAV.pop();if(!k)return;
-  if(k==='menu')closeMenu(true);else if(k==='sheet'){if(!$('veil').hidden)closeSheet()}else if(k==='chat'){saveDraft();$('app').classList.remove('chat')}});
+  if(k==='menu')closeMenu(true);else if(k==='sheet'){if(!$('veil').hidden)closeSheet()}else if(k==='chat'){saveDraft();$('app').classList.remove('chat');focusBrowser()}});
 new MutationObserver(()=>{if(!$('veil').hidden){if(NAV[NAV.length-1]!=='sheet')navPush('sheet')}else navPop('sheet')}).observe($('veil'),{attributes:true,attributeFilter:['hidden']});
-$('back').onclick=()=>{saveDraft();$('app').classList.remove('chat');navPop('chat')};
+$('back').onclick=()=>{saveDraft();$('app').classList.remove('chat');navPop('chat');focusBrowser()};
 // swipe in from the left edge to go back to the list
 (function(){let sx=0,sy=0,on=false;
 document.addEventListener('touchstart',e=>{const t=e.touches[0];on=phoneUI()&&t.clientX<28&&$('app').classList.contains('chat')&&$('veil').hidden&&!document.querySelector('.menu');sx=t.clientX;sy=t.clientY},{passive:true});
@@ -1201,7 +1207,7 @@ $('veil').addEventListener('touchstart',e=>{sh=null;if(!phoneUI())return;const s
 $('veil').addEventListener('touchmove',e=>{if(!sh)return;dy=e.touches[0].clientY-y0;if(dy<=0||sh.scrollTop>0){sh.style.transform='';return}e.preventDefault();sh.style.transition='none';sh.style.transform=`translateY(${dy}px)`},{passive:false});
 $('veil').addEventListener('touchend',()=>{if(!sh)return;const s=sh;sh=null;s.style.transition='';if(dy>110)closeSheet();else s.style.transform=''})})();
 $('railToggle').onclick=()=>{
-  if(innerWidth<=760){$('app').classList.remove('chat');return}
+  if(innerWidth<=760){$('app').classList.remove('chat');focusBrowser();return}
   $('app').classList.toggle('rail-collapsed');
   try{localStorage.setItem('octa_rail',$('app').classList.contains('rail-collapsed')?'0':'1')}catch(e){}
 };
@@ -1440,7 +1446,7 @@ function sheet(kind,edit){
     try{const r=await api(edit?(g?'groups/':'bots/')+cur:(g?'groups':'bots'),edit?'PUT':'POST',body);
       if(!edit)cur=r.id;
       const ql=$('sf_q').value.split('\n').map(x=>x.trim()).filter(Boolean).slice(0,12);
-      if(ql.join('\n')!==((S.quick||{})[cur]||[]).join('\n'))await api('settings','PUT',{quick:{conv:cur,list:ql}});closeSheet();await refresh();$('app').classList.add('chat')}
+      if(ql.join('\n')!==((S.quick||{})[cur]||[]).join('\n'))await api('settings','PUT',{quick:{conv:cur,list:ql}});closeSheet();await refresh();$('app').classList.add('chat');focusBrowser()}
     catch(err){$('se').textContent=err.message}}}
 function alertSheet(t,p){$('veil').innerHTML=`<div class="sheet"><h2>${esc(t)}</h2><p>${esc(p)}</p><div class="acts"><button class="btn" id="sx">知道了</button></div></div>`;$('veil').hidden=false;$('sx').onclick=closeSheet}
 const ago=t=>{const m=Math.round((Date.now()-t)/60000),rt=new Intl.RelativeTimeFormat(I18N.lang,{numeric:'auto'});return m<60?rt.format(-m,'minute'):m<1440?rt.format(-Math.round(m/60),'hour'):rt.format(-Math.round(m/1440),'day')};
@@ -1499,7 +1505,7 @@ function paintRemote(fill){
 }
 function shotSheet(ids){
   $('veil').innerHTML=`<div class="sheet"><h2>機器人的瀏覽器</h2>
-  <p>${window.octaDesktop?'平常縮成圓角小卡，可以拖到你要的位置停住。點一下打開，按「收回」就縮回去，聊天不會被擋住。你看得到游標和點擊，登入也在同一個畫面。收到背景後它繼續在裡面工作。':'每個機器人在電腦版 OCTA 裡有自己的瀏覽器，平常縮成圓角小卡，可以拖到想放的位置。按下面的按鈕就會把它顯示出來，你可以看它在做什麼、幫它登入。'}</p>
+  <p>${window.octaDesktop?'平常縮成圓角小卡，可以拖到你要的位置停住。打開後是這個機器人自己的側邊視窗，可以拖、也可以拉大小，只留在這個畫面裡。換到別的機器人不會把這個瀏覽器帶過去。分頁右邊的 × 可以關掉。按「收回」就縮回小卡。':'每個機器人在電腦版 OCTA 裡有自己的瀏覽器。打開後是它自己的側邊視窗，可以拖、可以拉大小，換到別的機器人不會跟著走。'}</p>
   ${ids.map(id=>{const b=bot(id);return `<div class="bw" data-id="${id}"><div class="hd"><span class="av sm" data-u>${avOf(b.id)}</span><b data-u>${esc(b.name)}</b>${S.busy.some(x=>x.bot_id===id&&x.status==='running')?'<span class="pill p-pr">工作中</span>':''}</div>
     ${b.shot_ts?`<img class="shot" alt="${esc(b.name)}" id="img_${id}"><div class="meta">截圖：${ago(b.shot_ts)}${b.page?' · <span data-u>'+esc(b.page)+'</span>':''}</div>`:`<div class="noshot">還沒有畫面。機器人用過瀏覽器後，這裡會顯示它最後停在哪一頁。</div>`}
     ${b.browser==='mine'?`<div class="meta">這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。</div>`:`<div class="row2"><button class="btn" data-open="${id}">${showBrowserLabel()}</button><button class="ghost" data-hide="${id}">收到背景</button><button class="ghost" data-url="${id}">讓它打開網址…</button></div>`}</div>`}).join('')}
@@ -1566,7 +1572,7 @@ function itemMenu(anchor,id){const c=conv(id);if(!c)return;
     clr:()=>clearConv(id),del:()=>deleteConv(id),dup:()=>dupBot(id),
     pin:async()=>{const p=S.pins||[];await api('settings','PUT',{pins:p.includes(id)?p.filter(x=>x!==id):[id,...p]});refresh()},
     mute:async()=>{await api('settings','PUT',{mute:{bot:id,on:!(S.mute||{})[id]}});toast(I18N.t((S.mute||{})[id]?'已開啟通知':'已關閉通知'));refresh()},
-    ed:()=>{cur=id;render(true);$('app').classList.add('chat');sheet(isG(id)?'g':'b',true)}})}
+    ed:()=>{cur=id;render(true);$('app').classList.add('chat');focusBrowser();sheet(isG(id)?'g':'b',true)}})}
 function folderMenu(anchor,fid){
   popMenu(anchor,`<button data-a="rn"><span class="ck">✎</span>分區名稱與資料</button><button data-a="del" class="danger"><span class="ck">✕</span>刪除分區（內容移到未分區）</button>`,
    {rn:()=>folderSheet(fid),del:async()=>{await api('folders/'+fid,'DELETE');refresh()}})}
@@ -1673,7 +1679,7 @@ function deleteConv(id){const c=conv(id);if(!c)return;const g=isG(id);
     <li>對話紀錄會一起刪除</li>${rn?`<li><span>例行任務</span> ${rn} <span>個會一起刪除</span></li>`:''}
     ${inGroups.length?`<li><span>會從這些群組移除：</span><span data-u>${esc(inGroups.map(x=>x.name).join('、'))}</span></li>`:''}
     <li>主機電腦上的檔案資料夾會保留，不會刪除</li></ul><p>刪除後無法復原。</p>`,g?'刪除群組':'刪除機器人',true,
-    async()=>{await api((g?'groups/':'bots/')+id,'DELETE');delete MSG[id];if(cur===id){cur=null;$('app').classList.remove('chat')}toast(I18N.t('已刪除'));await refresh()})}
+    async()=>{await api((g?'groups/':'bots/')+id,'DELETE');delete MSG[id];if(cur===id){cur=null;$('app').classList.remove('chat');focusBrowser()}toast(I18N.t('已刪除'));await refresh()})}
 async function dupBot(id){const b=bot(id);if(!b)return;
   let name=b.name.slice(0,16)+I18N.t('（複製）');for(let n=2;S.bots.some(x=>x.name===name);n++)name=b.name.slice(0,14)+I18N.t('（複製）')+n;
   try{const r=await api('bots','POST',{name:name.slice(0,20),task:b.task,folder:b.folder,engine:b.engine,model:b.model,avatar:b.avatar,browser:b.browser==='mine'?'mine':'own'});
@@ -2195,7 +2201,10 @@ async function start(){$('login').hidden=true;$('home').hidden=true;
   if(window.octaDesktop&&TOKEN&&!CFG.local)window.octaDesktop.connect(TOKEN).catch(e=>toast(e.message));   // this computer works for the signed-in account
   await refresh();
   if(cur)await loadMsgs(cur,'first').catch(()=>{});
-  boot.set(100,'完成');$('app').hidden=false;try{if(localStorage.getItem('octa_rail')==='0'&&innerWidth>760)$('app').classList.add('rail-collapsed')}catch(e){}boot.hide();render(true);live();
+  $('app').hidden=false;
+  focusBrowser();
+  addEventListener('resize',()=>focusBrowser());
+  boot.set(100,'完成');try{if(localStorage.getItem('octa_rail')==='0'&&innerWidth>760)$('app').classList.add('rail-collapsed')}catch(e){}boot.hide();render(true);live();
   let g=null;try{g=localStorage.getItem('ebot_guided')}catch(e){}if(!S.bots.length&&!g)openGuide();else whatsNew()}
 // once after every update: show what the latest version added
 async function whatsNew(){const log=await changelog(),x=log[0];if(!x)return;let seen=null;try{seen=localStorage.getItem('octa_seen_v');localStorage.setItem('octa_seen_v',x.v)}catch(e){return}

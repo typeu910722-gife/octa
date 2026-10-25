@@ -1,11 +1,14 @@
 // How the in-app browser shares the OCTA window.
-// Wide windows: browser on the right, chat keeps the desktop layout (list + conversation).
-// Narrow windows: browser underneath, so the page does not collapse into the phone layout.
+// The chat always keeps the whole window. A thumbnail sits in the corner.
+// The opened browser is that bot's own side panel: it can be dragged and resized,
+// and it stays inside the window.
 
 export const PAGE = { width: 1280, height: 800 };
 export const THUMB_RADIUS = 18;
 export const OPEN_BAR = 48;
 export const TAB_ROW = 28;
+export const PANEL_EDGE = 8;
+export const PANEL_MIN = { width: 360, height: 280 };
 
 // Where the collapsed browser card sits. `at` is the place the person dragged it to.
 export function thumbBox(w, h, at) {
@@ -31,8 +34,84 @@ export function isBlankUrl(url) {
   return !u || u === 'about:blank' || u.startsWith('data:');
 }
 
+function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
+
+// The opened browser. `at` is {x, y, w, h} after the person drags or resizes it.
+// With no `at`, it stands on the right, like a side panel, inside the window.
+export function sidebarBox(w, h, at) {
+  w = Math.max(1, Math.round(w));
+  h = Math.max(1, Math.round(h));
+  const margin = 12;
+  const minW = Math.min(PANEL_MIN.width, Math.max(160, w - margin * 2));
+  const minH = Math.min(PANEL_MIN.height, Math.max(160, h - margin * 2));
+  const maxW = Math.max(minW, w - margin * 2);
+  const maxH = Math.max(minH, h - margin * 2);
+  const width = clamp(at && Number.isFinite(+at.w) ? Math.round(+at.w) : Math.min(520, Math.max(minW, Math.round(w * 0.34))), minW, maxW);
+  const height = clamp(at && Number.isFinite(+at.h) ? Math.round(+at.h) : Math.max(minH, h - margin * 2), minH, maxH);
+  const maxX = Math.max(margin, w - width - margin);
+  const maxY = Math.max(margin, h - height - margin);
+  const x = at && Number.isFinite(+at.x) ? Math.round(+at.x) : maxX;
+  const y = at && Number.isFinite(+at.y) ? Math.round(+at.y) : margin;
+  return {
+    x: clamp(x, Math.min(margin, maxX), maxX),
+    y: clamp(y, Math.min(margin, maxY), maxY),
+    width,
+    height
+  };
+}
+
+// edge is a string of n, s, e, w. The opposite edge stays put.
+// The box stays inside the window and never shrinks past the minimum.
+export function resizeBox(winW, winH, box, edge, dx, dy) {
+  const w = Math.max(1, Math.round(winW));
+  const h = Math.max(1, Math.round(winH));
+  const margin = 12;
+  const minW = Math.min(PANEL_MIN.width, Math.max(160, w - margin * 2));
+  const minH = Math.min(PANEL_MIN.height, Math.max(160, h - margin * 2));
+  const e = String(edge || '');
+  const left = e.includes('w');
+  const right = e.includes('e');
+  const top = e.includes('n');
+  const bottom = e.includes('s');
+  let x = Math.round(+box.x);
+  let y = Math.round(+box.y);
+  let width = Math.round(+box.width);
+  let height = Math.round(+box.height);
+  const x2 = x + width;
+  const y2 = y + height;
+  if (right) width += dx;
+  if (bottom) height += dy;
+  if (left) { x += dx; width = x2 - x; }
+  if (top) { y += dy; height = y2 - y; }
+  if (left && !right) { width = Math.max(minW, width); x = x2 - width; }
+  else width = Math.max(minW, width);
+  if (top && !bottom) { height = Math.max(minH, height); y = y2 - height; }
+  else height = Math.max(minH, height);
+  if (x < margin) {
+    if (left && !right) width -= margin - x;
+    x = margin;
+  }
+  if (y < margin) {
+    if (top && !bottom) height -= margin - y;
+    y = margin;
+  }
+  if (x + width > w - margin) {
+    if (right || !left) width = (w - margin) - x;
+    else x = (w - margin) - width;
+  }
+  if (y + height > h - margin) {
+    if (bottom || !top) height = (h - margin) - y;
+    else y = (h - margin) - height;
+  }
+  width = Math.max(Math.min(minW, w - margin * 2), Math.min(width, w - margin * 2));
+  height = Math.max(Math.min(minH, h - margin * 2), Math.min(height, h - margin * 2));
+  x = Math.min(Math.max(margin, x), Math.max(margin, w - width - margin));
+  y = Math.min(Math.max(margin, y), Math.max(margin, h - height - margin));
+  return { x, y, width, height };
+}
+
 // thumb: a corner preview, the chat keeps the whole window.
-// open: the page docks beside or under the chat, under a bar for back, a new tab, and the address.
+// open: a side panel for this bot only. The chat stays full size underneath.
 export function embedFrames(w, h, mode, at, opts) {
   w = Math.max(1, Math.round(w));
   h = Math.max(1, Math.round(h));
@@ -41,38 +120,21 @@ export function embedFrames(w, h, mode, at, opts) {
     return { mode: 'thumb', main, page: null, chrome: thumbBox(w, h, at) };
   }
   if (mode === 'open') {
-    const dock = dockLayout(w, h);
-    const bar = OPEN_BAR + ((opts?.tabs || 0) > 1 ? TAB_ROW : 0);
-    const side = dock.side;
+    const box = sidebarBox(w, h, at);
+    const edge = PANEL_EDGE;
+    const bar = OPEN_BAR + ((opts?.tabs || 0) > 0 ? TAB_ROW : 0);
     return {
       mode: 'open',
-      main: dock.main,
-      chrome: { x: side.x, y: side.y, width: side.width, height: bar },
-      page: { x: side.x, y: side.y + bar, width: side.width, height: Math.max(1, side.height - bar) }
+      main,
+      box,
+      chrome: { x: box.x, y: box.y, width: box.width, height: box.height },
+      page: {
+        x: box.x + edge,
+        y: box.y + bar,
+        width: Math.max(1, box.width - edge * 2),
+        height: Math.max(1, box.height - bar - edge)
+      }
     };
   }
   return { mode: 'hidden', main, page: null, chrome: null };
-}
-
-export function dockLayout(w, h) {
-  w = Math.max(1, Math.round(w));
-  h = Math.max(1, Math.round(h));
-  const chatMin = 920;
-  let sideW = Math.round(w * 0.42);
-  sideW = Math.max(420, Math.min(860, sideW));
-  if (w - sideW >= chatMin) {
-    const left = w - sideW;
-    return {
-      mode: 'side',
-      main: { x: 0, y: 0, width: left, height: h },
-      side: { x: left, y: 0, width: sideW, height: h }
-    };
-  }
-  const sideH = Math.min(Math.round(h * 0.46), Math.max(240, h - 380));
-  const top = Math.max(1, h - sideH);
-  return {
-    mode: 'bottom',
-    main: { x: 0, y: 0, width: w, height: top },
-    side: { x: 0, y: top, width: w, height: Math.max(1, h - top) }
-  };
 }

@@ -10,7 +10,7 @@ import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmS
 import os from 'node:os';
 import { startServer } from './server.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
-import { PAGE, THUMB_RADIUS, dockLayout, embedFrames, isBlankUrl, thumbBox } from './embed-layout.mjs';
+import { PAGE, THUMB_RADIUS, embedFrames, isBlankUrl, resizeBox, sidebarBox, thumbBox } from './embed-layout.mjs';
 
 // ---------- updates (GitHub Releases) ----------
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
@@ -148,6 +148,7 @@ async function loadMain() {
 // ---------- in-app Chromium (the bot's browser lives in the OCTA window, not a separate Chrome) ----------
 const embeds = new Map();
 let embedSeq = 0;
+let focusBotId = '';
 function fitView(view, bounds, visible) {
   if (!view || !bounds) return;
   try { view.setBounds(bounds); } catch { }
@@ -188,7 +189,7 @@ function sendFrame(bucket, extra) {
   const wc = bucket.chrome?.webContents;
   if (!wc || wc.isDestroyed()) return;
   const page = bucket.active?.webContents;
-  const drag = bucket.dragging && bucket.thumbBox ? { dragging: true, x: bucket.thumbBox.x, y: bucket.thumbBox.y, w: bucket.thumbBox.width, h: bucket.thumbBox.height } : {};
+  const drag = bucket.dragging && bucket.panelBox ? { dragging: true, x: bucket.panelBox.x, y: bucket.panelBox.y, w: bucket.panelBox.width, h: bucket.panelBox.height } : {};
   const tabs = bucket.tabs.map((v, i) => ({ i, on: v === bucket.active, title: tabTitle(v.webContents) }));
   wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', url: shownUrl(page), canBack: canGoBack(page), tabs, ...drag, ...extra });
 }
@@ -200,6 +201,20 @@ function roundChrome(view, radius, solid) {
 function savedThumbAt() {
   const at = cfg.thumbAt;
   return at && Number.isFinite(+at.x) && Number.isFinite(+at.y) ? { x: +at.x, y: +at.y } : null;
+}
+function savedPlace(botId) {
+  const at = botId && cfg.browserAt?.[botId];
+  return at && typeof at === 'object' ? at : {};
+}
+function rememberPlace(bucket) {
+  if (!bucket?.botId) return;
+  const all = { ...(cfg.browserAt || {}) };
+  all[bucket.botId] = { thumb: bucket.thumbAt || null, open: bucket.openAt || null };
+  cfg = { ...cfg, browserAt: all, thumbAt: bucket.thumbAt || cfg.thumbAt };
+  writeCfg(cfg);
+}
+function onScreen(bucket) {
+  return !!(bucket?.shown && focusBotId && bucket.botId === focusBotId);
 }
 function stopThumbs(bucket) { clearTimeout(bucket.thumbTimer); bucket.thumbTimer = null; }
 function startThumbs(bucket) {
@@ -219,40 +234,54 @@ function detachChrome(bucket) {
   try { if (win && !win.isDestroyed() && bucket.chrome) win.contentView.removeChildView(bucket.chrome); } catch { }
 }
 function placeBucket(bucket, frames) {
+  const page = frames.mode === 'open' && frames.page ? bucket.active : null;
   for (const v of bucket.tabs) {
-    if (frames.mode === 'open' && v === bucket.active && frames.page) {
-      try { bucket.host?.contentView.removeChildView(v); } catch { }
-      if (win && !win.contentView.children.includes(v)) win.contentView.addChildView(v);
-      fitView(v, frames.page, true);
-    } else parkView(bucket, v, v === bucket.active && frames.mode !== 'hidden');
+    if (v === page) continue;
+    // the active tab stays visible off to the side, so a thumbnail can still photograph it
+    parkView(bucket, v, v === bucket.active);
   }
   if (frames.chrome && bucket.chrome && win) {
     if (!win.contentView.children.includes(bucket.chrome)) win.contentView.addChildView(bucket.chrome);
     fitView(bucket.chrome, frames.chrome, true);
-    roundChrome(bucket.chrome, frames.mode === 'thumb' ? THUMB_RADIUS : 0, frames.mode === 'open');
-    try { win.contentView.removeChildView(bucket.chrome); win.contentView.addChildView(bucket.chrome); } catch { }
+    roundChrome(bucket.chrome, THUMB_RADIUS, frames.mode === 'open');
   }
+  // the page sits above the panel frame; the frame's edges stay outside the page and can still be grabbed
+  if (page && frames.page && win) {
+    try { bucket.host?.contentView.removeChildView(page); } catch { }
+    try { win.contentView.removeChildView(page); } catch { }
+    win.contentView.addChildView(page);
+    fitView(page, frames.page, true);
+    roundChrome(page, 12, true);
+  }
+}
+function holdOffscreen(bucket) {
+  detachChrome(bucket);
+  for (const v of bucket.tabs) parkView(bucket, v, !!bucket.shown && v === bucket.active);
 }
 function layoutEmbed() {
   if (!win || win.isDestroyed()) return;
   const [w, h] = win.getContentSize();
   const main = win.contentView.children.find(v => v.webContents === win.webContents);
-  const side = [...embeds.values()].find(e => e.shown);
-  if (!side) { fitView(main, { x: 0, y: 0, width: w, height: h }, true); return; }
-  const frames = embedFrames(w, h, side.shown, side.thumbAt || savedThumbAt(), { tabs: side.tabs?.length || 0 });
-  fitView(main, frames.main, true);
-  if (side.dragging && side.shown === 'thumb' && side.chrome) {
-    const box = thumbBox(w, h, side.thumbAt);
-    side.thumbAt = { x: box.x, y: box.y };
-    side.thumbBox = box;
-    for (const v of side.tabs) parkView(side, v, v === side.active);
-    roundChrome(side.chrome, 0);
-    if (!win.contentView.children.includes(side.chrome)) win.contentView.addChildView(side.chrome);
-    fitView(side.chrome, { x: 0, y: 0, width: w, height: h }, true);
-    sendFrame(side, { mode: 'thumb' });
-    return;
+  fitView(main, { x: 0, y: 0, width: w, height: h }, true);
+  for (const bucket of embeds.values()) {
+    if (!onScreen(bucket)) {
+      stopThumbs(bucket);
+      holdOffscreen(bucket);
+      continue;
+    }
+    const at = bucket.shown === 'open' ? bucket.openAt : (bucket.thumbAt || savedThumbAt());
+    const frames = embedFrames(w, h, bucket.shown, at, { tabs: bucket.tabs.length });
+    if (bucket.dragging && bucket.chrome) {
+      for (const v of bucket.tabs) parkView(bucket, v, bucket.shown === 'thumb' && v === bucket.active);
+      roundChrome(bucket.chrome, 0, false);
+      if (!win.contentView.children.includes(bucket.chrome)) win.contentView.addChildView(bucket.chrome);
+      fitView(bucket.chrome, { x: 0, y: 0, width: w, height: h }, true);
+      sendFrame(bucket, {});
+      continue;
+    }
+    if (bucket.shown === 'thumb' && !bucket.thumbTimer) startThumbs(bucket);
+    placeBucket(bucket, frames);
   }
-  placeBucket(side, frames);
 }
 function hookPage(wc, id, bucket) {
   try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) logError('debugger', e); }
@@ -269,6 +298,24 @@ function pageId(bucket, wc) {
 }
 function focusTab(bucket, view) {
   bucket.active = view;
+  layoutEmbed();
+  sendFrame(bucket, {});
+}
+function closeEmbedTab(bucket, index) {
+  const tab = bucket.tabs[index];
+  if (!tab || tab.webContents.isDestroyed()) return;
+  const id = pageId(bucket, tab.webContents);
+  if (bucket.tabs.length === 1) {
+    if (bucket.splash) tab.webContents.loadURL(bucket.splash).catch(() => { });
+    sendFrame(bucket, {});
+    return;
+  }
+  bucket.tabs.splice(index, 1);
+  if (id) bucket.pages.delete(id);
+  if (bucket.active === tab) bucket.active = bucket.tabs[Math.max(0, index - 1)] || bucket.tabs[0];
+  try { win?.contentView.removeChildView(tab); } catch { }
+  try { bucket.host?.contentView.removeChildView(tab); } catch { }
+  try { tab.webContents.close(); } catch { }
   layoutEmbed();
   sendFrame(bucket, {});
 }
@@ -301,13 +348,6 @@ async function embedShow(port, show) {
   const bucket = embeds.get(port);
   if (!bucket || !win || win.isDestroyed()) return;
   const mode = show === 'open' || show === 'thumb' ? show : (show ? (bucket.shown === 'open' ? 'open' : 'thumb') : false);
-  if (mode) {
-    for (const [p, e] of embeds) if (p !== port && e.shown) {
-      e.shown = false;
-      detachChrome(e);
-      for (const v of e.tabs) parkView(e, v, false);
-    }
-  }
   bucket.shown = mode || false;
   if (!mode) {
     detachChrome(bucket);
@@ -340,7 +380,8 @@ async function embedStart(bot, port) {
   const view = new WebContentsView({ webPreferences: prefs });
   const name = String(bot.name || '機器人').replace(/[<&]/g, '');
   const chrome = new WebContentsView({ webPreferences: { preload: join(here, 'browser-preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
-  const bucket = { port, prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: savedThumbAt(), dragging: false, thumbBox: null };
+  const place = savedPlace(String(bot.id || ''));
+  const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null };
   roundChrome(chrome, THUMB_RADIUS);
   hookPage(view.webContents, 'p' + (++embedSeq), bucket);
   bindOpen(bucket, view);
@@ -400,18 +441,7 @@ async function embedStart(bot, port) {
       const page = bucket.pages.get(id);
       if (!page) return;
       const idx = bucket.tabs.findIndex(v => v.webContents === page.wc);
-      if (idx >= 0) {
-        if (bucket.tabs.length === 1) { if (bucket.splash) page.wc.loadURL(bucket.splash).catch(() => { }); return; }
-        const [tab] = bucket.tabs.splice(idx, 1);
-        bucket.pages.delete(id);
-        if (bucket.active === tab) bucket.active = bucket.tabs[bucket.tabs.length - 1];
-        try { win?.contentView.removeChildView(tab); } catch { }
-        try { bucket.host?.contentView.removeChildView(tab); } catch { }
-        try { tab.webContents.close(); } catch { }
-        layoutEmbed();
-        sendFrame(bucket, {});
-        return;
-      }
+      if (idx >= 0) { closeEmbedTab(bucket, idx); return; }
       bucket.pages.delete(id);
       const hw = bucket.hidden.find(w => !w.isDestroyed() && w.webContents === page.wc);
       try { hw?.destroy(); } catch { }
@@ -496,23 +526,38 @@ ipcMain.on('octa:browser-go', (e, raw) => {
   goTo(wc, raw);
   embedShow(bucket.port, 'open');
 });
+function panelFrom(bucket, w, h) {
+  if (bucket.shown === 'open') return sidebarBox(w, h, bucket.openAt);
+  return thumbBox(w, h, bucket.thumbAt || savedThumbAt());
+}
+function rememberPanel(bucket, box) {
+  bucket.panelBox = box;
+  if (bucket.shown === 'open') bucket.openAt = { x: box.x, y: box.y, w: box.width, h: box.height };
+  else bucket.thumbAt = { x: box.x, y: box.y };
+}
+ipcMain.on('octa:browser-close', (e, index) => {
+  if (!trusted(e)) return;
+  const bucket = chromeBucket(e.sender);
+  if (!bucket || !Number.isInteger(index)) return;
+  closeEmbedTab(bucket, index);
+});
 ipcMain.on('octa:browser-drag-start', e => {
   const none = { dragging: false };
   try {
     if (!trusted(e) || !win || win.isDestroyed()) { e.returnValue = none; return; }
     const bucket = chromeBucket(e.sender);
-    if (!bucket || bucket.shown !== 'thumb') { e.returnValue = none; return; }
+    if (!bucket || (bucket.shown !== 'thumb' && bucket.shown !== 'open')) { e.returnValue = none; return; }
     const [w, h] = win.getContentSize();
-    const box = thumbBox(w, h, bucket.thumbAt || savedThumbAt());
+    const box = panelFrom(bucket, w, h);
     bucket.dragging = true;
-    bucket.thumbAt = { x: box.x, y: box.y };
-    bucket.thumbBox = box;
-    roundChrome(bucket.chrome, 0);
+    rememberPanel(bucket, box);
+    roundChrome(bucket.chrome, 0, false);
     if (!win.contentView.children.includes(bucket.chrome)) win.contentView.addChildView(bucket.chrome);
     fitView(bucket.chrome, { x: 0, y: 0, width: w, height: h }, true);
+    for (const v of bucket.tabs) parkView(bucket, v, bucket.shown === 'thumb' && v === bucket.active);
     e.returnValue = { dragging: true, x: box.x, y: box.y, w: box.width, h: box.height };
   } catch (err) {
-    logError('thumb-drag', err);
+    logError('panel-drag', err);
     e.returnValue = none;
   }
 });
@@ -523,23 +568,36 @@ ipcMain.on('octa:browser-drag-by', (e, delta) => {
   const dx = Number(delta?.dx), dy = Number(delta?.dy);
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
   const [w, h] = win.getContentSize();
-  const box = thumbBox(w, h, { x: (bucket.thumbAt?.x || 0) + dx, y: (bucket.thumbAt?.y || 0) + dy });
-  bucket.thumbAt = { x: box.x, y: box.y };
-  bucket.thumbBox = box;
-  sendFrame(bucket, { mode: 'thumb' });
+  const edge = String(delta?.edge || '');
+  const cur = bucket.panelBox || panelFrom(bucket, w, h);
+  const box = edge
+    ? resizeBox(w, h, cur, edge, dx, dy)
+    : (bucket.shown === 'open'
+      ? sidebarBox(w, h, { x: cur.x + dx, y: cur.y + dy, w: cur.width, h: cur.height })
+      : thumbBox(w, h, { x: cur.x + dx, y: cur.y + dy }));
+  rememberPanel(bucket, box);
+  sendFrame(bucket, {});
 });
 ipcMain.on('octa:browser-drag-end', e => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);
   if (!bucket) return;
   bucket.dragging = false;
-  if (bucket.thumbAt) { cfg = { ...cfg, thumbAt: bucket.thumbAt }; writeCfg(cfg); }
+  rememberPlace(bucket);
   layoutEmbed();
   sendFrame(bucket, { mode: bucket.shown || 'thumb', dragging: false });
 });
 const handle = (ch, fn) => ipcMain.handle(ch, (e, ...a) => { if (!trusted(e)) throw new Error('not allowed'); return fn(e, ...a); });
 handle('octa:version', () => app.getVersion());
 handle('octa:show', () => { showWindow(); return true; });
+handle('octa:focus-bot', (_e, id) => {
+  const next = String(id || '');
+  if (next === focusBotId) return focusBotId;
+  focusBotId = next;
+  layoutEmbed();
+  for (const bucket of embeds.values()) if (onScreen(bucket)) sendFrame(bucket, {});
+  return focusBotId;
+});
 handle('octa:desk', (_e, p, body) => server.desktopApi(String(p), body));
 const call = async (path, token, method = 'GET', body) => {
   const r = await fetch(CLOUD + '/api/' + path, { method, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token }, body: body ? JSON.stringify(body) : undefined });

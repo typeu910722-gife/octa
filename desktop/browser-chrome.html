@@ -3,22 +3,37 @@
 <title>瀏覽器</title>
 <style>
   html, body { margin: 0; height: 100%; background: transparent; color: #f3ead3; font-family: "Segoe UI", "PingFang TC", sans-serif; overflow: hidden; }
-  #card { box-sizing: border-box; width: 100%; height: 100%; border-radius: 18px; overflow: hidden; background: #1c1814; border: 1px solid rgba(212, 175, 106, .75); cursor: grab; position: relative; }
+  #card { box-sizing: border-box; width: 100%; height: 100%; border-radius: 18px; overflow: hidden; background: #1c1814; border: 1px solid rgba(212, 175, 106, .75); position: relative; display: flex; flex-direction: column; }
+  body:not(.open) #card { cursor: grab; }
   #hit { all: unset; box-sizing: border-box; display: block; width: 100%; height: 100%; cursor: inherit; position: relative; }
   img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; background: #1c1814; }
   .cap { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; justify-content: space-between; gap: 6px; align-items: center; }
   .name { background: rgba(28, 24, 20, .86); border-radius: 999px; padding: 3px 8px; font-size: 12px; }
-  .bar { display: none; height: 100%; flex-direction: column; background: #1c1814; }
-  body.open #card { border-radius: 0; border: 0; cursor: default; }
+  .bar { display: none; flex-direction: column; background: #1c1814; flex: none; cursor: grab; user-select: none; }
   body.open #hit, body.open img, body.open .cap { display: none; }
-  body.open .bar { display: flex; }
-  body.dragging #card { position: absolute; cursor: grabbing; }
+  body.open .bar, body.open .edges { display: flex; }
+  body.dragging #card { position: absolute; }
+  body.dragging .bar { cursor: grabbing; }
   .tools { height: 48px; display: flex; align-items: center; gap: 6px; padding: 0 8px; flex: none; }
   .tabs { height: 28px; display: flex; align-items: center; gap: 4px; padding: 0 8px; overflow-x: auto; flex: none; }
   .tabs[hidden] { display: none; }
-  .tabs button, .tool, .back { all: unset; box-sizing: border-box; cursor: pointer; border: 1px solid #c4a574; border-radius: 999px; padding: 4px 10px; font-size: 12px; color: #e7d3a1; white-space: nowrap; }
-  .tabs button.on { background: #c4a574; color: #1c1814; }
+  .tab { display: flex; align-items: center; gap: 2px; border: 1px solid #c4a574; border-radius: 999px; padding: 2px 4px 2px 8px; max-width: 160px; }
+  .tab.on { background: #c4a574; color: #1c1814; }
+  .tab button, .tool, .back { all: unset; box-sizing: border-box; cursor: pointer; font-size: 12px; color: inherit; white-space: nowrap; }
+  .tool, .back { border: 1px solid #c4a574; border-radius: 999px; padding: 4px 10px; color: #e7d3a1; }
+  .tab .label { overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+  .tab .x { width: 18px; height: 18px; border-radius: 999px; text-align: center; line-height: 18px; }
   .tool:disabled { opacity: .35; cursor: default; }
+  .edges { display: none; }
+  .edge { position: absolute; z-index: 3; }
+  .edge.n { top: 0; left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
+  .edge.s { bottom: 0; left: 14px; right: 14px; height: 8px; cursor: ns-resize; }
+  .edge.w { left: 0; top: 14px; bottom: 14px; width: 8px; cursor: ew-resize; }
+  .edge.e { right: 0; top: 14px; bottom: 14px; width: 8px; cursor: ew-resize; }
+  .edge.nw { left: 0; top: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+  .edge.ne { right: 0; top: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+  .edge.sw { left: 0; bottom: 0; width: 14px; height: 14px; cursor: nesw-resize; }
+  .edge.se { right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }
   form { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; }
   input { flex: 1; min-width: 0; height: 28px; border-radius: 999px; border: 1px solid rgba(196, 165, 116, .7); background: #12100d; color: #f3ead3; padding: 0 10px; font: inherit; font-size: 12px; }
   .back { flex: none; }
@@ -41,6 +56,16 @@
         <button type="button" class="back" id="collapse">收回</button>
       </div>
     </div>
+    <div class="edges" id="edges">
+      <div class="edge n" data-edge="n"></div>
+      <div class="edge s" data-edge="s"></div>
+      <div class="edge w" data-edge="w"></div>
+      <div class="edge e" data-edge="e"></div>
+      <div class="edge nw" data-edge="nw"></div>
+      <div class="edge ne" data-edge="ne"></div>
+      <div class="edge sw" data-edge="sw"></div>
+      <div class="edge se" data-edge="se"></div>
+    </div>
   </div>
   <script>
     const hit = document.getElementById('hit');
@@ -61,59 +86,83 @@
       card.style.width = d.w + 'px';
       card.style.height = d.h + 'px';
     }
-    function endDrag(moved) {
+    function endDrag(moved, fromThumb) {
       down = null;
       if (moved) api()?.dragEnd();
-      else if (!document.body.classList.contains('dragging')) api()?.toggle();
+      else if (fromThumb) api()?.toggle();
     }
-    hit.addEventListener('pointerdown', e => {
-      if (document.body.classList.contains('open') || e.button !== 0) return;
-      down = { sx: e.screenX, sy: e.screenY, moved: false, pid: e.pointerId };
-      try { hit.setPointerCapture(e.pointerId); } catch { }
-      e.preventDefault();
-    });
-    hit.addEventListener('pointermove', e => {
-      if (!down || e.pointerId !== down.pid) return;
-      const dx = e.screenX - down.sx, dy = e.screenY - down.sy;
-      if (!down.moved) {
-        if (Math.hypot(dx, dy) < 6) return;
-        down.moved = true;
-        const box = api()?.dragStart();
-        place(box ? { dragging: true, ...box } : null);
-        if (!box) { down = null; return; }
-      }
-      down.sx = e.screenX;
-      down.sy = e.screenY;
-      api()?.dragBy(dx, dy);
-    });
-    hit.addEventListener('pointerup', e => {
-      if (!down || e.pointerId !== down.pid) return;
-      const moved = down.moved;
-      try { hit.releasePointerCapture(e.pointerId); } catch { }
-      endDrag(moved);
-    });
-    hit.addEventListener('pointercancel', () => { if (down) endDrag(down.moved); });
-    window.addEventListener('blur', () => { if (down?.moved) endDrag(true); else down = null; });
+    function track(el, edge) {
+      el.addEventListener('pointerdown', e => {
+        if (e.button !== 0) return;
+        if (!edge && (document.body.classList.contains('open') ? e.target.closest('button, input, a') : false)) return;
+        if (!edge && document.body.classList.contains('open') === false && el !== hit) return;
+        if (edge && !document.body.classList.contains('open')) return;
+        if (!edge && el === hit && document.body.classList.contains('open')) return;
+        down = { sx: e.screenX, sy: e.screenY, moved: false, pid: e.pointerId, edge: edge || '' };
+        try { el.setPointerCapture(e.pointerId); } catch { }
+        e.preventDefault();
+      });
+      el.addEventListener('pointermove', e => {
+        if (!down || e.pointerId !== down.pid) return;
+        const dx = e.screenX - down.sx, dy = e.screenY - down.sy;
+        if (!down.moved) {
+          if (Math.hypot(dx, dy) < 4) return;
+          down.moved = true;
+          const box = api()?.dragStart();
+          place(box ? { dragging: true, ...box } : null);
+          if (!box) { down = null; return; }
+        }
+        down.sx = e.screenX;
+        down.sy = e.screenY;
+        api()?.dragBy(dx, dy, down.edge);
+      });
+      el.addEventListener('pointerup', e => {
+        if (!down || e.pointerId !== down.pid) return;
+        const moved = down.moved;
+        try { el.releasePointerCapture(e.pointerId); } catch { }
+        endDrag(moved, el === hit);
+      });
+      el.addEventListener('pointercancel', () => { if (down) endDrag(down.moved, false); });
+    }
+    track(hit, '');
+    track(document.getElementById('bar'), '');
+    document.querySelectorAll('.edge').forEach(el => track(el, el.dataset.edge));
+    window.addEventListener('blur', () => { if (down?.moved) endDrag(true, false); else down = null; });
     document.getElementById('goBack').onclick = () => api()?.back();
     document.getElementById('newTab').onclick = () => api()?.newTab();
     document.getElementById('collapse').onclick = () => api()?.toggle();
     document.getElementById('go').onsubmit = e => { e.preventDefault(); api()?.go(document.getElementById('url').value); };
-    document.getElementById('tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) api()?.pick(+b.dataset.tab); };
+    document.getElementById('tabs').onclick = e => {
+      const x = e.target.closest('[data-close]');
+      if (x) { api()?.closeTab(+x.dataset.close); return; }
+      const b = e.target.closest('[data-tab]');
+      if (b) api()?.pick(+b.dataset.tab);
+    };
     function paintTabs(list) {
       const tabs = document.getElementById('tabs');
       const rows = Array.isArray(list) ? list : [];
       const sig = rows.map(t => t.i + (t.on ? '*' : '') + t.title).join('\n');
-      tabs.hidden = rows.length < 2;
+      tabs.hidden = !rows.length;
       if (tabs.dataset.sig === sig) return;
       tabs.dataset.sig = sig;
       tabs.replaceChildren();
       for (const t of rows) {
+        const row = document.createElement('div');
+        row.className = 'tab' + (t.on ? ' on' : '');
         const b = document.createElement('button');
         b.type = 'button';
+        b.className = 'label';
         b.dataset.tab = String(t.i);
-        if (t.on) b.className = 'on';
         b.textContent = t.title || '新分頁';
-        tabs.appendChild(b);
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'x';
+        x.dataset.close = String(t.i);
+        x.setAttribute('aria-label', '關閉分頁');
+        x.textContent = '×';
+        row.appendChild(b);
+        row.appendChild(x);
+        tabs.appendChild(row);
       }
     }
     if (api()) api().onFrame(d => {
@@ -126,8 +175,7 @@
       const input = document.getElementById('url');
       if (document.activeElement !== input && d.url !== undefined) input.value = d.url || '';
       paintTabs(d.tabs);
-      if (d.mode === 'open') place(null);
-      else if (d.dragging) place(d);
+      if (d.dragging) place(d);
       else if (!down?.moved) place(null);
     });
   </script>

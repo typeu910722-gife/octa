@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('octaDesktop', {
   disconnect: opts => ipcRenderer.invoke('octa:disconnect', opts),   // {keep: true}: sign out but keep working for the account
   working: () => ipcRenderer.invoke('octa:working'),
   show: () => ipcRenderer.invoke('octa:show'),   // bring the window forward (notification clicked)
+  focusBot: id => ipcRenderer.invoke('octa:focus-bot', id || ''),   // only this bot's browser stays on screen
   useOffline: () => ipcRenderer.invoke('octa:offline'),
   useCloud: () => ipcRenderer.invoke('octa:cloud'),
   update: {
