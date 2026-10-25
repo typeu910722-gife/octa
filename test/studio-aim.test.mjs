@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { GOOGLE_HOME, browserWindowAsk, buildBrowserPrompt, buildPrompt, forcedBrowseTask, keepBrowserTask, needsPage, planBrowserRound, takeBrowserTask, takeWindowMarks } from '../public/octa-runner.mjs';
+import { GOOGLE_HOME, OLLAMA_NUM_CTX, browserWindowAsk, buildBrowserPrompt, buildLocalPrompt, buildPrompt, fitLocal, forcedBrowseTask, keepBrowserTask, needsPage, ollamaContextModelfile, ollamaContextTag, planBrowserRound, scrubNotes, takeBrowserTask, takeWindowMarks, taskPrompt } from '../public/octa-runner.mjs';
 
 function prompt(extra = {}) {
   return buildPrompt({
@@ -50,6 +50,54 @@ test('a backup gets the full history and is told to finish the same job', () => 
   assert.match(text, /不要因為自己是備援就少做/);
   assert.match(text, /不准自己編館/);
   assert.match(text, /第1則/);
+});
+
+test('a local model gets a short prompt and a larger context tag', () => {
+  const history = [];
+  for (let i = 0; i < 12; i++) history.push({ who: '使用者', text: '舊交代' + i + '甲'.repeat(800) });
+  const job = {
+    bot: { id: 'b1', name: '房號快遞員', engine: 'opencode', task: '抄畫面上的房號' },
+    prompt: '整理今日入住。' + '乙'.repeat(3000),
+    history,
+    backup: true,
+    group: { name: '旅宿不貳家', mode: 'turns', members: ['房號快遞員'] }
+  };
+  const local = buildLocalPrompt(job, '/tmp/octa-studio-aim');
+  const full = buildPrompt(job, '/tmp/octa-studio-aim');
+  assert.ok(local.length <= 4000);
+  assert.ok(local.length < full.length);
+  assert.match(local, /整理今日入住/);
+  assert.match(local, /只寫一次「需要使用者在電腦上登入」/);
+  assert.match(local, /不准編/);
+  assert.match(local, /不要把同一句再寫一遍/);
+  assert.equal(taskPrompt(job, '/tmp/octa-studio-aim'), local);
+  const claude = taskPrompt({ ...job, bot: { ...job.bot, engine: 'claude' } }, '/tmp/octa-studio-aim');
+  assert.ok(claude.length > local.length);
+  assert.match(claude, /超級 AI 工作室/);
+  assert.match(claude, /舊交代0/);
+  assert.ok(fitLocal('甲'.repeat(5000), 4000).length <= 4000);
+  assert.match(ollamaContextModelfile('qwen3:latest'), new RegExp(`num_ctx ${OLLAMA_NUM_CTX}`));
+  assert.equal(ollamaContextTag('qwen3:latest'), 'octa-ctx-qwen3-latest');
+  const src = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
+  assert.match(src, /ensureOllamaContext\(name\)/);
+  assert.match(src, /taskPrompt\(job, here\)/);
+  assert.match(src, /refreshNotes\(job\)/);
+});
+
+test('work notes drop room numbers that were not on the page', () => {
+  const notes = [
+    'LINE 後台要先登入',
+    '119館（房號001-110）',
+    '101 A.張',
+    '103 B.王',
+    '302 房冷氣壞了'
+  ].join('\n');
+  const cleaned = scrubNotes(notes, '使用者說 302 房冷氣壞了');
+  assert.equal(cleaned.dropped, 3);
+  assert.match(cleaned.text, /LINE 後台要先登入/);
+  assert.match(cleaned.text, /302 房冷氣壞了/);
+  assert.equal(cleaned.text.includes('101'), false);
+  assert.equal(cleaned.text.includes('林子晴'), false);
 });
 
 test('a reply in the history names the message it answers', () => {

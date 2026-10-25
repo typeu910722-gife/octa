@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { runCodingTask, selectProvider } from '../public/coding-runtime.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
-const { onRequest, schedulesFromTurn } = await import(apiUrl);
+const { onRequest, schedulesFromTurn, calmReply } = await import(apiUrl);
 const schema = readFileSync(join(import.meta.dirname, '..', 'schema.sql'), 'utf8');
 
 function openD1() {
@@ -694,6 +694,63 @@ test('an Ollama reply still stores the instruction routines, memory, and skill',
   assert.ok(after.data.msgs.some(m => m.by === 'sys' && m.text.includes('沒有新增例行任務')));
   const still = await call(db, 'GET', 'state', { token });
   assert.equal(still.data.routines.length, 3);
+});
+
+test('a stuck reply is said once, and a group takes turns', async () => {
+  assert.equal(calmReply(['需要使用者在電腦上登入（LINE 登入頁面）', '需要使用者在電腦上登入（LINE 登入頁面）', '【派瀏覽】', '看登入頁', '【派瀏覽】', '看登入頁'].join('\n')), '需要使用者在電腦上登入（LINE 登入頁面）\n看登入頁');
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'loopa', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const names = ['貳家首席', '補助小獵人', '房號快遞員', 'Eroom整備員'];
+  const ids = [];
+  for (const name of names) ids.push((await call(db, 'POST', 'bots', { token, body: { name, task: '看房號', engine: 'claude', fb: ['opencode|qwen3:latest'] } })).data.id);
+  const g = await call(db, 'POST', 'groups', { token, body: { name: '旅宿不貳家', task: '', members: ids } });
+  assert.equal(g.status, 200, JSON.stringify(g.data));
+  const rt = await runnerOf(db, token);
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: g.data.id, text: '整理今天的入住名單' } })).status, 200);
+  const first = await claimChat(db, rt);
+  assert.equal(first.bot.id, ids[0]);
+  assert.equal(first.group.mode, 'turns');
+  assert.equal(await claimChat(db, rt), null);
+  const repeated = Array.from({ length: 6 }, () => '需要使用者在電腦上登入（LINE 登入頁面）').join('\n') + '\n【派瀏覽】\n看登入頁\n【派瀏覽】\n看登入頁';
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: first.id, ok: true, text: repeated } })).status, 200);
+  assert.equal(await claimChat(db, rt), null);
+  const once = await call(db, 'GET', 'messages', { token, query: { conv: g.data.id } });
+  const said = once.data.msgs.filter(m => m.by === ids[0]).map(m => m.text);
+  assert.deepEqual(said, ['需要使用者在電腦上登入（LINE 登入頁面）\n看登入頁']);
+  assert.equal(once.data.msgs.filter(m => m.by === 'sys' && m.text.includes('需要你在電腦上登入')).length, 0);
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: g.data.id, text: '我登入好了，繼續' } })).status, 200);
+  const second = await claimChat(db, rt);
+  assert.equal(second.bot.id, ids[0]);
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: second.id, ok: true, text: '需要使用者在電腦上登入（https://manager.line.biz）' } })).status, 200);
+  assert.equal(await claimChat(db, rt), null);
+  const stopped = await call(db, 'GET', 'messages', { token, query: { conv: g.data.id } });
+  const notices = stopped.data.msgs.filter(m => m.by === 'sys' && m.text.includes('需要你在電腦上登入'));
+  assert.equal(notices.length, 1);
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: g.data.id, text: '再試一次' } })).status, 200);
+  const third = await claimChat(db, rt);
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: third.id, ok: true, text: '需要使用者在電腦上登入（LINE 登入頁面）' } })).status, 200);
+  const still = await call(db, 'GET', 'messages', { token, query: { conv: g.data.id } });
+  assert.equal(still.data.msgs.filter(m => m.by === 'sys' && m.text.includes('需要你在電腦上登入')).length, 1);
+});
+
+test('an unfinished reply is continued once, then it stops', async () => {
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'cont', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const bot = await call(db, 'POST', 'bots', { token, body: { name: '房務', task: '掃房' } });
+  const id = bot.data.id;
+  const rt = await runnerOf(db, token);
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: id, text: '整理今日入住' } })).status, 200);
+  const first = await claimChat(db, rt);
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: first.id, ok: true, text: '兩館還沒查完，先停在這裡。' } })).status, 200);
+  const again = await claimChat(db, rt);
+  assert.match(again.prompt, /^（自動接續 1）/);
+  assert.match(again.prompt, /只寫一次「需要使用者在電腦上登入」/);
+  assert.equal((await call(db, 'POST', 'runner/done', { token: rt, body: { id: again.id, ok: true, text: '還沒查完，下面還有。' } })).status, 200);
+  assert.equal(await claimChat(db, rt), null);
+  const msgs = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.equal(msgs.data.msgs.filter(m => m.by === 'sys' && m.text.includes('還沒做完')).length, 1);
 });
 
 function openD1From(raw) {

@@ -23,7 +23,8 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.17';
+export const VERSION = '17.18';
+export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
@@ -204,7 +205,7 @@ const notesFile = job => join(workDir, 'bots', String(job.bot.id).replace(/[^\w-
 function workNotes(job) {
   let t = ''; try { t = readFileSync(notesFile(job), 'utf8').trim(); } catch { }
   if (t.length > 6000) t = '…' + t.slice(-6000);
-  return [`你的工作筆記（檔案 ${notesFile(job)}，由你自己維護）：查到值得留下的資料就更新這個檔案，例如今天的名單與房況、網站上東西在哪、做到哪一步，每段寫上查到的時間；舊日期、用不到的就刪掉。檔案寫不進去（例如顯示唯讀）時，改在回覆最後寫「📒工作筆記：」換行接完整的新筆記，最後一行寫「📒結束」，OCTA 會幫你存，不用跟使用者提這件事。下次先看筆記，只補查可能變動的部分，不用每次從頭查。使用者再問一樣的事、而筆記裡已經有今天整理好的結果時，先告訴他「上次幾點查的、結果是什麼」，再用 ❓ 問他要不要重新查（A. 現在重新查 B. 用剛才那份就好）。`,
+  return [`你的工作筆記（檔案 ${notesFile(job)}，由你自己維護）：查到值得留下的資料就更新這個檔案，例如今天的名單與房況、網站上東西在哪、做到哪一步，每段寫上查到的時間；舊日期、用不到的就刪掉。只能寫這一次畫面上看得到的字。畫面上沒有的房號、館別、姓名不要寫，OCTA 會把那些列拿掉。檔案寫不進去（例如顯示唯讀）時，改在回覆最後寫「📒工作筆記：」換行接完整的新筆記，最後一行寫「📒結束」，OCTA 會幫你存，不用跟使用者提這件事。下次先看筆記，只補查可能變動的部分，不用每次從頭查。使用者再問一樣的事、而筆記裡已經有今天整理好的結果時，先告訴他「上次幾點查的、結果是什麼」，再用 ❓ 問他要不要重新查（A. 現在重新查 B. 用剛才那份就好）。`,
     t ? '目前筆記內容：\n' + t : '（目前筆記是空的）'];
 }
 export function buildPrompt(job, here) {
@@ -222,6 +223,7 @@ export function buildPrompt(job, here) {
     '在群組說話像同事聊天：用第一人稱只講你自己的部分，不要重述其他成員的職責；帶出你實際做過或看到的具體事（日期、房號、遇到的狀況），可以直接回應前面成員說的話，或 @ 某位成員接話、問問題。簡短自然。',
     '真的需要使用者回答才能繼續時，在回覆最後單獨一行寫「❓問你：具體問題」：寫清楚是哪一館哪一房／哪位客人、你看到什麼、要他選什麼（例如「貳宿 303 有 ʟɪɴ_ 和 蔡宗恩 兩組暱稱，密碼要傳給：A. ʟɪɴ_ B. 蔡宗恩？」）。不是問題的心得、說明、報告不要寫 ❓，也不要用問號結尾。使用者回覆會直接回到你這裡。',
     ...(job.group.mode === 'parallel' && !String(job.prompt || '').includes('@' + job.bot.name) ? ['成員是同時收到這則訊息、各自並行處理的。先判斷這則訊息該不該由你處理：只有訊息明顯是交代給別的成員的工作時，整則回覆才只寫「（略過）」；對大家說的（你們、大家、各位、沒指定人的問題、聊天）一定要回答。'] : []),
+    ...(job.group.mode === 'turns' ? ['這一則由成員依序處理。你只做自己負責的部分，做完就停。上一位已經回過的內容不要再做一遍，也不要把同一句再寫一次。'] : []),
     ...(job.canAsk ? ['需要其他成員的資料或幫忙時，單獨一行寫「@成員名 你的問題」，系統會請對方回答再叫你回來繼續；整件工作交給更適合的成員時寫「@成員名 交接：要做的事」，交出去後你就不用再做。'] : []),
     '資訊不夠、會影響結果時，直接問使用者並停下等回覆，不要亂猜。'
   );
@@ -292,6 +294,84 @@ export function buildPrompt(job, here) {
   lines.push('', ...dayInfo(job), '', ...workNotes(job));
   lines.push('', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop(), '', turnGuide(), '', whoAmI(job), '現在請處理這則指示：', job.prompt);
   return lines.filter(l => l !== '').join('\n');
+}
+// A local model often has a 4096 context. Keep the rules and this instruction, and drop the long essay.
+export function fitLocal(text, max = 4000) {
+  const s = String(text || '');
+  if (s.length <= max) return s;
+  const head = s.slice(0, Math.floor(max * 0.72));
+  const tail = s.slice(-Math.floor(max * 0.25));
+  return head + '\n…（中段已省略）\n' + tail;
+}
+export function buildLocalPrompt(job, here) {
+  const task = String(job.bot?.task || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+  const raw = String(job.prompt || '');
+  const instruction = raw.length > 2200 ? raw.slice(0, 1400) + '\n…\n' + raw.slice(-700) : raw;
+  const hist = (job.history || []).slice(-3).map(h => `【${h.who}】${String(h.text || '').replace(/\s+/g, ' ').trim().slice(0, 220)}`);
+  let notes = '';
+  try { notes = readFileSync(notesFile(job), 'utf8').trim().slice(-400); } catch { }
+  const lines = [
+    `你是 OCTA 裡的「${job.bot?.name || '機器人'}」。下面就是完整指示，看完就做。不要把同一句再寫一遍。`,
+    job.backup ? '你是在其他 AI 沒有額度時代替它把這件工作做完。該查的頁面要查，該記的要記。不要因為自己是備援就少做。' : '',
+    `現在要做：${instruction}`,
+    task ? `指定任務：${task}` : '',
+    '規則：先看完再下結論。館別、房號、姓名只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。',
+    job.group ? `群組「${job.group.name}」依序做。你只做自己的部分，做完就停。` : '',
+    hist.length ? '最近的對話：\n' + hist.join('\n') : '',
+    notes ? '工作筆記節錄：\n' + notes : '',
+    here ? `檔案在 ${here}。` : '',
+    `再看一次現在要做：${instruction.slice(0, 500)}`
+  ];
+  return fitLocal(lines.filter(Boolean).join('\n'), 4000);
+}
+export function taskPrompt(job, here) {
+  return (job.bot?.engine || 'claude') === 'opencode' ? buildLocalPrompt(job, here) : buildPrompt(job, here);
+}
+export function evidenceText(job) {
+  const bits = [job?.prompt, job?.seen];
+  for (const h of job?.history || []) {
+    if (h.who === '使用者' || h.who === '系統') bits.push(h.text);
+  }
+  return bits.filter(Boolean).join('\n');
+}
+// A roster line whose room number was not in the page or the user's words is dropped.
+export function scrubNotes(notes, evidence) {
+  const ev = String(evidence || '');
+  const kept = [];
+  let dropped = 0;
+  for (const line of String(notes || '').split('\n')) {
+    const rooms = [...line.matchAll(/(?<!\d)(\d{3})(?!\d)/g)].map(m => m[1]);
+    const roster = rooms.length > 0 && /房|館|入住|退房|續住|掃|姓名|先生|小姐|[A-Za-zＡ-Ｚ]\s*[.．、]\s*[\u4e00-\u9fff]/.test(line);
+    if (roster && rooms.some(r => !ev.includes(r))) { dropped++; continue; }
+    kept.push(line);
+  }
+  return { text: kept.join('\n').replace(/\n{3,}/g, '\n\n').trim(), dropped };
+}
+function refreshNotes(job) {
+  const p = notesFile(job);
+  let cur = '';
+  try { cur = readFileSync(p, 'utf8'); } catch { return; }
+  const next = scrubNotes(cur, evidenceText(job));
+  if (!next.dropped) return;
+  try { writeFileSync(p, next.text ? next.text + '\n' : ''); log(`📒 已拿掉 ${job.bot.name} 工作筆記裡畫面上沒有的名單`); } catch (e) { log('工作筆記整理失敗：' + e.message); }
+}
+export function ollamaContextTag(base) {
+  const safe = String(base || 'model').replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 48);
+  return `octa-ctx-${safe}`;
+}
+export function ollamaContextModelfile(base, numCtx = OLLAMA_NUM_CTX) {
+  return `FROM ${String(base || '').trim()}\nPARAMETER num_ctx ${numCtx}\n`;
+}
+// OpenCode talks to Ollama's OpenAI endpoint, which ignores a per-request num_ctx.
+// A local model tag bakes the larger window in, then OpenCode can use it.
+function ensureOllamaContext(base) {
+  const tag = ollamaContextTag(base);
+  const show = spawnSync('ollama', ['show', tag, '--modelfile'], { encoding: 'utf8', timeout: 15000, shell: WIN, windowsHide: true });
+  if (show.status === 0 && new RegExp(`num_ctx\\s+${OLLAMA_NUM_CTX}\\b`).test(show.stdout || '')) return tag;
+  const created = spawnSync('ollama', ['create', tag, '-f', '-'], { input: ollamaContextModelfile(base), encoding: 'utf8', timeout: 60000, shell: WIN, windowsHide: true });
+  if (created.status === 0) { log(`本機模型改用上下文 ${OLLAMA_NUM_CTX}：${tag}`); return tag; }
+  log('無法加大本機模型的上下文，仍用原本的模型。' + String(created.stderr || created.stdout || '').slice(0, 180));
+  return base;
 }
 
 // what the bot runs on and how much of the plan is left, for the prompt
@@ -661,15 +741,16 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       if (!(await has('ollama'))) { r = { missing: true }; break; }
       const name = ollamaModel(model);
       if (!name) return { ok: false, text: '⚠ 這台電腦的 Ollama 還沒有下載任何模型。請在「AI 連線 → Ollama」按「一鍵安裝並登入」，或在終端機執行 ollama pull qwen3。' };
+      const runName = ensureOllamaContext(name);
       // only the local Ollama provider is enabled: no paid APIs
       b.put('opencode.json', {
-        $schema: 'https://opencode.ai/config.json', enabled_providers: ['ollama'], model: 'ollama/' + name,
-        provider: { ollama: { npm: '@ai-sdk/openai-compatible', name: 'Ollama', options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { [name]: { name } } } },
+        $schema: 'https://opencode.ai/config.json', enabled_providers: ['ollama'], model: 'ollama/' + runName,
+        provider: { ollama: { npm: '@ai-sdk/openai-compatible', name: 'Ollama', options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { [runName]: { name: runName } } } },
         mcp: useBrowser ? { browser: { type: 'local', command: [server.command, ...server.args], environment: server.env || {}, enabled: true } } : {},
         tools: { task: false, todowrite: false, todoread: false, grep: false, glob: false }   // grep/glob need ripgrep, often missing on Windows; small local models misuse sub-agents and to-do lists, then reply about the error
       });
       // /no_think: qwen3-style models skip their long hidden reasoning (several times faster on a laptop)
-      r = await spawnCli('opencode', ['run', '--auto', '--dir', dir, '-m', 'ollama/' + name, '/no_think ' + FILE_INSTR], dir, '', { ctl: live.ctl });
+      r = await spawnCli('opencode', ['run', '--auto', '--dir', dir, '-m', 'ollama/' + runName, '/no_think ' + FILE_INSTR], dir, '', { ctl: live.ctl });
       break;
     }
     default: {
@@ -760,16 +841,17 @@ async function chatRun(job) {
   const liveBeat = port ? setInterval(() => pushLive(port, job).catch(() => { }), 1500) : null;
   try {
     if (port) await settleBrowserWindow(port, job);
+    refreshNotes(job);
     res = engine === 'grokbot' ? await runGrokBot(job, { progress, ctl })
       : engine === 'claude' && job.warm && (await has('claude'))
       ? await warmClaude(job, b, here, { progress, ctl })        // AI 待機: reuse the running Claude session
-      : await runEngine(engine, buildPrompt(job, here), b, job.bot.model, { progress, ctl, browser: false });
+      : await runEngine(engine, taskPrompt(job, here), b, job.bot.model, { progress, ctl, browser: false });
     if (res?.ok && engine !== 'grokbot') {
       const pendingBrowser = takeBrowserTask(res.text);
       res = await connectorRounds(job, b, here, engine, res, { progress, ctl });
       if (pendingBrowser && res?.ok && !takeBrowserTask(res.text)) res = { ...res, text: `【派瀏覽】\n網址：${pendingBrowser.url || '目前頁面'}\n要做的事：${pendingBrowser.prompt}\n【派完】\n${stripConnectorTask(res.text)}` };
       res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
-      const again = res?.ok && port && !job.handed ? forcedBrowseTask(job) : null;
+      const again = res?.ok && port && !job.handed && !/需要使用者在電腦上登入/.test(res.text || '') ? forcedBrowseTask(job) : null;
       if (again) {
         res = { ...res, text: `【派瀏覽】\n網址：目前頁面\n要做的事：${again}\n【派完】` };
         res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
@@ -782,7 +864,8 @@ async function chatRun(job) {
   if (port && res?.text) res.text = await finishBrowserWindow(port, job, res.text);
   if (port && shareBrowser) await syncOut(port);
   // 📒工作筆記：…📒結束 — the bot couldn't write its notes file itself (sandbox): OCTA saves it
-  if (res?.text) res.text = res.text.replace(/📒\s*工作筆記[:：]\s*([\s\S]*?)📒\s*結束/g, (_, n) => { try { mkdirSync(dirname(notesFile(job)), { recursive: true }); writeFileSync(notesFile(job), n.trim() + '\n'); log(`📒 已更新 ${job.bot.name} 的工作筆記`); } catch (e) { log('工作筆記寫入失敗：' + e.message); } return ''; }).trim() || '（已更新工作筆記）';
+  if (res?.text) res.text = res.text.replace(/📒\s*工作筆記[:：]\s*([\s\S]*?)📒\s*結束/g, (_, n) => { try { const cleanNotes = scrubNotes(n, evidenceText(job)).text; if (!cleanNotes) return ''; mkdirSync(dirname(notesFile(job)), { recursive: true }); writeFileSync(notesFile(job), cleanNotes + '\n'); log(`📒 已更新 ${job.bot.name} 的工作筆記`); } catch (e) { log('工作筆記寫入失敗：' + e.message); } return ''; }).trim() || '（已更新工作筆記）';
+  refreshNotes(job);
   // what the browser shows now: taken by OCTA itself (no need for the bot to remember)
   let page = (res.text.match(/📍\s*目前頁面[:：]\s*(\S+)/) || [])[1];
   const d = new Date(), z = n => String(n).padStart(2, '0'), stamp = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
@@ -811,7 +894,7 @@ function addTokens(a, b) {
 async function parentFollow(job, b, here, engine, follow, live) {
   if (b.applyBrowser) b.applyBrowser(false);
   if (engine === 'claude' && job.warm && sessions.get(job.bot.id)) return warmSend(job, follow, live);
-  return runEngine(engine, buildPrompt({ ...job, prompt: follow }, here), b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: false });
+  return runEngine(engine, taskPrompt({ ...job, prompt: follow }, here), b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: false });
 }
 async function connectorRounds(job, b, here, engine, res, live) {
   for (let depth = 0; depth < 2 && res?.ok; depth++) {
@@ -869,9 +952,15 @@ async function browseRounds(job, b, here, engine, res, live) {
       return { ok: true, text, tokens: addTokens(res.tokens, next?.tokens) };
     }
     live.progress?.('讀取網頁');
-    const worker = await runEngine(engine, buildBrowserPrompt(job, plan.task, here), b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: true });
+    const workerPrompt = engine === 'opencode' ? fitLocal(buildBrowserPrompt(job, plan.task, here), 4000) : buildBrowserPrompt(job, plan.task, here);
+    const worker = await runEngine(engine, workerPrompt, b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: true });
     if (b.applyBrowser) b.applyBrowser(false);
     let report = stripBrowserTask(worker?.ok ? worker.text : ('瀏覽沒有完成：' + String(worker?.text || '沒有報告'))).slice(0, 6000) || '瀏覽沒有完成。';
+    job.seen = ((job.seen || '') + '\n' + report).slice(-8000);
+    if (/需要使用者在電腦上登入/.test(report)) {
+      const site = (report.match(/https?:\/\/[^\s）)]+/) || [])[0] || '';
+      return { ok: true, text: `需要使用者在電腦上登入${site ? '（' + site + '）' : ''}。登入好之後跟我說一聲。`, tokens: addTokens(res.tokens, worker?.tokens) };
+    }
     if (port) {
       const eyes = await captureEyes(port, b.dir);
       if (eyes) { job.eyes = eyes; report += `\n確認停在哪，用 Read 讀這個檔：${eyes}`; }

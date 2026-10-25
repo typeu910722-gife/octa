@@ -194,7 +194,8 @@ async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
     }
     ordered = chain.length > 1 && ((named.length > 1 && /收到.{0,20}後|之後|然後|接著|再由|再交|完成後|做完|拿到.{0,10}(後|再)|依序|輪流/.test(text)) || /互相|彼此|聊聊|討論|交流|心得|對話|聊天|你們聊/.test(text));
   }
-  if (group && !turnsOf(group) && !ordered) for (const id of chain) await addJob(db, userId, conv, [id], prompt);
+  // One group instruction runs in member order. Parallel only when the group task asks for it.
+  if (group && parallelGroup(group) && !ordered) for (const id of chain) await addJob(db, userId, conv, [id], prompt);
   else await addJob(db, userId, conv, chain, prompt);
   const running = (await db.prepare("SELECT DISTINCT bot_id FROM jobs WHERE user_id=? AND status='running' AND (kind IS NULL OR kind='' OR kind='chat')").bind(userId).all()).results;
   if (running.length >= 3) {
@@ -220,7 +221,25 @@ async function cloneFile(db, userId, fileId, conv) {
 }
 const STANDBY = '待命巡查';   // a bot on 24-hour standby: checks its duties every N minutes, says nothing when there's nothing to do
 const BG = /^〔背景:([^:〕]+):(ask|give)〕/;   // a bot's message to another bot, run in the other bot's own chat
-const turnsOf = g => /輪流|依序|按順序|接力/.test(g.task || '');
+const parallelGroup = g => /同時做|同時回|並行|各自處理|各自回/.test(g?.task || '');
+const turnsOf = g => !parallelGroup(g);
+const LOGIN_WAIT = /需要使用者在電腦上登入/;
+// Drop a stuck model's repeated lines before they are saved or used to start another round.
+export function calmReply(text) {
+  let t = String(text || '').replace(/【派瀏覽】[\s\S]*?【派完】/g, '\n');
+  t = t.replace(/^\s*【派瀏覽】.*$/gm, '').replace(/^\s*【派完】.*$/gm, '');
+  const out = [];
+  const seen = new Set();
+  for (const line of t.split('\n')) {
+    const v = line.trim();
+    if (!v) continue;
+    const key = v.replace(/\s+/g, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out.join('\n').trim();
+}
 const passed = t => /^[（(]?\s*(略過|PASS)\s*[）)]?[。.]?$/i.test(String(t).trim());
 async function loadAll(db, userId) {
   const [b, g, f, r] = await db.batch([
@@ -1305,6 +1324,7 @@ async function route({ request: req, env, params }) {
         }
         let text = clean(body.text, 20000) || (good ? '（完成，無回覆內容）' : '⚠ 執行失敗');
         if (good && job.kind === 'chat' && text.includes('【回覆】')) text = text.slice(text.lastIndexOf('【回覆】') + 4).trim() || '（完成）';   // drop the running commentary before the reply
+        if (good && job.kind === 'chat') text = calmReply(text) || '（完成）';
         // 📝任務更新：… 📝結束 — the bot learned what its standing job is; save it as its 指定任務
         let learned = null;
         const tm = good && job.kind === 'chat' ? text.match(/📝\s*任務更新[:：]\s*([\s\S]*?)(?:📝\s*結束|$)/) : null;
@@ -1388,7 +1408,12 @@ async function route({ request: req, env, params }) {
             await addMsg(db, U, job.conv, 'sys', `已自動更新「${(await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人'}」的指定任務，可在任務設定修改`);
           }
         }
-        if (job.kind === 'chat') {
+        const earlierMine = job.kind === 'chat'
+          ? (await db.prepare('SELECT text FROM messages WHERE user_id=? AND conv=? AND by_=? ORDER BY id DESC LIMIT 2').bind(U, job.conv, job.bot_id).all()).results
+          : [];
+        const loginStuck = good && job.kind === 'chat' && LOGIN_WAIT.test(text);
+        const loginAgain = loginStuck && earlierMine.length >= 2 && LOGIN_WAIT.test(earlierMine[1]?.text || '');
+        if (job.kind === 'chat' && !loginAgain) {
           const st = await getSettings(db, U);
           const who = (await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人';
           if (!good || needsYou(text)) await sendNotify(env, st, `【OCTA】${who} 需要你處理：\n${text.slice(0, 600)}`);
@@ -1396,12 +1421,20 @@ async function route({ request: req, env, params }) {
         }
         if (body.page) await db.prepare('UPDATE bots SET page=? WHERE id=? AND user_id=?').bind(clean(body.page, 500), job.bot_id, U).run();
         if (!good || job.kind !== 'chat') return ok();
-        // the bot stopped halfway ("還沒完成…"): send it straight back to finish, at most twice
-        const round = +((job.prompt.match(/^（自動接續 (\d)）/) || [])[1] || 0);
-        if (round < 2 && !passed(text) && /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) && !/需要使用者在電腦上登入/.test(text) && classifyModelFailure(text) !== 'quota' && classifyModelFailure(text) !== 'rate_limit') {
-          const orig = job.prompt.replace(/^（自動接續 \d）[\s\S]*?原本的指示：/, '');
+        // Two replies in a row are stuck on the same sign-in: stop the chain and say so once.
+        if (loginStuck) {
+          if (loginAgain) {
+            const noted = await db.prepare("SELECT 1 AS n FROM messages WHERE user_id=? AND conv=? AND by_='sys' AND text LIKE '需要你在電腦上登入%' LIMIT 1").bind(U, job.conv).first();
+            if (!noted) await addMsg(db, U, job.conv, 'sys', '需要你在電腦上登入。登入好之後傳一句話，我就從這一頁繼續。');
+          }
+          return ok();
+        }
+        // the bot stopped halfway ("還沒完成…"): one automatic follow-up, then it has to stop
+        const round = +((job.prompt.match(/^（自動接續 (\d+)）/) || [])[1] || 0);
+        if (round < 1 && !passed(text) && /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) && !LOGIN_WAIT.test(text) && classifyModelFailure(text) !== 'quota' && classifyModelFailure(text) !== 'rate_limit') {
+          const orig = job.prompt.replace(/^（自動接續 \d+）[\s\S]*?原本的指示：/, '');
           await addMsg(db, U, job.conv, 'sys', '還沒做完，請它接著把剩下的做完…');
-          await addJob(db, U, job.conv, [{ b: job.bot_id, p: `（自動接續 ${round + 1}）你上一則說還沒做完。現在直接接著做完剩下的部分：用你的工作筆記和剛才查到的資料，補查還沒查的地方（兩館都要），不要再停下來問，最後給完整的結果；真的做不到的項目才在最後列出原因。\n原本的指示：${orig}` }, ...JSON.parse(job.chain)], orig, job.depth);
+          await addJob(db, U, job.conv, [{ b: job.bot_id, p: `（自動接續 ${round + 1}）上一則沒做完。只補還沒做的那一步。如果要登入，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下。不要把同一句再寫一遍，也不要編畫面上沒有的房號或姓名。\n原本的指示：${orig}` }, ...JSON.parse(job.chain)], orig, job.depth);
           await bump(db, U);
           return ok();
         }
