@@ -386,7 +386,7 @@ function closeEmbedTab(bucket, index) {
   if (!tab || tab.webContents.isDestroyed()) return;
   const id = pageId(bucket, tab.webContents);
   if (bucket.tabs.length === 1) {
-    if (bucket.splash) tab.webContents.loadURL(bucket.splash).catch(() => { });
+    tab.webContents.loadURL(bucket.splash || 'https://www.google.com/').catch(() => { });
     sendFrame(bucket, {});
     return;
   }
@@ -413,14 +413,16 @@ async function addEmbedTab(bucket, url) {
   bucket.tabs.push(tab);
   await hookPage(tab.webContents, id, bucket);
   bindOpen(bucket, tab);
-  tab.webContents.loadURL(url && !isBlankUrl(url) ? url : 'about:blank').catch(() => { });
+  const home = url && !isBlankUrl(url) ? url : 'https://www.google.com/';
+  tab.webContents.loadURL(home).catch(() => { });
   focusTab(bucket, tab);
-  return { id, title: '', url: url || 'about:blank' };
+  return { id, title: '', url: home };
 }
 function goTo(wc, raw) {
   let url = String(raw || '').trim();
-  if (!url || !wc || wc.isDestroyed()) return;
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  if (!wc || wc.isDestroyed()) return;
+  if (!url) url = 'https://www.google.com/';
+  else if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
   wc.loadURL(url).catch(() => { });
 }
 // true keeps an open dock open and otherwise shows the thumbnail. 'open' and 'thumb' are explicit.
@@ -469,7 +471,7 @@ async function embedStart(bot, port) {
   roundChrome(chrome, THUMB_RADIUS);
   await hookPage(view.webContents, 'p' + (++embedSeq), bucket);
   bindOpen(bucket, view);
-  bucket.splash = `data:text/html;charset=utf-8,${encodeURIComponent(`<title>${name} 的瀏覽器</title><body style="margin:0;display:grid;place-items:center;height:100vh;background:#1c1814;color:#f3ead3;font-family:sans-serif;text-align:center"><div style="font-size:40px">🐙</div><div style="font-size:18px;margin-top:8px">${name}</div><div style="font:400 14px sans-serif;opacity:.8;margin-top:10px">網頁會開在這裡，登入會留在這台電腦</div></body>`)}`;
+  bucket.splash = 'https://www.google.com/';
   view.webContents.loadURL(bucket.splash).catch(() => { });
   chrome.webContents.loadFile(join(here, 'browser-chrome.html')).catch(() => { });
   chrome.webContents.on('did-finish-load', () => sendFrame(bucket, {}));
@@ -592,7 +594,7 @@ ipcMain.on('octa:browser-tab', e => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);
   if (!bucket) return;
-  void addEmbedTab(bucket, 'about:blank').then(() => embedShow(bucket.port, 'open'));
+  void addEmbedTab(bucket, 'https://www.google.com/').then(() => embedShow(bucket.port, 'open'));
 });
 ipcMain.on('octa:browser-pick', (e, index) => {
   if (!trusted(e)) return;

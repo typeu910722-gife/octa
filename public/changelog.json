@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.29",
+  "date": "2026-10-25",
+  "notes": [
+   "跟它說關閉瀏覽器，就會把視窗關掉。打開瀏覽器不用先打網址，會直接在裡面打開 Google"
+  ],
+  "notes_en": [
+   "Asking it to close the browser closes the window. Opening the browser no longer needs an address first: Google opens inside it"
+  ]
+ },
+ {
   "v": "3.0.28",
   "date": "2026-10-25",
   "notes": [

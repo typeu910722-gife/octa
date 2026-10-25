@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { buildBrowserPrompt, buildPrompt, keepBrowserTask, planBrowserRound, takeBrowserTask } from '../public/octa-runner.mjs';
+import { GOOGLE_HOME, browserWindowAsk, buildBrowserPrompt, buildPrompt, keepBrowserTask, planBrowserRound, takeBrowserTask, takeWindowMarks } from '../public/octa-runner.mjs';
 
 function prompt(extra = {}) {
   return buildPrompt({
@@ -105,6 +105,20 @@ test('the main turn dispatches a logged-in page and does not click it', () => {
   assert.equal(text.includes('browser_click'), false);
   assert.equal(text.includes('browser_mouse_click_xy'), false);
   assert.equal(text.includes('你是 Grok Bot'), false);
+});
+
+test('closing the browser is something the bot can do, and an empty open is Google', () => {
+  const text = prompt({ prompt: '關閉瀏覽器' });
+  assert.match(text, /【關瀏覽器】/);
+  assert.match(text, /【開瀏覽器】/);
+  assert.match(text, /內嵌的 Google/);
+  assert.match(text, /禁止說「沒有控制工具」/);
+  assert.equal(browserWindowAsk('關閉瀏覽器'), 'close');
+  assert.equal(browserWindowAsk('不要關閉瀏覽器'), '');
+  assert.equal(browserWindowAsk('打開瀏覽器'), 'open');
+  assert.equal(takeWindowMarks('先看\n【開瀏覽器】\n【關瀏覽器】').close, true);
+  assert.equal(takeWindowMarks('【開瀏覽器】').open, GOOGLE_HOME);
+  assert.equal(takeWindowMarks('【開瀏覽器】https://example.com/a').open, 'https://example.com/a');
 });
 
 test('a connected service is named in the prompt and its secret is not', () => {

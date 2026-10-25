@@ -23,7 +23,8 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask } from './connectors.mjs';
 
-export const VERSION = '17.14';
+export const VERSION = '17.15';
+export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
@@ -255,6 +256,9 @@ export function buildPrompt(job, here) {
     '- 已登入的網頁、要點了才出現的內容，你不能自己點、不能打字、不能捲動、不能讀 Cookie。需要時單獨寫下面這一段，不要同時寫【回覆】：\n【派瀏覽】\n網址：https://完整網址（不知道就寫目前頁面）\n要做的事：要得到的結果、限制、怎樣算做完\n【派完】',
     '- 派出去的那一輪會用這台電腦上已登入的瀏覽器讀頁面、點下一步，做完只交回文字：網址、頁面上有什麼、做成了什麼、卡在哪裡。你根據那份報告回答，不要把整頁內容貼進對話。同一則使用者的話最多派兩次。',
     '- 要確認它停在哪，用 Read 讀「畫面.jpg」。那張圖只用來對位置，不代替報告。',
+    '- 關掉 OCTA 裡的瀏覽器視窗：單獨一行寫「【關瀏覽器】」。這是視窗控制，你做得到。禁止說「沒有控制工具」「沒辦法替你關閉」「無法操作瀏覽器視窗」。',
+    '- 打開 OCTA 裡的瀏覽器：單獨一行寫「【開瀏覽器】」。沒有指定網址就打開內嵌的 Google。指定了就寫「【開瀏覽器】https://完整網址」。不要叫使用者先去打網址。',
+    job.windowNote ? '- ' + job.windowNote : '',
     job.bot.browser === 'mine'
       ? '- 瀏覽器是使用者自己的 Chrome（有他已登入的網站）。只在你自己的分頁群組裡操作，不要關閉或改動使用者其他分頁。登入頁若只要點已記住的帳號，寫進要做的事裡；不要讓那一輪猜或輸入密碼。'
       : '- 瀏覽器是你專屬、一直開著的（獨立的登入和分頁，上次開的分頁都還在）。使用者看得到旁邊的畫面，也可以接手。不會影響其他機器人。',
@@ -737,6 +741,7 @@ async function chatRun(job) {
   let res;
   const engine = job.bot.engine || 'claude';
   try {
+    if (port) await settleBrowserWindow(port, job);
     res = engine === 'grokbot' ? await runGrokBot(job, { progress, ctl })
       : engine === 'claude' && job.warm && (await has('claude'))
       ? await warmClaude(job, b, here, { progress, ctl })        // AI 待機: reuse the running Claude session
@@ -750,6 +755,7 @@ async function chatRun(job) {
   }
   finally { clearTimeout(timerP); clearInterval(beat); busyBots.delete(job.bot.id); if (port) touchBrowser(job.bot.id); }
   if (res?.text) res.text = stripConnectorTask(stripBrowserTask(res.text)) || '這次沒有新的結果。';
+  if (port && res?.text) res.text = await finishBrowserWindow(port, job, res.text);
   if (port && shareBrowser) await syncOut(port);
   // 📒工作筆記：…📒結束 — the bot couldn't write its notes file itself (sandbox): OCTA saves it
   if (res?.text) res.text = res.text.replace(/📒\s*工作筆記[:：]\s*([\s\S]*?)📒\s*結束/g, (_, n) => { try { mkdirSync(dirname(notesFile(job)), { recursive: true }); writeFileSync(notesFile(job), n.trim() + '\n'); log(`📒 已更新 ${job.bot.name} 的工作筆記`); } catch (e) { log('工作筆記寫入失敗：' + e.message); } return ''; }).trim() || '（已更新工作筆記）';
@@ -1330,12 +1336,50 @@ async function browserSnapshot(port, since) {   // screenshot + address of the t
   });
 }
 const realPage = u => (u && !/^(about:|data:|chrome:)/.test(u)) ? u : '';
+const blankPage = u => !u || /^(about:|data:|chrome:)/.test(u);
+export function browserWindowAsk(text) {
+  const t = String(text || '');
+  if (/不要關|別關|先別關/.test(t)) return '';
+  if (/關閉瀏覽器|關掉瀏覽器|把瀏覽器關|收起瀏覽器|瀏覽器收起來|瀏覽器關掉/.test(t)) return 'close';
+  if (/打開瀏覽器|開啟瀏覽器|開瀏覽器|把瀏覽器打開/.test(t)) return 'open';
+  return '';
+}
+export function takeWindowMarks(text) {
+  const raw = String(text || '');
+  const open = raw.match(/【開瀏覽器】\s*(https?:\/\/\S+)?/);
+  return { close: /【關瀏覽器】/.test(raw), open: open ? (open[1] || GOOGLE_HOME) : '' };
+}
+async function settleBrowserWindow(port, job) {
+  const ask = browserWindowAsk(job.prompt);
+  if (ask === 'close') {
+    try { await showBrowser(port, '', true, false); } catch (e) { log('關閉瀏覽器：' + e.message); }
+    job.windowNote = '使用者要你關閉瀏覽器。視窗已經收起來了。回覆直接說已經關閉。禁止說「沒有控制工具」「沒辦法替你關閉」「無法操作瀏覽器視窗」。';
+  } else if (ask === 'open') {
+    try { await showBrowser(port, '', false, true); } catch (e) { log('打開瀏覽器：' + e.message); }
+    job.windowNote = '使用者要你打開瀏覽器。沒有指定網址時，已經在 OCTA 視窗裡打開內嵌的 Google。直接說已經打開，不要叫他先輸入網址。';
+  }
+}
+async function finishBrowserWindow(port, job, text) {
+  const marks = takeWindowMarks(text);
+  if (marks.close) { try { await showBrowser(port, '', true, false); } catch (e) { log('關閉瀏覽器：' + e.message); } }
+  if (marks.open) { try { await showBrowser(port, marks.open, false, true); } catch (e) { log('打開瀏覽器：' + e.message); } }
+  let out = String(text || '').replace(/【關瀏覽器】/g, '').replace(/【開瀏覽器】\s*(https?:\/\/\S+)?/g, '').trim();
+  if (browserWindowAsk(job.prompt) === 'close' && /控制工具|沒能替你關閉|沒辦法替你關閉|無法關閉|無法操作/.test(out)) out = '瀏覽器已經關閉。';
+  if (browserWindowAsk(job.prompt) === 'open' && /先輸入網址|先打網址|沒有控制工具/.test(out)) out = '瀏覽器已經打開，裡面是 Google。';
+  if (out) return out;
+  if (marks.close || browserWindowAsk(job.prompt) === 'close') return '瀏覽器已經關閉。';
+  if (marks.open || browserWindowAsk(job.prompt) === 'open') return '瀏覽器已經打開，裡面是 Google。';
+  return text;
+}
 async function showBrowser(port, url, hide, expand) {
   const embed = [...browsers.values()].some(b => b.port === port && b.embed);
   if (embed) await cfg.embed?.show?.(port, hide ? false : (expand ? 'open' : true));
   return cdp(port, async send => {
-    let targetId = pickLivePage(await pagesOf(send))?.targetId;
-    if (url || !targetId) targetId = (await send('Target.createTarget', { url: url || 'about:blank' })).targetId;
+    const pages = await pagesOf(send);
+    const live = pickLivePage(pages);
+    let targetId = live?.targetId;
+    const dest = hide ? '' : (url || (blankPage(live?.url) ? GOOGLE_HOME : ''));
+    if (dest || !targetId) targetId = (await send('Target.createTarget', { url: dest || GOOGLE_HOME })).targetId;
     const seen = async () => realPage((await pagesOf(send)).find(p => p.targetId === targetId)?.url);
     if (hide || !targetId) return seen();   // handing back: the window stays where it is on the desktop
     const { windowId } = await send('Browser.getWindowForTarget', { targetId });

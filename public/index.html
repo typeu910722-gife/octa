@@ -1527,7 +1527,7 @@ $('browser').onclick=e=>{
     {open:id=>openBrowser(id),hide:id=>openBrowser(id,'',true),url:id=>urlSheet(id),shots:()=>shotSheet(ids),note:()=>toast(I18N.t('這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。'))})};
 function urlSheet(id){const b=bot(id);
   $('veil').innerHTML=`<form class="sheet" id="uf"><h2>讓它打開網址</h2><p>用「<span data-u>${esc(b.name)}</span>」的瀏覽器打開，畫面在${browserHint()}：</p>
-  <label class="field">網址<input id="uu" required placeholder="https://" value="${esc(b.page||'')}"></label>
+  <label class="field">網址<input id="uu" placeholder="不填就打開 Google" value="${esc(b.page||'')}"></label>
   <div class="acts"><button type="button" class="no" id="sx">取消</button><button class="btn">在電腦上開啟</button></div></form>`;
   $('veil').hidden=false;$('uu').focus();$('uu').select();$('sx').onclick=closeSheet;
   $('uf').onsubmit=ev=>{ev.preventDefault();const u=$('uu').value.trim();closeSheet();openBrowser(id,u)}}
@@ -1535,10 +1535,10 @@ const shownPage=p=>p&&!/^(data:|about:|chrome:)/.test(p)?p:'';
 function remoteUrl(ids){
   const list=ids.filter(id=>bot(id));if(!list.length)return;
   $('veil').innerHTML=`<form class="sheet" id="remoteUrl" data-ids="${esc(list.join(','))}"><h2>電腦上的網址</h2>
-  <p>在這裡輸入網址，電腦上這個機器人的瀏覽器就會打開。登入仍在電腦上完成。</p>
+  <p>不填就在電腦上打開內嵌的 Google。要去別的網站再打網址。登入仍在電腦上完成。</p>
   ${list.length>1?`<label class="field">機器人<select id="ruBot">${list.map(id=>`<option value="${esc(id)}">${esc(bot(id).name)}</option>`).join('')}</select></label>`:''}
   <div class="bw" id="ruView"></div>
-  <label class="field">要打開的網址<input id="uu" inputmode="url" autocomplete="url" placeholder="https://" required></label>
+  <label class="field">要打開的網址<input id="uu" inputmode="url" autocomplete="url" placeholder="不填就打開 Google"></label>
   <p id="ruStat"></p>
   <div class="row2"><button class="btn" type="submit">在電腦上打開</button><button class="ghost" type="button" id="ruShow">顯示電腦上的瀏覽器</button><button class="ghost" type="button" id="ruHide">收到背景</button></div>
   <div class="acts"><button type="button" class="no" id="sx">關閉</button></div></form>`;
@@ -1547,7 +1547,7 @@ function remoteUrl(ids){
   if($('ruBot'))$('ruBot').onchange=()=>paintRemote(true);
   $('ruShow').onclick=()=>sendRemote(false);
   $('ruHide').onclick=()=>sendRemote(true);
-  $('remoteUrl').onsubmit=async ev=>{ev.preventDefault();const u=$('uu').value.trim();if(!u)return;const ok=await sendRemote(false,u);
+  $('remoteUrl').onsubmit=async ev=>{ev.preventDefault();const u=$('uu').value.trim();const ok=await sendRemote(false,u);
     if($('ruStat'))$('ruStat').textContent=ok?'已送到電腦。打開後，這裡的網址和畫面會自己更新。':'沒有送到電腦'}};
 function remoteBot(){const form=$('remoteUrl');if(!form)return '';return $('ruBot')?.value||String(form.dataset.ids||'').split(',')[0]}
 async function sendRemote(hide,url){const id=remoteBot();if(!id)return false;return openBrowser(id,hide?'':(url||''),!!hide)}

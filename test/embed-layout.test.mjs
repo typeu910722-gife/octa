@@ -41,6 +41,7 @@ test('the visible page is the real site, not the opening card', () => {
   assert.equal(isBlankUrl('about:blank'), true);
   assert.equal(isBlankUrl('data:text/html,hi'), true);
   assert.equal(isBlankUrl('https://chat.line.biz/'), false);
+  assert.equal(isBlankUrl('https://www.google.com/'), false);
   const page = pickLivePage([
     { type: 'page', url: 'data:text/html,splash', targetId: 'splash' },
     { type: 'page', url: 'https://chat.line.biz/account', targetId: 'line' },
@@ -58,6 +59,8 @@ test('foreground tabs are the on-screen view', () => {
   assert.match(fn, /embedShow\(port, true\)/);
   assert.doesNotMatch(fn, /embedShow\(port, 'open'\)/);
   assert.doesNotMatch(src, /dockLayout/);
+  assert.match(src, /https:\/\/www\.google\.com\//);
+  assert.doesNotMatch(src, /網頁會開在這裡/);
   assert.match(src, /bucket\.shown === 'open' \? 'open' : 'thumb'/);
   assert.match(src, /octa:focus-bot/);
   assert.match(src, /bucket\.botId === focusBotId/);

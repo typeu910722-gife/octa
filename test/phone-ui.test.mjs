@@ -45,6 +45,8 @@ test('the phone can type an address for the computer browser', () => {
   assert.match(page, /if\(phoneRemote\(\)\)\{remoteUrl\(ids\);return\}/);
   assert.match(page, /t:'\/網址'/);
   assert.match(page, /已送到電腦。打開後，這裡的網址和畫面會自己更新。/);
+  assert.match(page, /不填就打開 Google/);
+  assert.doesNotMatch(page, /placeholder="https:\/\/" required/);
 });
 
 test('chats get day separators and the phone send key is the round arrow', () => {
