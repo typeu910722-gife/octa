@@ -28,13 +28,14 @@ jobs:
       - name: Use a prerelease version only for this build
         shell: bash
         run: |
-          node -e "
-          const fs=require('fs');
-          const p=JSON.parse(fs.readFileSync('package.json','utf8'));
-          p.version='3.0.33-test.1';
-          p.build.nsis=Object.assign({}, p.build.nsis, {allowDowngrade:true});
-          fs.writeFileSync('package.json', JSON.stringify(p,null,2));
-          "
+          node <<'EOF'
+          const fs = require('fs');
+          const p = fs.readFileSync('package.json', 'utf8');
+          const from = '"version": "3.0.33"';
+          const to = '"version": "3.0.33-test.1"';
+          if (!p.includes(from)) throw new Error('version line missing');
+          fs.writeFileSync('package.json', p.replace(from, to));
+          EOF
       - name: Build installer
         run: npm run dist
       - name: Keep the auto-update manifest out of this build
