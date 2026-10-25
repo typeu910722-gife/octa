@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { OPEN_BAR, PANEL_EDGE, TAB_ROW, THUMB_RADIUS, embedFrames, isBlankUrl, resizeBox, sidebarBox, thumbBox } from '../desktop/embed-layout.mjs';
+import { ENGINE_ROW, OPEN_BAR, PANEL_EDGE, TAB_ROW, THUMB_RADIUS, embedFrames, isBlankUrl, resizeBox, sidebarBox, thumbBox } from '../desktop/embed-layout.mjs';
 import { pickLivePage } from '../public/octa-runner.mjs';
 
 test('the opened browser is a side panel and the chat keeps the whole window', () => {
@@ -16,7 +16,7 @@ test('the opened browser is a side panel and the chat keeps the whole window', (
   assert.equal(lay.chrome.width, lay.box.width);
   assert.equal(lay.chrome.height, lay.box.height);
   assert.equal(lay.page.x, lay.box.x + PANEL_EDGE);
-  assert.equal(lay.page.y, lay.box.y + OPEN_BAR);
+  assert.equal(lay.page.y, lay.box.y + OPEN_BAR + ENGINE_ROW);
   assert.equal(lay.page.width, lay.box.width - PANEL_EDGE * 2);
   const narrow = embedFrames(1366, 768, 'open');
   assert.equal(narrow.main.width, 1366);
@@ -77,7 +77,7 @@ test('opening the browser keeps a toolbar and a closable tab row inside the pane
   assert.equal(tabs.box.y, 80);
   assert.equal(tabs.box.width, 480);
   assert.equal(tabs.box.height, 640);
-  assert.equal(tabs.page.y, tabs.box.y + OPEN_BAR + TAB_ROW);
+  assert.equal(tabs.page.y, tabs.box.y + OPEN_BAR + ENGINE_ROW + TAB_ROW);
   assert.equal(tabs.page.x, tabs.box.x + PANEL_EDGE);
   assert.ok(tabs.page.width > 0 && tabs.page.height > 0);
   const html = readFileSync(new URL('../desktop/browser-chrome.html', import.meta.url), 'utf8');
@@ -89,6 +89,11 @@ test('opening the browser keeps a toolbar and a closable tab row inside the pane
   assert.match(html, /data-close/);
   assert.match(html, /data-edge="se"/);
   assert.match(html, /data-edge="nw"/);
+  assert.match(html, /data-engine="chrome"/);
+  assert.match(html, /data-engine="brave"/);
+  assert.match(html, /data-engine="firefox"/);
+  assert.match(html, /data-engine="edge"/);
+  assert.match(html, /這個網站不支援現在的瀏覽器/);
   const main = readFileSync(new URL('../desktop/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /octa:browser-back/);
   assert.match(main, /octa:browser-tab/);

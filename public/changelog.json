@@ -1,5 +1,17 @@
 [
  {
+  "v": "3.0.22",
+  "date": "2026-10-25",
+  "notes": [
+   "內建瀏覽器改以 Chrome、Brave、Firefox 或 Edge 的身分開啟。網站說不支援時，在畫面上選一個；OCTA 會下載只屬於自己的 Chrome、Brave 或 Firefox，不會動到你原來的瀏覽器",
+   "複製文字可以先選一段再複製。設定裡的文字大小改成滑桿，最大仍是標準的兩倍"
+  ],
+  "notes_en": [
+   "The built-in browser can present itself as Chrome, Brave, Firefox, or Edge. If a site refuses it, pick one on the page and OCTA downloads a copy of its own, leaving the browser you already use alone",
+   "Copy can take a selected passage. Text size in Settings is a slider, and the top of the slider is still twice the standard size"
+  ]
+ },
+ {
   "v": "3.0.21",
   "date": "2026-10-25",
   "notes": [

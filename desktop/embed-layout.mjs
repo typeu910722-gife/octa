@@ -6,6 +6,7 @@
 export const PAGE = { width: 1280, height: 800 };
 export const THUMB_RADIUS = 18;
 export const OPEN_BAR = 48;
+export const ENGINE_ROW = 36;
 export const TAB_ROW = 28;
 export const PANEL_EDGE = 8;
 export const PANEL_MIN = { width: 360, height: 280 };
@@ -122,7 +123,7 @@ export function embedFrames(w, h, mode, at, opts) {
   if (mode === 'open') {
     const box = sidebarBox(w, h, at);
     const edge = PANEL_EDGE;
-    const bar = OPEN_BAR + ((opts?.tabs || 0) > 0 ? TAB_ROW : 0);
+    const bar = OPEN_BAR + ENGINE_ROW + ((opts?.tabs || 0) > 0 ? TAB_ROW : 0);
     return {
       mode: 'open',
       main,

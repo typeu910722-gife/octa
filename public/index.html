@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <script>
-(function(){try{var q=new URLSearchParams(location.search).get('theme');var s=localStorage.getItem('octa_theme');var t=(q==='light'||q==='dark')?q:(s||'dark');if(t==='light')document.documentElement.setAttribute('data-theme','light');if(window.octaDesktop)document.documentElement.classList.add('desk');var f=localStorage.getItem('octa_fs');if(f&&f!=='m')document.documentElement.setAttribute('data-fs',f);}catch(e){}})();
+(function(){try{var q=new URLSearchParams(location.search).get('theme');var s=localStorage.getItem('octa_theme');var t=(q==='light'||q==='dark')?q:(s||'dark');if(t==='light')document.documentElement.setAttribute('data-theme','light');if(window.octaDesktop)document.documentElement.classList.add('desk');var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=80&&n<=200)z=n/100}if(z){document.documentElement.style.setProperty('--fz',String(z));if(z>=1.6)document.documentElement.setAttribute('data-fs','xl');else if(z>=1.08)document.documentElement.setAttribute('data-fs','l');else if(z<=0.95)document.documentElement.setAttribute('data-fs','s')}}catch(e){}})();
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="theme-color" content="#12110e">
@@ -551,6 +551,11 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
 .seg button small{color:var(--mute);font-size:11px}
 .seg button.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);background:var(--panel2)}
 .seg .fs-s b{font-size:14px}.seg .fs-m b{font-size:15px}.seg .fs-l b{font-size:17px}.seg .fs-xl b{font-size:30px}
+.fslide{display:flex;align-items:center;gap:10px}
+.fslide span{color:var(--mute);font-size:12px;flex:none}
+.fslide input[type=range]{flex:1;min-width:0;accent-color:var(--gold)}
+.fslab{color:var(--mute);font-size:13px}
+.frag{user-select:text;-webkit-user-select:text;white-space:pre-wrap;border:1px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg);max-height:280px;overflow:auto;line-height:1.7}
 .look{display:grid;gap:18px}
 .look h3{margin:0}
 .look .toggle{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--card)}
@@ -754,16 +759,14 @@ function applyTheme(t,persist){
   if(meta)meta.setAttribute('content',light?'#FBF6E9':'#12110e');
   document.querySelectorAll('[data-set-theme]').forEach(x=>x.classList.toggle('on',x.dataset.setTheme===(light?'light':'dark')));
 }
-/* text size for the whole interface (kept on this device, like the theme) */
-const FS={s:'小',m:'標準',l:'大',xl:'特大'};
-const currentFs=()=>document.documentElement.dataset.fs||'m';
-function applyFs(k){if(!FS[k])k='m';if(k==='m')delete document.documentElement.dataset.fs;else document.documentElement.dataset.fs=k;try{localStorage.setItem('octa_fs',k)}catch(e){}
-  document.querySelectorAll('[data-set-fs]').forEach(x=>x.classList.toggle('on',x.dataset.setFs===k));if(typeof grow==='function')grow()}
+/* text size for the whole interface (kept on this device, like the theme). 80–200, and 200 is twice the standard size. */
+function fsName(p){return p<=90?'小':p<=105?'標準':p<150?'大':'特大'}
+function currentFsPercent(){try{const f=localStorage.getItem('octa_fs');const map={s:93,m:100,l:112,xl:200};if(map[f])return map[f];const n=Math.round(Number(f));if(n>=80&&n<=200)return n}catch(e){}return 100}
+function applyFs(raw){let p=Math.round(Number(raw));if(!Number.isFinite(p))p=100;p=Math.min(200,Math.max(80,p));const z=p/100;const root=document.documentElement;root.style.setProperty('--fz',String(z));if(z>=1.6)root.dataset.fs='xl';else if(z>=1.08)root.dataset.fs='l';else if(z<=0.95)root.dataset.fs='s';else delete root.dataset.fs;try{localStorage.setItem('octa_fs',String(p))}catch(e){}const lab=document.getElementById('fsLab');if(lab)lab.textContent=fsName(p)+' · '+p+'%';if(typeof grow==='function')grow()}
 applyTheme(currentTheme(),false);
 document.addEventListener('click',e=>{
   const set=e.target.closest('[data-set-theme]');
-  if(set){applyTheme(set.dataset.setTheme);return}
-  const fs=e.target.closest('[data-set-fs]');if(fs)applyFs(fs.dataset.setFs);
+  if(set)applyTheme(set.dataset.setTheme);
 });
 function showBrowserLabel(){return window.octaDesktop?'打開瀏覽器':'在電腦版打開瀏覽器'}
 function browserHint(){return window.octaDesktop?'這個視窗裡的瀏覽器':'電腦版 OCTA 裡的瀏覽器'}
@@ -1545,10 +1548,17 @@ function holdOn(root,find,open){
 holdOn($('list'),t=>t.closest('.iw[data-drag]'),(row,e)=>itemMenu(e?pointAnchor(e.clientX,e.clientY):row.querySelector('.more')||row,row.dataset.drag));
 holdOn($('msgs'),t=>t.closest('[data-dragmsg]'),(bub,e)=>{const m=convMsgs(cur).find(x=>String(x.id)===String(bub.closest('[data-mid]')?.dataset.mid));if(m)msgMenu(e?pointAnchor(e.clientX,e.clientY):bub,m)});
 function msgMenu(anchor,m){if(!m||m.tmp)return;
-  popMenu(anchor,`<button data-a="cp"><span class="ck">⧉</span>複製文字</button><button data-a="to"><span class="ck">➦</span>傳給別的機器人…</button>${m.by==='me'?'<button data-a="again"><span class="ck">↻</span>再傳一次</button>':''}`,
+  popMenu(anchor,`<button data-a="cp"><span class="ck">⧉</span>複製文字</button><button data-a="frag"><span class="ck">✂</span>選取片段</button><button data-a="to"><span class="ck">➦</span>傳給別的機器人…</button>${m.by==='me'?'<button data-a="again"><span class="ck">↻</span>再傳一次</button>':''}`,
    {cp:()=>navigator.clipboard?.writeText(m.text||'').then(()=>toast(I18N.t('已複製'))).catch(()=>{}),
+    frag:()=>fragmentSheet(m),
     to:()=>pickTarget(m),
     again:()=>sendMsg(m.text==='（附件）'?'':m.text,(m.files||[]).map(f=>f.id),m.files||[])})}
+function fragmentSheet(m){const text=m?.text||'';
+  $('veil').innerHTML=`<div class="sheet"><h2>選取片段</h2><p>拖過要複製的文字，或一次複製全部。</p><div id="frag" class="frag" tabindex="0">${text?esc(text):'<span class="hmuted">這則沒有文字</span>'}</div><div class="acts"><button type="button" class="no" id="sx">關閉</button><button type="button" class="ghost" id="fragAll">複製全部</button><button type="button" class="btn" id="fragBit">複製選取的片段</button></div></div>`;
+  $('veil').hidden=false;$('sx').onclick=closeSheet;
+  const copy=t=>{if(!String(t||'').trim()){toast('沒有文字');return}navigator.clipboard?.writeText(t).then(()=>{toast(I18N.t('已複製'));closeSheet()}).catch(()=>toast('沒有複製到'))};
+  $('fragAll').onclick=()=>copy(text);
+  $('fragBit').onclick=()=>{const sel=window.getSelection?.();const bit=String(sel||'').trim();const node=sel?.anchorNode;if(!bit||!node||!$('frag').contains(node)){toast('先在上面選一段');return}copy(bit)}}
 // the phone has no drag: pick who gets a copy, then the same 確定要複製？ as a drag
 function pickTarget(m){const list=[...S.groups,...S.bots].filter(c=>c.id!==cur);
   if(!list.length){toast('還沒有別的機器人');return}
@@ -1750,7 +1760,7 @@ function subSheet(title,html,opts={}){
   $('veil').hidden=false;$('sx').onclick=closeSheet;$('sBack').onclick=()=>(opts.back||openSettings)();}
 /* appearance: the two looks, the text size, and the language */
 function openLook(){
-  const theme=currentTheme(),fs=currentFs();
+  const theme=currentTheme(),fs=currentFsPercent();
   subSheet('外觀',`<div class="look">
   <h3>配色</h3>
   <div class="theme-pick" role="group" aria-label="配色">
@@ -1758,10 +1768,12 @@ function openLook(){
     <button type="button" data-set-theme="light" class="${theme==='light'?'on':''}"><span class="swatch light"></span><b>紙色</b><small>YourZone 奶油紙</small></button>
   </div>
   <h3>字體大小</h3>
-  <div class="seg" role="group" aria-label="字體大小">${Object.entries(FS).map(([k,n])=>`<button type="button" data-set-fs="${k}" class="fs-${k}${fs===k?' on':''}"><b>${n}</b><small>Aa</small></button>`).join('')}</div>
+  <div class="fslide"><span>小</span><input id="fsRange" type="range" min="80" max="200" step="5" value="${fs}" aria-label="字體大小"><span>特大</span></div>
+  <div class="fslab" id="fsLab">${fsName(fs)} · ${fs}%</div>
   <div class="sample" aria-hidden="true"><div class="bub me2">幫我整理這週的進度</div><div class="bub">好，整理好了，重點有三項。</div></div>
   <label class="toggle"><span>🌐 <span>語言</span></span>${I18N.select('sLang')}</label></div>`);
-  $('sLang').onchange=e=>setLang(e.target.value)}
+  $('sLang').onchange=e=>setLang(e.target.value);
+  $('fsRange').oninput=e=>applyFs(e.target.value)}
 function openSettings(k){
   if(settingsShell()){settingsFrame();settingsGo[k]?settingsGo[k]():openLook();return}
   const rows=settingsRows();

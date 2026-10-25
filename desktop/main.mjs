@@ -6,11 +6,12 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, createWriteStream } from 'node:fs';
 import os from 'node:os';
 import { startServer } from './server.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
 import { PAGE, THUMB_RADIUS, embedFrames, isBlankUrl, resizeBox, sidebarBox, thumbBox } from './embed-layout.mjs';
+import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, braveDownload, chromeDownload, edgeDownload, firefoxDownload, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
 // ---------- updates (GitHub Releases) ----------
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
@@ -191,7 +192,8 @@ function sendFrame(bucket, extra) {
   const page = bucket.active?.webContents;
   const drag = bucket.dragging && bucket.panelBox ? { dragging: true, x: bucket.panelBox.x, y: bucket.panelBox.y, w: bucket.panelBox.width, h: bucket.panelBox.height } : {};
   const tabs = bucket.tabs.map((v, i) => ({ i, on: v === bucket.active, title: tabTitle(v.webContents) }));
-  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', url: shownUrl(page), canBack: canGoBack(page), tabs, ...drag, ...extra });
+  const engines = ENGINE_IDS.map(id => ({ id, label: ENGINE_LABEL[id], on: id === (bucket.engine || 'chrome'), state: bucket.downloading === id ? 'down' : (ownedExe(id) ? 'ready' : 'none') }));
+  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...drag, ...extra });
 }
 function roundChrome(view, radius, solid) {
   if (!view) return;
@@ -283,14 +285,82 @@ function layoutEmbed() {
     placeBucket(bucket, frames);
   }
 }
-function hookPage(wc, id, bucket) {
+function versionFor(engine) {
+  // Brave's release number is not a Chrome version. Chrome and Edge use this Chromium's own version
+  // so the page is not claiming a build it is not. Firefox uses the portable build's version.
+  if (engine === 'firefox') return String(cfg.browserGot?.firefox?.version || '156.0');
+  return process.versions.chrome || '131.0.6778.86';
+}
+function ownedExe(engine) {
+  const exe = cfg.browserGot?.[engine]?.exe;
+  return exe && existsSync(exe) ? exe : '';
+}
+async function applyIdentity(wc, engine) {
+  if (!wc || wc.isDestroyed()) return;
+  const id = identity(engine || 'chrome', versionFor(engine || 'chrome'), process.platform, process.arch);
+  try { wc.setUserAgent(id.userAgent); } catch { }
+  try {
+    if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+    const params = { userAgent: id.userAgent, acceptLanguage: 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7', platform: id.platform };
+    if (id.metadata) params.userAgentMetadata = id.metadata;
+    await wc.debugger.sendCommand('Emulation.setUserAgentOverride', params);
+  } catch (e) { logError('ua', e); }
+}
+function dressSession(ses, bucket) {
+  if (!ses || ses.__octaEngine) return;
+  ses.__octaEngine = true;
+  try { ses.setUserAgent(identity(bucket.engine || 'chrome', versionFor(bucket.engine || 'chrome'), process.platform, process.arch).userAgent, 'zh-TW,zh,en-US,en'); } catch { }
+  ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    try {
+      const id = identity(bucket.engine || 'chrome', versionFor(bucket.engine || 'chrome'), process.platform, process.arch);
+      const set = (name, value) => {
+        const key = Object.keys(details.requestHeaders).find(k => k.toLowerCase() === name) || name;
+        if (value == null) delete details.requestHeaders[key];
+        else details.requestHeaders[key] = value;
+      };
+      set('user-agent', id.userAgent);
+      set('sec-ch-ua', id.clientHint || null);
+      set('sec-ch-ua-mobile', id.clientHint ? '?0' : null);
+      set('sec-ch-ua-platform', id.clientHint ? `"${id.metadata.platform}"` : null);
+    } catch { }
+    cb({ requestHeaders: details.requestHeaders });
+  });
+}
+function launchOwned(exe, bucket, url) {
+  const profile = join(dataDir, 'browsers', 'profiles', String(bucket.botId || 'bot').replace(/[^\w-]/g, '').slice(0, 40), bucket.engine || 'chrome');
+  try { mkdirSync(profile, { recursive: true }); } catch { }
+  // Firefox keeps its own profile with -profile. The others are Chromium and use --user-data-dir.
+  const args = bucket.engine === 'firefox'
+    ? ['-profile', profile, '-no-remote', '-new-window', url]
+    : ['--user-data-dir=' + profile, '--no-first-run', '--no-default-browser-check', '--new-window', url];
+  const child = spawn(exe, args, { detached: true, stdio: 'ignore' });
+  child.unref();
+}
+async function notePage(wc, bucket) {
+  if (!wc || wc.isDestroyed() || bucket.active?.webContents !== wc) return;
+  let text = '';
+  try { text = await wc.executeJavaScript('document.body?document.body.innerText.slice(0,4000):""'); } catch { return; }
+  bucket.blocked = pageNeedsAttention(text);
+  const url = shownUrl(wc);
+  if (pageUnsupported(text) && url && !bucket.handed) {
+    const exe = ownedExe(bucket.engine || 'chrome');
+    if (exe) {
+      bucket.handed = true;
+      launchOwned(exe, bucket, url);
+      bucket.engineError = '已改用 OCTA 下載的瀏覽器開啟，登入只留在 OCTA';
+    }
+  }
+  sendFrame(bucket, {});
+}
+async function hookPage(wc, id, bucket) {
   try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) logError('debugger', e); }
+  await applyIdentity(wc, bucket.engine || 'chrome');
   wc.debugger.on('message', (_e, method, params) => bucket.onEvent?.(id, method, params));
   bucket.pages.set(id, { wc });
   const ping = () => { if (bucket.active?.webContents === wc) sendFrame(bucket, {}); };
   wc.on('did-navigate', ping);
   wc.on('did-navigate-in-page', ping);
-  wc.on('did-finish-load', ping);
+  wc.on('did-finish-load', () => { ping(); void notePage(wc, bucket); });
   return id;
 }
 function pageId(bucket, wc) {
@@ -327,11 +397,11 @@ function bindOpen(bucket, tab) {
     return { action: 'deny' };
   });
 }
-function addEmbedTab(bucket, url) {
+async function addEmbedTab(bucket, url) {
   const tab = new WebContentsView({ webPreferences: bucket.prefs });
   const id = 'p' + (++embedSeq);
   bucket.tabs.push(tab);
-  hookPage(tab.webContents, id, bucket);
+  await hookPage(tab.webContents, id, bucket);
   bindOpen(bucket, tab);
   tab.webContents.loadURL(url && !isBlankUrl(url) ? url : 'about:blank').catch(() => { });
   focusTab(bucket, tab);
@@ -381,9 +451,11 @@ async function embedStart(bot, port) {
   const name = String(bot.name || '機器人').replace(/[<&]/g, '');
   const chrome = new WebContentsView({ webPreferences: { preload: join(here, 'browser-preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
   const place = savedPlace(String(bot.id || ''));
-  const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null };
+  const engine = ENGINE_IDS.includes(cfg.botEngine?.[String(bot.id || '')]) ? cfg.botEngine[String(bot.id || '')] : 'chrome';
+  const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null, engine, blocked: false, downloading: '', percent: 0, engineError: '', handed: false, engineJob: null };
+  dressSession(view.webContents.session, bucket);
   roundChrome(chrome, THUMB_RADIUS);
-  hookPage(view.webContents, 'p' + (++embedSeq), bucket);
+  await hookPage(view.webContents, 'p' + (++embedSeq), bucket);
   bindOpen(bucket, view);
   bucket.splash = `data:text/html;charset=utf-8,${encodeURIComponent(`<title>${name} 的瀏覽器</title><body style="margin:0;display:grid;place-items:center;height:100vh;background:#1c1814;color:#f3ead3;font-family:sans-serif;text-align:center"><div style="font-size:40px">🐙</div><div style="font-size:18px;margin-top:8px">${name}</div><div style="font:400 14px sans-serif;opacity:.8;margin-top:10px">網頁會開在這裡，登入會留在這台電腦</div></body>`)}`;
   view.webContents.loadURL(bucket.splash).catch(() => { });
@@ -421,7 +493,7 @@ async function embedStart(bot, port) {
         const id = 'p' + (++embedSeq);
         const hidden = new BrowserWindow({ show: false, width: 1280, height: 800, skipTaskbar: true, parent: win, webPreferences: prefs });
         bucket.hidden.push(hidden);
-        hookPage(hidden.webContents, id, bucket);
+        await hookPage(hidden.webContents, id, bucket);
         hidden.webContents.loadURL(url).catch(() => { });
         return { id, title: '', url };
       }
@@ -433,7 +505,7 @@ async function embedStart(bot, port) {
         await embedShow(port, true);
         return { id, title: active.webContents.getTitle(), url };
       }
-      const made = addEmbedTab(bucket, url);
+      const made = await addEmbedTab(bucket, url);
       await embedShow(port, true);
       return made;
     },
@@ -508,8 +580,7 @@ ipcMain.on('octa:browser-tab', e => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);
   if (!bucket) return;
-  addEmbedTab(bucket, 'about:blank');
-  embedShow(bucket.port, 'open');
+  void addEmbedTab(bucket, 'about:blank').then(() => embedShow(bucket.port, 'open'));
 });
 ipcMain.on('octa:browser-pick', (e, index) => {
   if (!trusted(e)) return;
@@ -535,6 +606,113 @@ function rememberPanel(bucket, box) {
   if (bucket.shown === 'open') bucket.openAt = { x: box.x, y: box.y, w: box.width, h: box.height };
   else bucket.thumbAt = { x: box.x, y: box.y };
 }
+function findBrowserExe(root, engine) {
+  const want = engine === 'firefox' ? /^firefox(\.exe)?$/i : engine === 'brave' ? /^brave(\.exe)?$/i : engine === 'edge' ? /^msedge(\.exe)?$/i : /^chrome(\.exe)?$/i;
+  let entries = [];
+  try { entries = readdirSync(root, { recursive: true }); } catch { return ''; }
+  for (const rel of entries) {
+    const name = basename(String(rel));
+    if (!want.test(name)) continue;
+    const full = join(root, String(rel));
+    try { if (statSync(full).isFile()) return full; } catch { }
+  }
+  return '';
+}
+function extractZip(zip, dest) {
+  return new Promise((resolve, reject) => {
+    const p = spawn('tar', ['-xf', zip, '-C', dest], { windowsHide: true });
+    let err = '';
+    p.stderr?.on('data', d => { err += d; });
+    p.on('error', reject);
+    p.on('exit', code => code === 0 ? resolve() : reject(new Error(String(err || '解壓縮失敗').slice(0, 180))));
+  });
+}
+async function downloadFile(url, dest, onProgress) {
+  const res = await fetch(url, { redirect: 'follow', headers: { 'user-agent': 'OCTA', accept: 'application/octet-stream,*/*' } });
+  if (!res.ok || !res.body) throw new Error('下載失敗 HTTP ' + res.status);
+  const total = Number(res.headers.get('content-length')) || 0;
+  const file = createWriteStream(dest);
+  const reader = res.body.getReader();
+  let got = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!file.write(Buffer.from(value))) await new Promise(r => file.once('drain', r));
+      got += value.byteLength;
+      if (total) onProgress(Math.min(99, Math.round(got / total * 100)));
+    }
+  } finally {
+    await new Promise((resolve, reject) => file.end(err => err ? reject(err) : resolve()));
+  }
+}
+async function resolveEngine(engine) {
+  const plat = hostPlatform(process.platform, process.arch);
+  const headers = { 'user-agent': 'OCTA', accept: 'application/json' };
+  if (engine === 'chrome') {
+    const res = await fetch(CHROME_CATALOG, { headers });
+    if (!res.ok) throw new Error('找不到 Chrome 的下載清單');
+    return chromeDownload(await res.json(), plat);
+  }
+  if (engine === 'brave') {
+    const res = await fetch(BRAVE_RELEASE, { headers });
+    if (!res.ok) throw new Error('找不到 Brave 的下載清單');
+    return braveDownload(await res.json(), plat);
+  }
+  if (engine === 'firefox') return firefoxDownload(plat);
+  return edgeDownload();
+}
+async function downloadEngine(engine, onProgress) {
+  const spec = await resolveEngine(engine);
+  if (!spec?.url) return null;
+  const root = join(dataDir, 'browsers', engine);
+  rmSync(root, { recursive: true, force: true });
+  mkdirSync(root, { recursive: true });
+  const zip = join(root, 'pack.zip');
+  await downloadFile(spec.url, zip, onProgress);
+  await extractZip(zip, root);
+  rmSync(zip, { force: true });
+  const exe = findBrowserExe(root, engine);
+  if (!exe) throw new Error('下載完成，但沒有找到瀏覽器');
+  const got = { ...(cfg.browserGot || {}), [engine]: { version: spec.version, exe, at: Date.now() } };
+  cfg = { ...cfg, browserGot: got };
+  writeCfg(cfg);
+  onProgress(100);
+  return got[engine];
+}
+async function useEngine(bucket, engine) {
+  if (!ENGINE_IDS.includes(engine) || !bucket) return;
+  bucket.engine = engine;
+  bucket.handed = false;
+  bucket.engineError = '';
+  const chosen = { ...(cfg.botEngine || {}) };
+  if (bucket.botId) chosen[bucket.botId] = engine;
+  cfg = { ...cfg, botEngine: chosen };
+  writeCfg(cfg);
+  if (!ownedExe(engine)) {
+    bucket.downloading = engine;
+    bucket.percent = 0;
+    sendFrame(bucket, {});
+    try {
+      const got = await downloadEngine(engine, p => { bucket.percent = p; sendFrame(bucket, {}); });
+      if (!got && engine === 'edge') bucket.engineError = '已改用 Edge 的身分';
+    } catch (e) {
+      bucket.engineError = String(e?.message || e).slice(0, 80);
+    }
+    bucket.downloading = '';
+  }
+  dressSession(bucket.active?.webContents?.session, bucket);
+  for (const v of bucket.tabs) await applyIdentity(v.webContents, engine);
+  const url = shownUrl(bucket.active?.webContents);
+  if (url) bucket.active.webContents.reloadIgnoringCache();
+  else sendFrame(bucket, {});
+}
+ipcMain.on('octa:browser-engine', (e, engine) => {
+  if (!trusted(e)) return;
+  const bucket = chromeBucket(e.sender);
+  if (!bucket || bucket.engineJob) return;
+  bucket.engineJob = useEngine(bucket, String(engine || '')).finally(() => { bucket.engineJob = null; });
+});
 ipcMain.on('octa:browser-close', (e, index) => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);

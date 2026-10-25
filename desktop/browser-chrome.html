@@ -15,6 +15,11 @@
   body.dragging #card { position: absolute; }
   body.dragging .bar { cursor: grabbing; }
   .tools { height: 48px; display: flex; align-items: center; gap: 6px; padding: 0 8px; flex: none; }
+  .engines { height: 36px; display: none; align-items: center; gap: 4px; padding: 0 8px; overflow-x: auto; flex: none; }
+  body.open .engines { display: flex; }
+  .engines.warn { background: #3a2a16; }
+  .englab { font-size: 11px; opacity: .85; flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .engines button.on { background: #c4a574; color: #1c1814; }
   .tabs { height: 28px; display: flex; align-items: center; gap: 4px; padding: 0 8px; overflow-x: auto; flex: none; }
   .tabs[hidden] { display: none; }
   .tab { display: flex; align-items: center; gap: 2px; border: 1px solid #c4a574; border-radius: 999px; padding: 2px 4px 2px 8px; max-width: 160px; }
@@ -54,6 +59,13 @@
           <button type="submit" class="tool">編輯</button>
         </form>
         <button type="button" class="back" id="collapse">收回</button>
+      </div>
+      <div class="engines" id="engines">
+        <span class="englab" id="englab">OCTA 的瀏覽器</span>
+        <button type="button" class="tool" data-engine="chrome">Chrome</button>
+        <button type="button" class="tool" data-engine="brave">Brave</button>
+        <button type="button" class="tool" data-engine="firefox">Firefox</button>
+        <button type="button" class="tool" data-engine="edge">Edge</button>
       </div>
     </div>
     <div class="edges" id="edges">
@@ -132,6 +144,21 @@
     document.getElementById('newTab').onclick = () => api()?.newTab();
     document.getElementById('collapse').onclick = () => api()?.toggle();
     document.getElementById('go').onsubmit = e => { e.preventDefault(); api()?.go(document.getElementById('url').value); };
+    document.getElementById('engines').onclick = e => {
+      const b = e.target.closest('[data-engine]');
+      if (b) api()?.engine(b.dataset.engine);
+    };
+    function paintEngines(d) {
+      const row = document.getElementById('engines');
+      const lab = document.getElementById('englab');
+      row.classList.toggle('warn', !!d.blocked);
+      lab.textContent = d.downloading ? ('下載中 ' + (d.percent || 0) + '%') : (d.error || (d.blocked ? '這個網站不支援現在的瀏覽器' : 'OCTA 的瀏覽器'));
+      const list = Array.isArray(d.engines) ? d.engines : [];
+      for (const e of list) {
+        const b = row.querySelector('[data-engine="' + e.id + '"]');
+        if (b) b.classList.toggle('on', !!e.on);
+      }
+    }
     document.getElementById('tabs').onclick = e => {
       const x = e.target.closest('[data-close]');
       if (x) { api()?.closeTab(+x.dataset.close); return; }
@@ -175,6 +202,7 @@
       const input = document.getElementById('url');
       if (document.activeElement !== input && d.url !== undefined) input.value = d.url || '';
       paintTabs(d.tabs);
+      paintEngines(d);
       if (d.dragging) place(d);
       else if (!down?.moved) place(null);
     });

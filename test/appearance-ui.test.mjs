@@ -17,15 +17,18 @@ test('the look is switched only inside Settings, and the colours fade across', (
 });
 
 test('text size applies to the whole interface and is remembered on the device', () => {
-  assert.match(page, /const FS=\{s:'小',m:'標準',l:'大',xl:'特大'\}/);
-  assert.match(page, /function applyFs\(k\)/);
-  assert.match(page, /localStorage\.setItem\('octa_fs',k\)/);
-  // applied before first paint, like the theme
-  assert.match(page, /var f=localStorage\.getItem\('octa_fs'\);if\(f&&f!=='m'\)document\.documentElement\.setAttribute\('data-fs',f\)/);
+  assert.match(page, /function applyFs\(raw\)/);
+  assert.match(page, /localStorage\.setItem\('octa_fs',String\(p\)\)/);
+  assert.match(page, /type="range" min="80" max="200"/);
+  assert.match(page, /xl:2/);
+  assert.match(page, /function fragmentSheet/);
+  assert.match(page, /選取片段/);
+  assert.match(page, /id="frag"/);
+  // applied before first paint, like the theme, including the old named sizes
+  assert.match(page, /var f=localStorage\.getItem\('octa_fs'\);var map=\{s:\.93,m:1,l:1\.12,xl:2\}/);
   assert.match(page, /html\[data-fs="s"\]\{--fz:\.93\}html\[data-fs="l"\]\{--fz:1\.12\}html\[data-fs="xl"\]\{--fz:2\}/);
   assert.match(page, /html\[data-fs\] body\{font-size:calc\(15px \* var\(--fz\)\)\}/);
   assert.match(page, /html\[data-fs\] \.bub\{font-size:calc\(15px \* var\(--fz\)\)\}/);
-  assert.match(page, /data-set-fs="\$\{k\}"/);
 });
 
 test('settings on a big screen is one wide two-pane page; the phone keeps the stacked list', () => {
@@ -67,9 +70,12 @@ test('attachments show as thumbnails or file cards before and after sending', ()
 
 test('the desktop version matches the changelog, and the appearance release is still recorded', () => {
   assert.equal(pkg.version, log[0].v);
-  assert.equal(log[0].v, '3.0.21');
-  assert.ok(log[0].notes.some(n => n.includes('側邊視窗')));
-  assert.ok(log[0].notes.some(n => n.includes('分頁可以關掉')));
+  assert.equal(log[0].v, '3.0.22');
+  assert.ok(log[0].notes.some(n => n.includes('Chrome')));
+  assert.ok(log[0].notes.some(n => n.includes('選一段')));
+  const side = log.find(x => x.v === '3.0.21');
+  assert.ok(side.notes.some(n => n.includes('側邊視窗')));
+  assert.ok(side.notes.some(n => n.includes('分頁可以關掉')));
   const quota = log.find(x => x.v === '3.0.20');
   assert.ok(quota.notes.some(n => n.includes('流量不夠')));
   const bar = log.find(x => x.v === '3.0.19');
