@@ -949,7 +949,7 @@ function publicCodeTask(row) {
 export async function onRequest(ctx) {
   const { request: req, env, params } = ctx;
   const path = (params.path || []).join('/');
-  if (!ctx.env.isLocal) await ensureSchema(ctx.env.DB);
+  await ensureSchema(ctx.env.DB);
   const res = await route(ctx);
   if (req.method !== 'GET' && res.status < 300 && res._u && !NO_BUMP.test(path)) { try { await bump(env.DB, res._u); } catch { } }
   return res;

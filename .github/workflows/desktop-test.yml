@@ -32,7 +32,7 @@ jobs:
           const fs = require('fs');
           const p = fs.readFileSync('package.json', 'utf8');
           const from = '"version": "3.0.33"';
-          const to = '"version": "3.0.33-test.1"';
+          const to = '"version": "3.0.33-test.2"';
           if (!p.includes(from)) throw new Error('version line missing');
           fs.writeFileSync('package.json', p.replace(from, to));
           EOF
@@ -46,15 +46,15 @@ jobs:
           test -f dist/OCTA-Setup.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: OCTA-Setup-3.0.33-test.1
+          name: OCTA-Setup-3.0.33-test.2
           path: desktop/dist/OCTA-Setup.exe
           if-no-files-found: error
       - name: Publish prerelease without latest.yml
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: test-3.0.33-test.1
+          tag_name: test-3.0.33-test.2
           target_commitish: ${{ github.sha }}
-          name: OCTA 3.0.33-test.1（測試，不會自動更新）
+          name: OCTA 3.0.33-test.2（測試，不會自動更新）
           prerelease: true
           make_latest: false
           draft: false

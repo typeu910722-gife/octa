@@ -183,6 +183,31 @@ test('queued coding tasks cancel before the host starts, and migrations add the 
   assert.equal(got.data.task.status, 'cancelled');
 });
 
+test('an old offline database keeps its messages and gains the reply column', async () => {
+  const db = openD1();
+  db.raw.exec("INSERT INTO users (id,name,pw,created) VALUES ('local','本機','-',1)");
+  db.raw.exec("INSERT INTO bots (id,user_id,name,task,created) VALUES ('bot1','local','測','看房',1)");
+  db.raw.exec('ALTER TABLE messages DROP COLUMN reply');
+  db.raw.prepare("INSERT INTO messages (user_id,conv,by_,text,ts) VALUES ('local','bot1','me','舊訊息',1)").run();
+  assert.throws(() => db.raw.prepare('SELECT reply FROM messages').get());
+  const sent = await onRequest({
+    request: new Request('http://127.0.0.1/api/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', host: '127.0.0.1' },
+      body: JSON.stringify({ conv: 'bot1', text: '新訊息' })
+    }),
+    env: { DB: db, ALLOW_SIGNUP: 'false', TZ_OFFSET_MIN: '480', isLocal: true },
+    params: { path: ['messages'] }
+  });
+  const data = await sent.json();
+  assert.equal(sent.status, 200, data.error || '');
+  const rows = db.raw.prepare("SELECT text, reply FROM messages WHERE user_id='local' ORDER BY id").all();
+  assert.deepEqual(rows.map(r => r.text), ['舊訊息', '新訊息']);
+  assert.equal(rows[0].reply, null);
+  const server = readFileSync(join(import.meta.dirname, '..', 'desktop', 'server.mjs'), 'utf8');
+  assert.match(server, /ALTER TABLE messages ADD COLUMN reply INTEGER/);
+});
+
 test('local mode state loads when there is no host computer row', async () => {
   const db = openD1();
   await db.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();

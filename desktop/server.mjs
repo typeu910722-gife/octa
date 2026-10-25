@@ -83,7 +83,12 @@ const MIGRATIONS = ["ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'c
   'CREATE TABLE IF NOT EXISTS code_tasks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, repo_id TEXT NOT NULL, title TEXT NOT NULL, prompt TEXT NOT NULL, criteria TEXT NOT NULL DEFAULT \'\', engine TEXT NOT NULL, model TEXT, fb TEXT, status TEXT NOT NULL DEFAULT \'queued\', phase TEXT NOT NULL DEFAULT \'queued\', role TEXT, workspace_id TEXT, branch TEXT, base_ref TEXT, head_ref TEXT, retries INTEGER NOT NULL DEFAULT 0, max_retries INTEGER NOT NULL DEFAULT 3, job_id INTEGER, summary TEXT, approval TEXT, cancel INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, updated INTEGER NOT NULL, finished INTEGER)',
   'CREATE INDEX IF NOT EXISTS code_task_user ON code_tasks(user_id, created)',
   'CREATE TABLE IF NOT EXISTS code_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, user_id TEXT NOT NULL, ts INTEGER NOT NULL, role TEXT, kind TEXT NOT NULL, text TEXT, data TEXT)',
-  'CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id)'];
+  'CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id)',
+  // quote-reply and the live stage: CREATE TABLE in schema.sql does not add columns to a database from an older install
+  'ALTER TABLE messages ADD COLUMN reply INTEGER',
+  'CREATE TABLE IF NOT EXISTS chunks (file_id TEXT NOT NULL, n INTEGER NOT NULL, data TEXT NOT NULL, ts INTEGER NOT NULL, PRIMARY KEY (file_id, n))',
+  'CREATE TABLE IF NOT EXISTS logins (k TEXT PRIMARY KEY, fails INTEGER NOT NULL, until INTEGER NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS live (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT, title TEXT, mime TEXT, data TEXT, ts INTEGER, handed INTEGER NOT NULL DEFAULT 0)'];
 
 // ---------- helpers ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
