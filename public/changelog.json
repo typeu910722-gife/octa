@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.27",
+  "date": "2026-10-25",
+  "notes": [
+   "已登入的網頁改由單獨的一輪去讀和操作，做完只把文字報告交回對話。公開網頁直接讀。登入、驗證碼、付款仍停下來等你"
+  ],
+  "notes_en": [
+   "A signed-in page is read and used by a separate round, which hands back a text report. Public pages are read directly. Sign-in, captcha, and payment still wait for you"
+  ]
+ },
+ {
   "v": "3.0.26",
   "date": "2026-10-25",
   "notes": [

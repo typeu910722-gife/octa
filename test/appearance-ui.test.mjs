@@ -79,8 +79,10 @@ test('attachments show as thumbnails or file cards before and after sending', ()
 
 test('the desktop version matches the changelog, and the appearance release is still recorded', () => {
   assert.equal(pkg.version, log[0].v);
-  assert.equal(log[0].v, '3.0.26');
-  assert.ok(log[0].notes.some(n => n.includes('回覆對話裡的某一則')));
+  assert.equal(log[0].v, '3.0.27');
+  assert.ok(log[0].notes.some(n => n.includes('單獨的一輪')));
+  const reply = log.find(x => x.v === '3.0.26');
+  assert.ok(reply.notes.some(n => n.includes('回覆對話裡的某一則')));
   const ratio = log.find(x => x.v === '3.0.25');
   assert.ok(ratio.notes.some(n => n.includes('比例')));
   const sheet = log.find(x => x.v === '3.0.24');

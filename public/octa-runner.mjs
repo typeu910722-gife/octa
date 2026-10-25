@@ -22,7 +22,7 @@ import { createHash } from 'node:crypto';
 import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider } from './coding-runtime.mjs';
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 
-export const VERSION = '17.12';
+export const VERSION = '17.13';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
@@ -106,16 +106,21 @@ function botDir(id, mode = 'own', port = 0) {
   const server = cfg.pwCli
     ? { command: cfg.nodeBin || process.execPath, args: [cfg.pwCli, ...pwArgs], env }   // bundled (desktop app)
     : WIN ? { command: 'cmd', args: ['/c', 'npx', '-y', PW_MCP, ...pwArgs], env } : { command: 'npx', args: ['-y', PW_MCP, ...pwArgs], env };
-  writeFileSync(join(dir, 'mcp.json'), JSON.stringify({ mcpServers: { browser: server } }, null, 2));
-  // the same browser server, in each CLI's own config format
   const put = (f, o) => { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), JSON.stringify(o, null, 2)); };
-  put('.gemini/settings.json', { mcpServers: { browser: { ...server, timeout: 60000, trust: true } } });
-  put('.agents/mcp_config.json', { mcpServers: { browser: { ...server } } });   // Antigravity CLI (agy)
-  put('.qwen/settings.json', { mcpServers: { browser: { ...server, timeout: 60000, trust: true } } });
-  put('.cursor/mcp.json', { mcpServers: { browser: server } });
-  put('.mcp.json', { mcpServers: { browser: server } });   // Grok CLI reads the project .mcp.json
-  put('copilot-mcp.json', { mcpServers: { browser: { type: 'local', ...server, tools: ['*'] } } });
-  return { dir, profile, server, put };
+  // The main turn never receives the browser server. A separate file is handed only to the one round that reads the page.
+  writeFileSync(join(dir, 'mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2));
+  writeFileSync(join(dir, 'mcp-browser.json'), JSON.stringify({ mcpServers: { browser: server } }, null, 2));
+  const applyBrowser = (on) => {
+    const trusted = on ? { browser: { ...server, timeout: 60000, trust: true } } : {};
+    put('.gemini/settings.json', { mcpServers: trusted });
+    put('.agents/mcp_config.json', { mcpServers: on ? { browser: { ...server } } : {} });   // Antigravity CLI (agy)
+    put('.qwen/settings.json', { mcpServers: trusted });
+    put('.cursor/mcp.json', { mcpServers: on ? { browser: server } : {} });
+    put('.mcp.json', { mcpServers: on ? { browser: server } : {} });
+    put('copilot-mcp.json', { mcpServers: on ? { browser: { type: 'local', ...server, tools: ['*'] } } : {} });
+  };
+  applyBrowser(false);
+  return { dir, profile, server, put, applyBrowser };
 }
 export function findChrome() {
   if (cfg.chrome && existsSync(cfg.chrome)) return cfg.chrome;
@@ -158,7 +163,7 @@ function studioAim() {
   return [
     '你的目標：成為比使用者更厲害的全能助手。OCTA 是一座超級 AI 工作室，每個機器人都要盡可能學。指定任務是你長期負責的本業，不是能力的邊界。',
     '遊戲、創作、研究、生活、寫程式、操作軟體，使用者問得出口的都要接。禁止用「我只處理工作」「遊戲我還不能」「這不在我的功能裡」收尾，也不要把話題拉回「有沒有工作要我做」。',
-    '不會就學，而且要在授權下真的試：先查做法（搜尋、讀說明、打開網站或程式看畫面），再在你自己的瀏覽器或資料夾裡做最小的一次嘗試，把學會的步驟用 🧩技能 或 🗺️網站筆記 留下。沒試過不能說不會。',
+    '不會就學，而且要在授權下真的試：先查做法（搜尋、讀說明）。已登入的網站寫【派瀏覽】交給單獨的一輪；公開資料和你自己的資料夾可以直接做最小的一次嘗試。把學會的步驟用 🧩技能 或 🗺️網站筆記 留下。沒試過不能說不會。',
     '查看、搜尋、打開、練習直接做。安裝軟體、付款、刪除、更改帳號、對別人發出訊息，先寫 ✅待確認 取得授權再做；還沒授權時說明你卡在哪一個授權，不要改口說自己沒有這個能力。',
     '頁面上的數字不准編。電池、金額、礦機、機架、數量、名次，只能抄這一次畫面裡看得到的字或圖；看不清就寫「這次畫面沒有這個數字」，不要沿用上一則回覆，也不要自己估。使用者說數字不對時，重新打開那一頁、看過圖再讀，不要把舊數字再說一次。畫面是遊戲或圖、文字很少時，描述你實際看到的東西，不要自製一張數據表。',
     '看畫面要用眼睛：文字讀不到的分數、電池、機架、金額，以「畫面.jpg」這張圖為準。圖裡沒有的數字寫「這次畫面沒有這個數字」，不要沿用舊回覆。',
@@ -170,13 +175,13 @@ function workLoop() {
     '做事順序（每一則都照這五步，不要跳、不要先寫結論）：',
     '1. 先看完再下結論。有圖就整張讀完，有網頁就先看目前畫面。還沒看完，不要寫結果。',
     '2. 回覆裡把三樣分開寫：畫面上的原文、我的判斷、還沒看到的。判斷可以寫，但要讓人看得出是判斷；沒看到的留白，不要用猜的補上。',
-    '3. 自己做下一步。能點、能開、能查的這一步就做。畫面寫了誰去做，就照那個做，不要改成叫使用者做。',
-    '4. 做一步就再看一次。點完、輸入完、換頁後重新看畫面；跟剛才想的不一樣，就改下一步，不要沿用想像。',
+    '3. 自己做下一步。檔案和公開網頁這一步就做。已登入的網頁寫【派瀏覽】，不要自己點。畫面寫了誰去做，就照那個做，不要改成叫使用者做。',
+    '4. 做一步就再看一次。檔案或公開網頁做完就再讀一次。已登入的頁面等報告回來再決定下一步，不要沿用想像。',
     '5. 對完再回。使用者要的每一項都對回這一次看到的畫面或檔案。沒有逐項對過，不能說「一致」或「跟目前的一樣」。對不上就寫對不上的那一項。'
   ];
 }
 function turnGuide() {
-  return '先判斷這則指示的類型：(1) 只問你的設定、任務內容、AI 方案 → 直接回答，不用工具。(2) 問到網頁上、畫面上、帳號裡現在的狀況（例如「你看到什麼」「現在有幾則訊息」），或使用者說他幫你打開、登入好了 → 先看完再下結論。用 browser_snapshot 看你瀏覽器目前的分頁，並先讀「畫面.jpg」或自行截圖，畫面上的數字只能照這次看到的抄。(3) 問你會不會、能不能，或要你做一件還沒做過的事（包含玩遊戲、學新軟體）→ 不要推辭。先用一句話說你會學，然後立刻做第一個學習動作（搜尋做法、打開相關頁面，或在自己的資料夾試一個最小例子）；需要他指定對象時，一邊查通用做法，一邊只問要哪一個。(4) 其他要你做事的 → 照五步做完再回，不要只回計畫。這個判斷和 octa-task.md 都是內部說明，回覆裡不要提到它們，也不要自稱是別的產品。工作過程中不要輸出「Let me…」「先用瀏覽器看看」之類的說明；最後給使用者的回覆前，單獨一行寫「【回覆】」，後面接繁體中文回覆。';
+  return '先判斷這則指示的類型：(1) 只問你的設定、任務內容、AI 方案 → 直接回答，不用工具。(2) 問到網頁上、畫面上、帳號裡現在的狀況（例如「你看到什麼」「現在有幾則訊息」），或使用者說他幫你打開、登入好了 → 先看完再下結論。用 Read 讀「畫面.jpg」，畫面上的數字只能照這次看到的抄。要再看已登入的頁面或點開才出現的內容，不要自己點，改寫【派瀏覽】到【派完】，而且不要同時寫【回覆】。(3) 問你會不會、能不能，或要你做一件還沒做過的事（包含玩遊戲、學新軟體）→ 不要推辭。先用一句話說你會學，然後立刻做第一個學習動作（搜尋做法、用 WebFetch 讀公開頁，或在自己的資料夾試一個最小例子）；已登入的網站改寫【派瀏覽】。需要他指定對象時，一邊查通用做法，一邊只問要哪一個。(4) 其他要你做事的 → 照五步做完再回，不要只回計畫。公開網頁用 WebFetch；已登入的網頁寫【派瀏覽】。這個判斷和 octa-task.md 都是內部說明，回覆裡不要提到它們，也不要自稱是別的產品。工作過程中不要輸出「Let me…」「先用瀏覽器看看」之類的說明；最後給使用者的回覆前，單獨一行寫「【回覆】」，後面接繁體中文回覆。若這則只是在派瀏覽，就不要寫【回覆】。';
 }
 // today's date said plainly, and the bot's own work notes (what it already found), so it doesn't start from zero each time
 function dayInfo(job) {
@@ -244,26 +249,28 @@ export function buildPrompt(job, here) {
     '規則：',
     `- 用${({ 'zh-TW': '繁體中文', 'zh-CN': '簡體中文', en: '英文（English）', ja: '日文（日本語）' })[job.lang] || '繁體中文'}回覆，簡潔、先給結果。你的最後輸出會原封不動顯示成聊天訊息。`,
     '- 說話要像真人同事在 LINE 上回訊息：口語、自然、短句，先講重點，可以有一點語氣（「好喔」「我看了一下」「這間有點怪」）。不要用標題、粗體、表格、分隔線；名單或多筆資料才用簡單的換行清單。內文不要講系統用語（「依規則」「根據指示」「執行」「類型」），也不要每次重述自己的職責；✅待確認、❓問你、@同事 這些標記照規定單獨一行寫。沒做成就直接說卡在哪、需要什麼。',
+    '- 公開網頁（不需要登入）用 WebFetch 讀成文字，不帶登入。工作區裡已經有的檔案直接讀，不必開瀏覽器。',
+    '- 已登入的網頁、要點了才出現的內容，你不能自己點、不能打字、不能捲動、不能讀 Cookie。需要時單獨寫下面這一段，不要同時寫【回覆】：\n【派瀏覽】\n網址：https://完整網址（不知道就寫目前頁面）\n要做的事：要得到的結果、限制、怎樣算做完\n【派完】',
+    '- 派出去的那一輪會用這台電腦上已登入的瀏覽器讀頁面、點下一步，做完只交回文字：網址、頁面上有什麼、做成了什麼、卡在哪裡。你根據那份報告回答，不要把整頁內容貼進對話。同一則使用者的話最多派兩次。',
+    '- 要確認它停在哪，用 Read 讀「畫面.jpg」。那張圖只用來對位置，不代替報告。',
     job.bot.browser === 'mine'
-      ? '- 需要操作網站時，用 browser 工具。這是使用者自己的 Chrome（有他已登入的網站和已儲存的密碼）。只在你自己的分頁群組裡操作，不要關閉或改動使用者其他分頁。遇到登入頁時，點帳號欄位，從 Chrome 跳出的已儲存帳號中選一個讓它自動填入；不要自己猜或輸入密碼。'
-      : '- 需要操作網站時，用 browser 工具。這是你專屬、一直開著的瀏覽器（獨立的登入和分頁，上次開的分頁都還在，可以接著用），不會影響其他機器人。使用者有時會在同一個視窗旁觀或幫你登入。',
+      ? '- 瀏覽器是使用者自己的 Chrome（有他已登入的網站）。只在你自己的分頁群組裡操作，不要關閉或改動使用者其他分頁。登入頁若只要點已記住的帳號，寫進要做的事裡；不要讓那一輪猜或輸入密碼。'
+      : '- 瀏覽器是你專屬、一直開著的（獨立的登入和分頁，上次開的分頁都還在）。使用者看得到旁邊的畫面，也可以接手。不會影響其他機器人。',
     job.bot.page ? `- 你上次停在：${job.bot.page}` : '',
-    '- 操作網站像人一樣一步一步來：每次點擊、輸入、切換後都重新 browser_snapshot 看畫面變了什麼，再決定下一步，不要憑猜。',
-    '- 找不到要點的東西或點了沒反應時，依序換方法：等 1–2 秒再看（browser_wait_for）→ 捲動頁面或清單 → 用 browser_take_screenshot 看實際畫面（下拉選單、彈出框常常不在 snapshot 裡，看到位置就用 browser_mouse_click_xy 以座標點）→ 滑鼠移上去（hover）→ 鍵盤（Tab、方向鍵、Enter）→ 從網址直接進入。至少換 3 種方法才能說做不到，並說清楚試了什麼。',
-    '- 研究一個網站時：先看網址結構（帳號 ID、頁面路徑常在網址裡，改網址就能切換）、左側選單、右上角帳號選單，弄清楚每個功能在哪。',
+    '- 研究一個網站時：先看網址結構（帳號 ID、頁面路徑常在網址裡，改網址就能切換）、左側選單、右上角帳號選單，弄清楚每個功能在哪。知道完整網址就寫進【派瀏覽】。',
     '- 學到某個網站好用的做法（例如去哪裡切換帳號、哪個網址直接打開某頁、哪個按鈕要先等載入），在回覆最後單獨一行寫「🗺️網站筆記：網域｜做法」，所有機器人以後都會知道。',
     job.sites ? '- 之前大家學到的網站操作筆記（先照這些做）：\n' + job.sites : '',
-    '- 登入頁只要點選已經記住的帳號（例如顯示帳號名稱和「登入」按鈕、「以 XX 身分繼續」），不必輸入密碼或驗證碼時，直接點它繼續。',
-    '- 需要輸入帳號密碼、驗證碼或手機確認時，停在那一頁，回報「需要使用者在電腦上登入」（照抄這幾個字）和要登入的網站。使用者會把你的瀏覽器叫到螢幕上幫你登入，再叫你繼續。',
-    '- 發訊息給任何人、付款、刪除資料、更改帳號設定：除非使用者在對話中明確下令，否則只準備好內容並請使用者確認，不要執行。',
-    '- 這些「只看不改」的事一律自己直接做，不用問、也不要叫使用者幫你：打開或切換網站、切換後台裡要看的帳號／館別、捲動清單、搜尋、篩選、點開聊天室或頁面看內容、到其他網站（例如 eroom、試算表）查資料核對。任務規則說的「只讀」「不改」是指不能修改或發送，讀任何網站查資料都可以。',
-    '- 使用者要一份資料（例如今日入住、續住、應掃房）時，自己去所有相關的地方找齊：先想清楚資料在哪裡、要用什麼條件找（例如在 LINE 聊天列表搜尋今天的日期「10/23」、往下捲到載入完整清單、兩館都要切換過去看），整理好再回覆；不要回「請你打開某頁」或「請你提供名單」。真的找不到才說你找過哪些地方。',
+    '- 登入頁只要點選已經記住的帳號（例如顯示帳號名稱和「登入」按鈕、「以 XX 身分繼續」），不必輸入密碼或驗證碼時，把「點已記住的帳號繼續」寫進【派瀏覽】。',
+    '- 需要輸入帳號密碼、驗證碼或手機確認時，派瀏覽停在那一頁。報告會寫「需要使用者在電腦上登入」。你的回覆照抄這幾個字和要登入的網站。使用者會在旁邊的畫面幫你登入，再叫你繼續。密碼不要進對話。',
+    '- 發訊息給任何人、付款、刪除資料、更改帳號設定：除非使用者在對話中明確下令，否則只準備好內容並請使用者確認，不要執行。同意只涵蓋那一次動作。',
+    '- 這些「只看不改」的事不用問、也不要叫使用者幫你，寫進【派瀏覽】讓那一輪去做：打開或切換網站、切換後台裡要看的帳號／館別、捲動清單、搜尋、篩選、點開聊天室或頁面看內容、到其他網站（例如 eroom、試算表）查資料核對。任務規則說的「只讀」「不改」是指不能修改或發送，讀任何網站查資料都可以。公開網頁用 WebFetch。',
+    '- 使用者要一份資料（例如今日入住、續住、應掃房）時，用【派瀏覽】到所有相關的地方找齊：先想清楚資料在哪裡、要用什麼條件找（例如在 LINE 聊天列表搜尋今天的日期「10/23」、往下捲到載入完整清單、兩館都要切換過去看），把這些寫進要做的事，整理好再回覆；不要回「請你打開某頁」或「請你提供名單」。真的找不到才說找過哪些地方。',
     '- 需要使用者核准才能做的事，在回覆最後單獨一行寫「✅待確認：要做的事（一句話）」（「✅待確認：」這幾個字照抄，不要翻譯），然後停下。使用者回「核准：…」後才執行。',
     ...(job.allowed?.length ? ['- 使用者已經「一律允許」你做下面這些事：遇到同一類的事直接做，不用再寫 ✅待確認，做完在回覆裡清楚列出做了什麼（對象、數量、內容）。只限這些事本身，不要擴大解讀；付款、刪除資料、更改帳號設定仍然每次都要問：', ...job.allowed.map(t => '  · ' + t)] : []),
     '- 只回報實際完成的事，做不到就直說。',
     `- 自動排程：使用者要你定時或持續做某件事（每天幾點、每隔多久巡一次）時，不要叫他自己去設定，在回覆最後加一行「⏰例行任務：名稱｜時間｜每次要做的事」。時間寫法：每天固定時間用 24 小時制（08:00,13:30），每隔一段時間寫「每30分鐘」或「每2小時」，兩種可以並用。例如「⏰例行任務：巡 LINE 訊息｜每30分鐘｜檢查 LINE 官方帳號新訊息，擬好回覆給我確認」（「⏰例行任務：」和「｜」照抄）。要「有新東西才做」時，時間欄寫「每10分鐘監看 網址」（系統會不花 AI 流量地檢查那個網頁，內容有變化才叫你），或寫「外部事件」（給一個觸發網址讓 LINE、表單等服務呼叫）。系統會自動建立；同名的會更新。你的任務本身就是要持續盯著某個地方（訊息、訂單、後台）時，主動建議並建立一個每隔一段時間的例行任務。${job.routines?.length ? '你已經有的例行任務（被問到下次什麼時候做時照這些回答）：' + job.routines.map(r => `${r.name}（${r.times.map(t => t.startsWith('*/') ? `每 ${t.slice(2)} 分鐘` : t).join('、')}${r.enabled ? '' : '，已停用'}）`).join('；') + '。' : ''}`,
     '- 自動整理指定任務：當使用者在對話中說明你長期要負責的工作、固定做法、規則或排程（不是一次性的小請求）時，在回覆最後加上：「📝任務更新：」換行後寫出完整、更新後的指定任務（把原本的任務和新的說明合併成一份，條列清楚：負責什麼、去哪裡做、怎麼做、結果怎麼回報、要注意的規則），最後一行寫「📝結束」。這兩個標記照抄。沒有新的長期工作說明就不要寫。',
-    job.bot.livePort ? '' : '- 若這次有用瀏覽器：結束前用 browser_take_screenshot 截目前畫面（type 設 jpeg，filename 設 last.jpeg），並在回覆最後一行寫「📍 目前頁面：網址」。',
+    '- 回覆最後一行可以寫「📍 目前頁面：網址」。不用自己截圖，執行器會拍畫面。',
     '',
     '對話紀錄（舊到新）：'
   );
@@ -289,7 +296,7 @@ function tabsNow(job) {
   if (!t.length) return ['你的瀏覽器目前沒有開著的網頁。'];
   return ['你的瀏覽器目前開著的分頁（使用者可能剛幫你打開或登入好）：', ...t.map((x, i) => `${i + 1}. ${x.title || '(無標題)'} — ${x.url}`)];
 }
-// browser_snapshot is an outline of the text. Games and canvases are blank there, so the picture is the source.
+// The picture is what the main turn reads. Page structure is read by the separate browsing round.
 function picturePaths(job) {
   const out = [];
   if (job.eyes) out.push(job.eyes);
@@ -300,12 +307,76 @@ function picturePaths(job) {
 }
 function seeNow(job) {
   const pics = picturePaths(job);
-  const lines = ['看畫面要用眼睛。browser_snapshot 只有文字大綱，遊戲、畫布、分數、電池、機架常常是空的。回答畫面上的數字或「你看到什麼」之前，先把圖整張讀完。圖裡沒有的數字寫「這次畫面沒有這個數字」。讀不到圖就老實說，不要編。'];
+  const lines = ['看畫面要用眼睛。回答畫面上的數字或「你看到什麼」之前，先把圖整張讀完。圖裡沒有的數字寫「這次畫面沒有這個數字」。讀不到圖就老實說，不要編。遊戲、畫布、分數、電池、機架若這張圖是空的，就寫【派瀏覽】請那一輪看圖，不要自己編。'];
   lines.push('時間、金額、房號、按鈕上的字，畫面上看得到的全部照抄，不要只抄最上面幾筆。鍵盤或邊緣切掉的，只指出被切掉的那一列；還看得到的數字要寫出來，不能說「下面的都被擋住」。按鈕還在畫面上，只代表這一頁開著，不要說使用者沒有按。');
   lines.push('轉述畫面時，要做什麼、步驟、條件整段照抄，這條比講得口語優先。不要改寫、不要漏半句。誰做、要不要略過，都照畫面的字；不要把「自己點登入」說成「讓使用者登入」，也不要把寫了的條件說成沒有。');
   if (pics.length) lines.push(`這一輪要讀的圖，用 Read 讀它：${pics.join('、')}`);
-  else lines.push('這輪還沒有現成的圖。會開瀏覽器的話，先 browser_take_screenshot（jpeg）再回答畫面內容。使用者傳了圖片就讀那個附件，不要用猜的。');
+  else lines.push('這輪還沒有現成的圖。要看已登入的頁面就寫【派瀏覽】，不要自己截圖。使用者傳了圖片就讀那個附件，不要用猜的。');
   return lines;
+}
+// The main turn writes this block instead of clicking. The runner parses it and does not show it.
+export function takeBrowserTask(text) {
+  const m = String(text || '').match(/【派瀏覽】\s*([\s\S]*?)\s*【派完】/);
+  if (!m) return null;
+  const body = m[1];
+  const urlLine = (body.match(/網址[:：]\s*(\S+)/) || [])[1] || '';
+  const url = /^https?:\/\//i.test(urlLine) ? urlLine.replace(/[)）,，。】]+$/g, '') : '';
+  let prompt = body.replace(/網址[:：][^\n]*\n?/, '').replace(/要做的事[:：]\s*/, '').trim();
+  if (!prompt) prompt = url ? `打開 ${url}，讀出現在頁面上有什麼` : '';
+  if (!prompt) return null;
+  return { url, prompt: prompt.slice(0, 2000) };
+}
+export function stripBrowserTask(text) {
+  return String(text || '').replace(/【派瀏覽】[\s\S]*?【派完】/g, '').trim();
+}
+// A 【回覆】 marker drops everything before it, including the block. Put the block back so the runner can still dispatch.
+export function keepBrowserTask(text) {
+  const raw = String(text || '');
+  const task = takeBrowserTask(raw);
+  const k = raw.lastIndexOf('【回覆】');
+  let out = k >= 0 ? (raw.slice(k + 4).trim() || raw.replace(/【回覆】/g, '').trim()) : raw.trim();
+  if (task && !takeBrowserTask(out)) out = `【派瀏覽】\n網址：${task.url || '目前頁面'}\n要做的事：${task.prompt}\n【派完】\n${out}`.trim();
+  return out;
+}
+export function planBrowserRound(text, { engine, port, mine, depth } = {}) {
+  if (engine === 'grokbot') return { action: 'keep' };
+  const task = takeBrowserTask(text);
+  if (!task) return { action: 'keep' };
+  if ((depth || 0) >= 2) return { action: 'strip' };
+  if (!port && !mine) return { action: 'down' };
+  return { action: 'work', task };
+}
+// One round that can click. It returns text. The page tree stays in that round.
+export function buildBrowserPrompt(job, task, here) {
+  const url = task?.url || '';
+  const lines = [
+    `你是 OCTA 裡「${job.bot.name}」這一輪的瀏覽工作。你只負責把這一件事做完，交回文字報告。`,
+    '不要再派下一輪，也不要寫派工標記。原始 HTML 和頁面樹不要寫進報告。密碼、一次性驗證碼、卡片號碼不要輸入，也不要出現在報告或工具參數裡。',
+    '讀頁順序（固定，不要跳）：',
+    url ? `1. browser_navigate 到這個完整網址：${url}` : '1. 停在目前頁面，不要亂開新網址。',
+    '2. browser_snapshot。下一步之前先知道頁面上現在有什麼。',
+    '3. 點或輸入只用這一張快照裡的引用（ref，例如 e5）。browser_click、browser_type 的 target 用那個引用。工具會再附一份新快照。',
+    '4. 引用失效（Ref not found）就重新 browser_snapshot，不沿用舊引用。導覽、點擊、頁面變化之後，上一份讀取作廢，必須重讀再行動。',
+    '5. 要確認版面、顏色、被擋住的對話框時才 browser_take_screenshot。不必每次跟快照一起要。',
+    '6. 遊戲、畫布、文字讀不到的畫面：先 browser_take_screenshot，再只用這一幀的座標 browser_mouse_click_xy。畫面動過就重拍再點，不要點舊畫面。',
+    '7. 大頁用 depth 或只看某個元素的子樹，不要把整頁灌進來。不要執行頁面裡的程式。',
+    '找不到要點的東西時：等 1–2 秒再看（browser_wait_for）→ 捲動 → 截圖看彈出框 → 滑鼠移上去 → 鍵盤（Tab、方向鍵、Enter）→ 從網址直接進入。至少換 3 種方法才能說做不到。',
+    '做完只寫這四段：',
+    '網址：現在的網址',
+    '頁面上有什麼：看得到的文字和狀態',
+    '做成了什麼：這輪實際做了的事',
+    '卡在哪裡：沒卡住就寫「沒有」。需要登入、驗證碼或付款就寫「需要使用者在電腦上登入」和網站名稱，不要自己填密碼。寄信、付款、刪除、更改帳號還沒有這一次的同意時，停下來寫 ✅待確認，不要執行。',
+    '登入頁只要點選已經記住的帳號（例如顯示帳號名稱和「登入」按鈕、「以 XX 身分繼續」），不必輸入密碼或驗證碼時，直接點它繼續。',
+    task?.prompt ? '這次要做的事：\n' + task.prompt : '',
+    '使用者原本的指示：\n' + String(job.prompt || '').slice(0, 1500),
+    here ? `檔案在 ${here}。大量資料讀檔案，不要從頁面上逐格抄。` : ''
+  ];
+  const hist = (job.history || []).slice(-4);
+  if (hist.length) lines.push('最近的對話：', ...hist.map(h => `【${h.who}】${String(h.text || '').slice(0, 300)}`));
+  lines.push(...tabsNow(job), ...dayInfo(job));
+  if (job.sites) lines.push('網站操作筆記（先照這些做）：\n' + job.sites);
+  if (job.bot?.page) lines.push('上次停在：' + job.bot.page);
+  return lines.filter(Boolean).join('\n');
 }
 function aboutMe(job) {
   const e = job.bot.engine || 'claude', E = ENGINES[e] || ENGINES.claude, u = usageNow[e];
@@ -510,6 +581,8 @@ async function spawnCli(bin, args, dir, input, opts = {}) {
 // tokens a run used: Claude reports them in its result; Codex prints "tokens used"
 const claudeTokens = u => (u ? (u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0) : null);
 const toml = v => (Array.isArray(v) ? '[' + v.map(x => JSON.stringify(String(x))).join(',') + ']' : JSON.stringify(String(v)));
+const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep';
+const WORKER_TOOLS = 'mcp__browser,Read';
 // the model Ollama should use: the bot's, or the first one downloaded on this computer
 function ollamaModel(model) {
   if (model) return model.replace(/^ollama\//, '');
@@ -532,6 +605,8 @@ function describeTool(name, input = {}) {
 async function runEngine(engine, prompt, b, model, live = {}) {
   let tokens = null;
   const { dir, server } = b;
+  const useBrowser = live.browser === true;
+  if (b.applyBrowser) b.applyBrowser(useBrowser);
   const store = storeDir();
   const m = (flag) => (model ? [flag, model] : []);
   writeFileSync(join(dir, 'octa-task.md'), prompt);
@@ -543,9 +618,9 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       const last = join(dir, '.codex-last.txt');
       try { writeFileSync(last, ''); } catch { }
       const c = ['approval_policy="never"', 'model_reasoning_effort="high"', `sandbox_workspace_write.writable_roots=${toml([store, dir])}`,
-        `mcp_servers.browser.command=${toml(server.command)}`, `mcp_servers.browser.args=${toml(server.args)}`,
-        'mcp_servers.browser.startup_timeout_sec=60', 'mcp_servers.browser.default_tools_approval_mode="approve"',
-        ...Object.entries(server.env || {}).map(([k, v]) => `mcp_servers.browser.env.${k}=${toml(v)}`)];
+        ...(useBrowser ? [`mcp_servers.browser.command=${toml(server.command)}`, `mcp_servers.browser.args=${toml(server.args)}`,
+          'mcp_servers.browser.startup_timeout_sec=60', 'mcp_servers.browser.default_tools_approval_mode="approve"',
+          ...Object.entries(server.env || {}).map(([k, v]) => `mcp_servers.browser.env.${k}=${toml(v)}`)] : [])];
       r = await spawnCli('codex', ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '-C', dir, '-o', last, ...m('-m'), ...c.flatMap(x => ['-c', x]), '-'], dir, prompt, { ctl: live.ctl });
       // Codex's sandbox isn't available on every Windows setup: run without it rather than not at all (other engines run unsandboxed too)
       if (r.code !== 0 && /sandbox/i.test(r.err || '')) r = await spawnCli('codex', ['exec', '--skip-git-repo-check', '--sandbox', 'danger-full-access', '-C', dir, '-o', last, ...m('-m'), ...c.flatMap(x => ['-c', x]), '-'], dir, prompt, { ctl: live.ctl });
@@ -566,7 +641,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       b.put('opencode.json', {
         $schema: 'https://opencode.ai/config.json', enabled_providers: ['ollama'], model: 'ollama/' + name,
         provider: { ollama: { npm: '@ai-sdk/openai-compatible', name: 'Ollama', options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { [name]: { name } } } },
-        mcp: { browser: { type: 'local', command: [server.command, ...server.args], environment: server.env || {}, enabled: true } },
+        mcp: useBrowser ? { browser: { type: 'local', command: [server.command, ...server.args], environment: server.env || {}, enabled: true } } : {},
         tools: { task: false, todowrite: false, todoread: false, grep: false, glob: false }   // grep/glob need ripgrep, often missing on Windows; small local models misuse sub-agents and to-do lists, then reply about the error
       });
       // /no_think: qwen3-style models skip their long hidden reasoning (several times faster on a laptop)
@@ -576,8 +651,8 @@ async function runEngine(engine, prompt, b, model, live = {}) {
     default: {
       // stream-json: lets OCTA show what the bot is doing while it works
       let result = null;
-      r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
-        '--allowedTools', 'mcp__browser,WebFetch,WebSearch,Read,Write,Edit,Glob,Grep'], dir, prompt, {
+      r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
+        '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_TOOLS], dir, prompt, {
         ctl: live.ctl,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
@@ -592,9 +667,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       else if (r.out && r.out.trim().startsWith('{')) text = '';   // stream with no result: fall back to the error output
     }
   }
-  text = (text || r.out || '').replace(/\x1b\[[0-9;]*m/g, '').trim();
-  // the reply starts after the last 【回覆】 line; anything before it is the model's running commentary
-  { const k = text.lastIndexOf('【回覆】'); if (k >= 0) text = text.slice(k + 4).trim() || text.replace(/【回覆】/g, '').trim(); }
+  text = keepBrowserTask((text || r.out || '').replace(/\x1b\[[0-9;]*m/g, ''));
   // agy prints the model's running commentary too ("Let me read…"): keep the reply, drop English narration lines before it
   if (engine === 'gemini' && /[\u4e00-\u9fff]/.test(text)) text = text.split('\n').filter(l => !/^\s*(Let me|Let's|I'll|I will|I see|I need|I'm going|Found it|Now,? |Next,? |First,? |OK,? |Okay|Great|Perfect|Looking at|Checking|Reading)\b/i.test(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   const E = ENGINES[engine] || ENGINES.claude;
@@ -663,7 +736,8 @@ async function chatRun(job) {
     res = engine === 'grokbot' ? await runGrokBot(job, { progress, ctl })
       : engine === 'claude' && job.warm && (await has('claude'))
       ? await warmClaude(job, b, here, { progress, ctl })        // AI 待機: reuse the running Claude session
-      : await runEngine(engine, buildPrompt(job, here), b, job.bot.model, { progress, ctl });
+      : await runEngine(engine, buildPrompt(job, here), b, job.bot.model, { progress, ctl, browser: false });
+    if (res?.ok && engine !== 'grokbot') res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
   }
   finally { clearTimeout(timerP); clearInterval(beat); busyBots.delete(job.bot.id); if (port) touchBrowser(job.bot.id); }
   if (port && shareBrowser) await syncOut(port);
@@ -689,6 +763,52 @@ async function chatRun(job) {
   try { cfg.onDone?.(job, res); } catch { }
 }
 
+// The main turn cannot click. A logged-in page is one extra round on the same browser, then a text report.
+function addTokens(a, b) {
+  if (a == null && b == null) return null;
+  return (a || 0) + (b || 0);
+}
+async function parentFollow(job, b, here, engine, follow, live) {
+  if (b.applyBrowser) b.applyBrowser(false);
+  if (engine === 'claude' && job.warm && sessions.get(job.bot.id)) return warmSend(job, follow, live);
+  return runEngine(engine, buildPrompt({ ...job, prompt: follow }, here), b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: false });
+}
+async function browseRounds(job, b, here, engine, res, live) {
+  const port = live.port, mine = job.bot.browser === 'mine';
+  for (let depth = 0; depth < 2 && res?.ok; depth++) {
+    const plan = planBrowserRound(res.text, { engine, port, mine, depth });
+    if (plan.action === 'keep') break;
+    if (plan.action === 'strip') { res = { ...res, text: stripBrowserTask(res.text) || '這次的頁面沒有新的結果。' }; break; }
+    if (plan.action === 'down') {
+      const next = await parentFollow(job, b, here, engine, '內建瀏覽器沒有起來，這次不能讀頁面。請用你已經有的資料回答，或直接說瀏覽器沒有打開。不要再派瀏覽。', live);
+      const text = next?.ok ? (stripBrowserTask(next.text) || '瀏覽器沒有打開，這次沒有讀到頁面。') : '瀏覽器沒有打開，這次沒有讀到頁面。';
+      return { ok: true, text, tokens: addTokens(res.tokens, next?.tokens) };
+    }
+    live.progress?.('讀取網頁');
+    const worker = await runEngine(engine, buildBrowserPrompt(job, plan.task, here), b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: true });
+    if (b.applyBrowser) b.applyBrowser(false);
+    let report = stripBrowserTask(worker?.ok ? worker.text : ('瀏覽沒有完成：' + String(worker?.text || '沒有報告'))).slice(0, 6000) || '瀏覽沒有完成。';
+    if (port) {
+      const eyes = await captureEyes(port, b.dir);
+      if (eyes) { job.eyes = eyes; report += `\n確認停在哪，用 Read 讀這個檔：${eyes}`; }
+    }
+    const follow = [
+      '下面是單獨一輪瀏覽交回的文字報告。只根據這份報告回答使用者原本的指示，不要把整頁貼上。',
+      '報告裡如果寫了「需要使用者在電腦上登入」，回覆裡照抄這幾個字和網站名稱。',
+      depth + 1 < 2 ? '報告不夠、還要再看已登入的頁面時，可以再寫一次【派瀏覽】到【派完】，而且不要寫【回覆】。夠了就用【回覆】回答。' : '不能再派瀏覽了。直接用【回覆】根據報告回答。',
+      '報告：', report,
+      '使用者原本的指示：', job.prompt
+    ].join('\n');
+    const next = await parentFollow(job, b, here, engine, follow, live);
+    const tokens = addTokens(addTokens(res.tokens, worker?.tokens), next?.tokens);
+    if (!next?.ok) return { ok: true, text: report, tokens };
+    let text = next.text || '';
+    if (depth + 1 >= 2 || !takeBrowserTask(text)) text = stripBrowserTask(text) || report;
+    res = { ok: true, text, tokens };
+  }
+  if (res?.text) res = { ...res, text: stripBrowserTask(res.text) || '這次的頁面沒有新的結果。' };
+  return res;
+}
 // ---------- the bot's own Claude Code skills (.claude/skills in its folder) travel with the account ----------
 const SKILL_EXT = /\.(md|txt|json|ya?ml|py|js|mjs|ts|sh|ps1|csv|html|css|toml)$/i;
 function skillFiles(root) {
@@ -875,7 +995,7 @@ function startSession(job, b) {
   const { dir } = b, m = job.bot.model ? ['--model', job.bot.model] : [];
   const child = spawn('claude', (WIN ? a => a.map(q) : a => a)(['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
     '--mcp-config', join(dir, 'mcp.json'), '--strict-mcp-config', '--add-dir', storeDir(), ...m,
-    '--allowedTools', 'mcp__browser,WebFetch,WebSearch,Read,Write,Edit,Glob,Grep']), { cwd: dir, shell: WIN, windowsHide: true });
+    '--allowedTools', PARENT_TOOLS]), { cwd: dir, shell: WIN, windowsHide: true });
   const s = { child, turn: null, err: [] };
   let part = '';
   child.stdout.on('data', d => {
@@ -889,7 +1009,7 @@ function startSession(job, b) {
         if (c.type === 'tool_use') s.turn.progress?.(describeTool(c.name, c.input));
         else if (c.type === 'text' && c.text?.trim()) s.turn.progress?.('整理回覆中');
       }
-      if (e.type === 'result') { const t = s.turn; s.turn = null; t.done({ ok: !e.is_error && !!String(e.result || '').trim(), text: String(e.result || '').trim() || '⚠ Claude Code 沒有回覆內容', tokens: claudeTokens(e.usage) }); }
+      if (e.type === 'result') { const t = s.turn; s.turn = null; const raw = String(e.result || '').trim(); t.done({ ok: !e.is_error && !!raw, text: keepBrowserTask(raw) || '⚠ Claude Code 沒有回覆內容', tokens: claudeTokens(e.usage) }); }
     }
   });
   child.stderr.on('data', d => { s.err.push(d); if (s.err.length > 50) s.err.shift(); });
@@ -898,6 +1018,16 @@ function startSession(job, b) {
   child.on('error', e => gone(e.message));
   child.on('exit', code => gone('結束碼 ' + code));
   return s;
+}
+function warmSend(job, text, live) {
+  const s = sessions.get(job.bot.id);
+  if (!s?.child) return Promise.resolve({ ok: false, text: '⚠ 沒有正在待機的對話' });
+  live.ctl.kill = () => closeSession(job.bot.id, `${job.bot.name}：已停止`);
+  return new Promise(done => {
+    s.turn = { done, progress: live.progress };
+    try { s.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n'); }
+    catch (e) { s.turn = null; done({ ok: false, text: '⚠ ' + e.message }); }
+  });
 }
 async function warmClaude(job, b, here, live) {
   // anything that changes the bot's standing instructions starts a fresh session

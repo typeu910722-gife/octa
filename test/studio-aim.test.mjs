@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { buildPrompt } from '../public/octa-runner.mjs';
+import { buildBrowserPrompt, buildPrompt, keepBrowserTask, planBrowserRound, takeBrowserTask } from '../public/octa-runner.mjs';
 
 function prompt(extra = {}) {
   return buildPrompt({
@@ -88,4 +89,56 @@ test('a saved screenshot is the picture the bot must read', () => {
   assert.match(text, /\/tmp\/octa-studio-aim\/畫面\.jpg/);
   assert.match(text, /用 Read 讀它/);
   assert.match(text, /讀不到圖就老實說/);
+});
+
+test('the main turn dispatches a logged-in page and does not click it', () => {
+  const text = prompt({ prompt: '現在有幾則訊息' });
+  assert.match(text, /【派瀏覽】/);
+  assert.match(text, /【派完】/);
+  assert.match(text, /WebFetch/);
+  assert.match(text, /公開網頁/);
+  assert.match(text, /需要使用者在電腦上登入/);
+  assert.match(text, /不能自己點/);
+  assert.equal(text.includes('browser_snapshot'), false);
+  assert.equal(text.includes('browser_click'), false);
+  assert.equal(text.includes('browser_mouse_click_xy'), false);
+  assert.equal(text.includes('你是 Grok Bot'), false);
+});
+
+test('a browsing round reads by snapshot ref and reports in text', () => {
+  const task = takeBrowserTask('說明\n【派瀏覽】\n網址：https://example.com/a\n要做的事：讀出今天的訂單\n【派完】\n尾巴');
+  assert.equal(task.url, 'https://example.com/a');
+  assert.match(task.prompt, /讀出今天的訂單/);
+  assert.equal(takeBrowserTask('沒有派工'), null);
+  assert.equal(takeBrowserTask('【派瀏覽】\n網址：目前頁面\n要做的事：看現在這頁\n【派完】').url, '');
+  const kept = keepBrowserTask('先看\n【派瀏覽】\n網址：https://example.com/b\n要做的事：看訂單\n【派完】\n【回覆】\n好了');
+  assert.match(kept, /【派瀏覽】/);
+  assert.match(kept, /好了/);
+  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 9333, depth: 0 }).action, 'work');
+  assert.equal(planBrowserRound('直接回答', { engine: 'claude', port: 9333 }).action, 'keep');
+  assert.equal(planBrowserRound(kept, { engine: 'grokbot', port: 9333 }).action, 'keep');
+  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 0 }).action, 'down');
+  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 0, mine: true }).action, 'work');
+  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 9333, depth: 2 }).action, 'strip');
+  const worker = buildBrowserPrompt({
+    bot: { id: 'b1', name: '測', page: 'https://example.com/old' },
+    prompt: '讀出今天的訂單',
+    history: [{ who: '使用者', text: '讀出今天的訂單' }],
+    sites: 'example.com｜左側是訂單'
+  }, task, '/tmp/octa-studio-aim');
+  assert.match(worker, /browser_navigate 到這個完整網址：https:\/\/example.com\/a/);
+  assert.match(worker, /browser_snapshot/);
+  assert.match(worker, /不沿用舊引用/);
+  assert.match(worker, /Ref not found/);
+  assert.match(worker, /需要使用者在電腦上登入/);
+  assert.match(worker, /browser_mouse_click_xy/);
+  assert.match(worker, /頁面上有什麼/);
+  assert.match(worker, /做成了什麼/);
+  assert.match(worker, /卡在哪裡/);
+  assert.equal(worker.includes('【派瀏覽】'), false);
+  const src = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
+  assert.match(src, /const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep'/);
+  assert.match(src, /const WORKER_TOOLS = 'mcp__browser,Read'/);
+  assert.match(src, /--allowedTools', PARENT_TOOLS/);
+  assert.match(src, /useBrowser \? WORKER_TOOLS : PARENT_TOOLS/);
 });
