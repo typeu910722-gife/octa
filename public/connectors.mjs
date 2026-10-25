@@ -64,6 +64,20 @@ export function connectorLines(list) {
   return lines;
 }
 
+// Mail, calendar, and documents go to a connected tool. The browser is the fallback.
+export function toolForBrowse(task, connectors) {
+  const text = `${task?.prompt || ''} ${task?.url || ''}`;
+  const kind = /信|郵件|gmail|寄信|寄出|inbox/i.test(text) ? 'mail'
+    : /行事曆|日曆|calendar/i.test(text) ? 'cal'
+    : /文件|試算表|雲端硬碟|\bdocs\b|\bdrive\b|sheet/i.test(text) ? 'doc' : '';
+  if (!kind) return null;
+  return (connectors || []).find(c => {
+    const n = String(c.name || '');
+    if (kind === 'mail') return /信|mail|gmail/i.test(n);
+    if (kind === 'cal') return /曆|calendar/i.test(n);
+    return /文件|drive|sheet|表/i.test(n);
+  }) || null;
+}
 export function takeConnectorTask(text) {
   const m = String(text || '').match(/【連接器】\s*([\s\S]*?)\s*【接完】/);
   if (!m) return null;

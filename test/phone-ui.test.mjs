@@ -46,6 +46,10 @@ test('the phone can type an address for the computer browser', () => {
   assert.match(page, /t:'\/網址'/);
   assert.match(page, /已送到電腦。打開後，這裡的網址和畫面會自己更新。/);
   assert.match(page, /不填就打開 Google/);
+  assert.match(page, /id="stage"/);
+  assert.match(page, /id="stHand"/);
+  assert.match(page, /接手中，機器人已停止點擊和打字/);
+  assert.equal(page.includes('data-usemine'), false);
   assert.doesNotMatch(page, /placeholder="https:\/\/" required/);
 });
 

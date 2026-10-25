@@ -21,9 +21,9 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider } from './coding-runtime.mjs';
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
-import { connectorLines, stripConnectorTask, takeConnectorTask } from './connectors.mjs';
+import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.15';
+export const VERSION = '17.16';
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
@@ -361,7 +361,7 @@ export function buildBrowserPrompt(job, task, here) {
     `你是 OCTA 裡「${job.bot.name}」這一輪的瀏覽工作。你只負責把這一件事做完，交回文字報告。`,
     '不要再派下一輪，也不要寫派工標記。原始 HTML 和頁面樹不要寫進報告。密碼、一次性驗證碼、卡片號碼不要輸入，也不要出現在報告或工具參數裡。',
     '讀頁順序（固定，不要跳）：',
-    url ? `1. browser_navigate 到這個完整網址：${url}` : '1. 停在目前頁面，不要亂開新網址。',
+    url ? `1. browser_navigate 到這個完整網址：${url}` : '1. 停在目前頁面，不要亂開新網址。若這是使用者按繼續之後，第一步必須 browser_snapshot，不沿用接手之前的引用。',
     '2. browser_snapshot。下一步之前先知道頁面上現在有什麼。',
     '3. 點或輸入只用這一張快照裡的引用（ref，例如 e5）。browser_click、browser_type 的 target 用那個引用。工具會再附一份新快照。',
     '4. 引用失效（Ref not found）就重新 browser_snapshot，不沿用舊引用。導覽、點擊、頁面變化之後，上一份讀取作廢，必須重讀再行動。',
@@ -734,12 +734,14 @@ async function chatRun(job) {
   // live progress (at most every 4 s); if the user pressed 停止, the server says so and the run is stopped
   const ctl = {};
   let lastSent = 0, pendingText = '', timerP = null, stoppedByUser = false;
-  const flush = () => { timerP = null; lastSent = Date.now(); api('runner/progress', { id: job.id, text: pendingText }).then(r => { if (r.stop) { stoppedByUser = true; log(`■ ${job.bot.name}：使用者按了停止`); ctl.kill?.(); } }).catch(() => { }); };
+  const flush = () => { timerP = null; lastSent = Date.now(); api('runner/progress', { id: job.id, text: pendingText }).then(r => { if (r.hand) { job.handed = true; log(`✋ ${job.bot.name}：使用者接手，停止點擊`); ctl.kill?.(); } if (r.stop) { stoppedByUser = true; log(`■ ${job.bot.name}：使用者按了停止`); ctl.kill?.(); } }).catch(() => { }); };
   const progress = t => { pendingText = t; if (timerP) return; const wait = Math.max(0, 4000 - (Date.now() - lastSent)); timerP = setTimeout(flush, wait); };
   progress('開始工作');
   const beat = setInterval(() => { if (!timerP) flush(); }, 15000);   // also notices 停止 for AIs that don't report progress
   let res;
   const engine = job.bot.engine || 'claude';
+  job.stopForHand = () => ctl.kill?.();
+  const liveBeat = port ? setInterval(() => pushLive(port, job).catch(() => { }), 1500) : null;
   try {
     if (port) await settleBrowserWindow(port, job);
     res = engine === 'grokbot' ? await runGrokBot(job, { progress, ctl })
@@ -753,7 +755,8 @@ async function chatRun(job) {
       res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
     }
   }
-  finally { clearTimeout(timerP); clearInterval(beat); busyBots.delete(job.bot.id); if (port) touchBrowser(job.bot.id); }
+  finally { clearTimeout(timerP); clearInterval(beat); clearInterval(liveBeat); busyBots.delete(job.bot.id); if (port) touchBrowser(job.bot.id); }
+  if (job.handed && res) { res.ok = true; res.text = '我先停手。你在旁邊的畫面登入或看完，按繼續我就重新讀頁再做。'; }
   if (res?.text) res.text = stripConnectorTask(stripBrowserTask(res.text)) || '這次沒有新的結果。';
   if (port && res?.text) res.text = await finishBrowserWindow(port, job, res.text);
   if (port && shareBrowser) await syncOut(port);
@@ -831,6 +834,13 @@ async function browseRounds(job, b, here, engine, res, live) {
     const plan = planBrowserRound(res.text, { engine, port, mine, depth });
     if (plan.action === 'keep') break;
     if (plan.action === 'strip') { res = { ...res, text: stripBrowserTask(res.text) || '這次的頁面沒有新的結果。' }; break; }
+    const viaTool = toolForBrowse(plan.task, job.connectors);
+    if (viaTool) {
+      const next = await parentFollow(job, b, here, engine, `這件事連接器「${viaTool.name}」做得到。不要開瀏覽器，改寫【連接器】。名稱用「${viaTool.name}」。讀取可以直接做，送出要先 ✅待確認。`, live);
+      const text = next?.ok ? (stripBrowserTask(stripConnectorTask(next.text)) || `改用連接器「${viaTool.name}」。`) : `改用連接器「${viaTool.name}」。`;
+      return { ok: true, text, tokens: addTokens(res.tokens, next?.tokens) };
+    }
+    if (job.handed) return { ok: true, text: '我先停手。你在旁邊的畫面登入或看完，按繼續我就重新讀頁再做。', tokens: res.tokens };
     if (plan.action === 'down') {
       const next = await parentFollow(job, b, here, engine, '內建瀏覽器沒有起來，這次不能讀頁面。請用你已經有的資料回答，或直接說瀏覽器沒有打開。不要再派瀏覽。', live);
       const text = next?.ok ? (stripBrowserTask(next.text) || '瀏覽器沒有打開，這次沒有讀到頁面。') : '瀏覽器沒有打開，這次沒有讀到頁面。';
@@ -1315,6 +1325,14 @@ async function openBrowser(bot, opts = {}) {
   await tagBrowser(port, bot.name).catch(() => { });
   return port;
 }
+async function pushLive(port, job) {
+  const shot = await browserSnapshot(port, 0, 40);
+  if (!shot?.jpeg || shot.jpeg.length > 350000) return;
+  let title = '';
+  try { title = (pickLivePage(await cdp(port, send => pagesOf(send)))?.title || '').slice(0, 80); } catch { }
+  const r = await api('runner/live', { bot: job.bot.id, url: realPage(shot.url) || '', title, data: shot.jpeg.toString('base64') });
+  if (r.hand) { job.handed = true; job.stopForHand?.(); }
+}
 async function captureEyes(port, dir) {
   try {
     const live = await browserSnapshot(port);
@@ -1324,13 +1342,14 @@ async function captureEyes(port, dir) {
     return p;
   } catch (e) { log('看畫面失敗：' + e.message); return ''; }
 }
-async function browserSnapshot(port, since) {   // screenshot + address of the tab the bot used last
+async function browserSnapshot(port, since, quality = 70) {   // screenshot + address of the tab the bot used last
+  const q = Math.min(80, Math.max(20, +quality || 70));
   return cdp(port, async send => {
     const p = pickLivePage(await pagesOf(send));
     if (!p) return null;
     const { sessionId } = await send('Target.attachToTarget', { targetId: p.targetId, flatten: true });
     let jpeg = null;
-    try { jpeg = Buffer.from((await send('Page.captureScreenshot', { format: 'jpeg', quality: 70 }, sessionId)).data, 'base64'); } catch { }
+    try { jpeg = Buffer.from((await send('Page.captureScreenshot', { format: 'jpeg', quality: q }, sessionId)).data, 'base64'); } catch { }
     await send('Target.detachFromTarget', { sessionId }).catch(() => { });
     return { url: p.url, jpeg };
   });

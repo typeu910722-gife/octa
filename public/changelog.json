@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.30",
+  "date": "2026-10-25",
+  "notes": [
+   "手機看得到主機上正在動的瀏覽器，可以接手再按繼續。例行任務由主機觸發，重開機後補做錯過的一次。第四個工作會排隊並告訴你在等誰"
+  ],
+  "notes_en": [
+   "A phone can watch the browser moving on the host, take over, and press continue. Routines run on the host, and one missed run is caught up after a restart. A fourth job waits and says who it is waiting for"
+  ]
+ },
+ {
   "v": "3.0.29",
   "date": "2026-10-25",
   "notes": [

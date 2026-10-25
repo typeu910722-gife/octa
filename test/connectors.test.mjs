@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkBase, joinBase, normalizeCustom, publicConnectors, runConnector, takeConnectorTask } from '../public/connectors.mjs';
+import { checkBase, joinBase, normalizeCustom, publicConnectors, runConnector, takeConnectorTask, toolForBrowse } from '../public/connectors.mjs';
 import { keepBrowserTask } from '../public/octa-runner.mjs';
 
 test('a connector call is parsed, and a private address is refused', () => {
@@ -16,6 +16,13 @@ test('a connector call is parsed, and a private address is refused', () => {
   assert.ok(checkBase('https://169.254.169.254/'));
   assert.equal(joinBase('https://api.example.com/v1', '/orders?day=1').href, 'https://api.example.com/v1/orders?day=1');
   assert.equal(normalizeCustom({ name: 'Telegram', base: 'https://api.example.com', secret: 'x' }, []).error.includes('內建'), true);
+});
+
+test('mail, calendar, and documents stay on a connected tool', () => {
+  const connectors = [{ name: '信箱', kind: 'http', can: ['讀取', '送出'] }, { name: '訂單', kind: 'http', can: ['讀取'] }];
+  assert.equal(toolForBrowse({ prompt: '把這封回覆寄出', url: '' }, connectors).name, '信箱');
+  assert.equal(toolForBrowse({ prompt: '看訂單後台', url: 'https://shop.example/admin' }, connectors), null);
+  assert.equal(toolForBrowse({ prompt: '寄信', url: '' }, []), null);
 });
 
 test('a read sends the secret and the result hides it; a send waits for approval', async () => {

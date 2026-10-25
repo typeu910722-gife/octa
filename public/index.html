@@ -290,6 +290,23 @@ form.in .send,form.in .clip{height:46px}
 .followbar:not([hidden]){display:flex}
 .followbar span{flex:1;min-width:0}
 .followbar button{border:0;background:var(--gold);color:#1a1408;border-radius:999px;padding:6px 10px;font:inherit}
+.stage{display:none;flex-direction:column;gap:8px;margin:0 20px 8px;padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+.stage:not([hidden]){display:flex}
+.stage .sthd{display:flex;flex-direction:column;min-width:0}
+.stage .sthd b{font-size:13px}
+.stage .sthd span{font-size:12px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stage img{width:100%;max-height:240px;object-fit:contain;background:#12100d;border-radius:12px}
+.stage .stact{display:flex;gap:8px}
+.stage .stact button{border:0;border-radius:999px;padding:6px 12px;font:inherit}
+.stage .stact .btn{background:var(--gold);color:#1a1408}
+.stage .hold{margin:0;font-size:12px;color:var(--gold)}
+@media (max-width:760px){
+  .stage{margin-left:max(12px,env(safe-area-inset-left,0px));margin-right:max(12px,env(safe-area-inset-right,0px))}
+}
+@media (min-width:761px){
+  html:not(.desk) .pane{position:relative}
+  html:not(.desk) .stage:not([hidden]){position:absolute;top:64px;right:16px;width:min(380px,34vw);z-index:4;max-height:calc(100% - 160px)}
+}
 .qref{display:flex;flex-direction:column;align-items:flex-start;gap:1px;margin:0 0 6px;padding:4px 8px;border:0;border-left:3px solid var(--gold);background:transparent;color:var(--mute);font:inherit;font-size:12px;line-height:1.4;text-align:left;max-width:100%;cursor:pointer}
 .qref b{color:var(--gold);font-weight:500}
 .qref span{overflow:hidden;max-height:2.8em}
@@ -753,6 +770,12 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
     <div class="att" id="att"></div>
     <div class="replybar" id="replybar" hidden><div class="rq"><b id="replyWho"></b><span id="replyBit"></span></div><button type="button" id="replyx" aria-label="取消回覆">×</button></div>
     <div class="followbar" id="followbar" hidden><span id="followBit"></span><button type="button" id="followGo">改看這則對話</button></div>
+    <aside class="stage" id="stage" hidden>
+      <div class="sthd"><b id="stTitle">瀏覽器</b><span id="stUrl"></span></div>
+      <img id="stPic" alt="主機上這個機器人的瀏覽器">
+      <div class="stact"><button type="button" class="btn" id="stHand">接手</button><button type="button" id="stGo">繼續</button></div>
+      <p class="hold" id="stHold" hidden>接手中，機器人已停止點擊和打字</p>
+    </aside>
     <form class="in" id="f" hidden><button type="button" class="clip" id="clip" aria-label="附加檔案">＋</button><input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.docx" hidden><textarea id="msg" rows="1" placeholder="輸入指示…"></textarea><button type="button" class="clip" id="mic" aria-label="語音輸入" hidden>🎙</button><button class="send" aria-label="送出"><span class="sl">送出</span><span class="sa2" aria-hidden="true">↑</span></button></form>
     <div class="note" id="note" hidden></div>
     <div class="buddy" id="buddy" hidden data-face="smile" data-look="base" data-extra="none" data-mood="">
@@ -818,7 +841,7 @@ const ybar={n:0,t:null,on(block){this.n++;clearTimeout(this.t);this.t=setTimeout
   off(){if(--this.n<=0){this.n=0;clearTimeout(this.t);document.body.classList.remove('yloading','yblock')}}};
 const HEAVY=/^(template|signup|login|pair|runner-token|engine-test|desktop\/install|desktop\/remote|desktop\/autostart)/;
 async function api(path,method='GET',body){
-  const quiet=/^(state|wait|job\/|file\/|messages|shot\/|ai-usage|devices$|me$|code\/|focus$)/.test(path);
+  const quiet=/^(state|wait|job\/|file\/|messages|shot\/|ai-usage|devices$|me$|code\/|focus$|live\/)/.test(path);
   if(!quiet)ybar.on(HEAVY.test(path));
   try{return await api_(path,method,body)}finally{if(!quiet)ybar.off()}
 }
@@ -987,7 +1010,7 @@ function retryHtml(m){if(!/^⚠/.test(m.text)||NEEDLOGIN.test(m.text))return '';
 const NEEDLOGIN=/需要使用者在電腦上登入|需要.{0,6}登入/;
 function loginHtml(m){const b=bot(m.by);if(!b||b.browser==='mine'||!NEEDLOGIN.test(m.text))return '';
   if(convMsgs(m.conv).some(x=>x.id>m.id&&x.by===m.by))return '';
-  return `<div class="appr"><button type="button" class="btn" data-openb="${esc(m.by)}">🖥 ${showBrowserLabel()}</button><button type="button" class="no" data-retry="${m.id}">✓ 登入好了，繼續</button><button type="button" class="no" data-usemine="${m.id}">改用我的 Chrome（用已儲存的密碼自動填入）</button><small class="hint2">機器人停在登入頁。在${browserHint()}裡登入（不用關掉），再按「登入好了，繼續」。或改讓它在你自己的 Chrome 裡工作：由 Chrome 自動填入你存的密碼，機器人看不到密碼本身。</small></div>`}
+  return `<div class="appr"><button type="button" class="btn" data-hand="${esc(m.by)}">接手</button><button type="button" class="no" data-retry="${m.id}">繼續</button><small class="hint2">機器人已停止點擊。在旁邊的即時畫面上自己登入，再按繼續。密碼不要貼到聊天裡。</small></div>`}
 function apprHtml(m){const a=m.text.match(APPR);if(!a)return '';
   const later=convMsgs(m.conv).some(x=>x.id>m.id&&(x.by==='me'||x.by===m.by));
   if(later)return '';
@@ -1285,10 +1308,7 @@ $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).th
   const rt=e.target.closest('[data-retry]');if(rt){const ms=convMsgs(cur),i=ms.findIndex(x=>String(x.id)===rt.dataset.retry);
     const last=ms.slice(0,i).reverse().find(x=>x.by==='me');if(!last){toast(I18N.t('找不到上一則指示'));return}
     rt.disabled=true;sendMsg(last.text==='（附件）'?'':last.text,(last.files||[]).map(f=>f.id),last.files||[]);return}
-  const um=e.target.closest('[data-usemine]');if(um){const ms=convMsgs(cur),m=ms.find(x=>String(x.id)===um.dataset.usemine),b=m&&bot(m.by);if(!b)return;
-    confirmSheet('改用我的 Chrome',`<p>「<b data-u>${esc(b.name)}</b>」之後會在你自己的 Chrome 裡工作（自己的分頁群組），登入頁由 Chrome 從你已儲存的密碼自動填入，機器人不會讀到密碼本身。</p><p>需要先在「設定 → 電腦與主機 → 使用我的 Chrome」連接 Chrome。之後可以在任務設定改回專屬瀏覽器。</p>`,'改用並繼續',false,
-      async()=>{await api('bots/'+b.id,'PUT',{name:b.name,task:b.task,folder:b.folder,engine:b.engine,model:b.model,avatar:b.avatar,browser:'mine'});await refresh();
-        const last=ms.slice(0,ms.indexOf(m)).reverse().find(x=>x.by==='me');if(last)sendMsg(last.text==='（附件）'?'':last.text,(last.files||[]).map(f=>f.id),last.files||[])});return}
+  const hd=e.target.closest('[data-hand]');if(hd){api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(err=>toast(err.message));return}
   const ob=e.target.closest('[data-openb]');if(ob){ob.disabled=true;openBrowser(ob.dataset.openb);return}
   const im=e.target.closest('img[data-file]');if(im)openFile(im.dataset.file);
   const fc=e.target.closest('[data-open-file]');if(fc)openFile(fc.dataset.openFile);
@@ -1302,8 +1322,8 @@ $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).th
 let atSel=0;
 // "/" at the start: built-in actions, saved instructions and the bot's skills
 function slashItems(){const c=conv(cur);if(!c)return [];const ids=isG(cur)?c.members:[cur];
-  const items=[{k:'browser',t:'/瀏覽器',d:I18N.t(showBrowserLabel())},{k:'hide',t:'/收起瀏覽器',d:I18N.t('收到背景')},{k:'stop',t:'/停止',d:I18N.t('停止目前的工作')},
-    {k:'shots',t:'/截圖',d:I18N.t('看最後的畫面')},{k:'edit',t:'/任務設定',d:I18N.t('名稱、任務、排程、記憶')},{k:'clear',t:'/清空對話',d:I18N.t('清空對話紀錄')}];
+  const items=[...(window.octaDesktop?[{k:'browser',t:'/瀏覽器',d:I18N.t(showBrowserLabel())},{k:'hide',t:'/收起瀏覽器',d:I18N.t('收到背景')}]:[{k:'browser',t:'/瀏覽器',d:'看這個機器人的即時畫面'}]),{k:'stop',t:'/停止',d:I18N.t('停止目前的工作')},
+    {k:'shots',t:'/歷史畫面',d:I18N.t('以前的截圖')},{k:'edit',t:'/任務設定',d:I18N.t('名稱、任務、排程、記憶')},{k:'clear',t:'/清空對話',d:I18N.t('清空對話紀錄')}];
   if(phoneRemote())items.splice(1,0,{k:'url',t:'/網址',d:'操控電腦上的網址'});
   for(const id of ids)for(const k of ((S.skills||{})[id]||[]))items.push({k:'skill',t:'/'+k.name,d:'🧩 '+(isG(cur)?bot(id)?.name+' · ':'')+I18N.t('技能'),v:k.name,b:id});
   ((S.quick||{})[cur]||[]).forEach(q=>items.push({k:'quick',t:'⚡ '+(q.length>30?q.slice(0,30)+'…':q),d:I18N.t('常用指令'),v:q}));
@@ -1373,7 +1393,9 @@ async function sendMsg(v,files=[],meta,reply){const c=cur,fs=meta||pending.filte
   mc.list.push({id:'tmp'+Date.now(),tmp:true,conv:c,by:'me',text:v||'（附件）',files:fs,ts:Date.now(),reply:reply||null});render(true);
   try{await api('messages','POST',{conv:c,text:v,files,reply:reply||undefined});refresh();return true}
   catch(err){mc.list=mc.list.filter(m=>!m.tmp);render(false);toast(err.message);return false}}
-$('f').onsubmit=async e=>{e.preventDefault();const v=$('msg').value.trim();
+$('f').onsubmit=async e=>{e.preventDefault();let v=$('msg').value.trim();
+  const slash=v.match(/^\/(\S+)$/);
+  if(slash){const hit=(S.skills?.[cur]||[]).find(s=>s.name===slash[1]);if(hit)v='請執行技能「'+hit.name+'」'}
   if(pending.some(f=>f.up))return;const files=pending.map(f=>f.id);if(!v&&!files.length)return;
   const keep=pending,rid=replyTo&&replyTo.conv===cur?replyTo.id:null;$('msg').value='';grow();try{localStorage.removeItem(draftKey())}catch(e){}
   const ok=await sendMsg(v,files,undefined,rid);if(ok){replyTo=null;paintReply();keep.forEach(dropUrl)}pending=ok?[]:keep;renderAtt();if(!ok){$('msg').value=v;grow()}};
@@ -1523,7 +1545,7 @@ $('browser').onclick=e=>{
   const one=id=>{const b=bot(id);return b.browser==='mine'
     ?`<div class="lab" data-u>${esc(b.name)}</div><button data-a="note" data-v="${id}"><span class="ck">ⓘ</span>使用你的 Chrome（在 Chrome 看它的分頁群組）</button>`
     :`${isG(cur)?`<div class="lab" data-u>${esc(b.name)}</div>`:''}<button data-a="open" data-v="${id}"><span class="ck">🖥</span>${showBrowserLabel()}</button><button data-a="hide" data-v="${id}"><span class="ck">⤓</span>收到背景</button>${isG(cur)?'':`<button data-a="url" data-v="${id}"><span class="ck">🔗</span>讓它打開網址…</button>`}`};
-  popMenu($('browser'),ids.map(one).join('<hr>')+`<hr><button data-a="shots"><span class="ck">🖼</span>看最後的畫面（截圖）</button>`,
+  popMenu($('browser'),ids.map(one).join('<hr>')+`<hr><button data-a="shots"><span class="ck">🖼</span>歷史畫面</button>`,
     {open:id=>openBrowser(id),hide:id=>openBrowser(id,'',true),url:id=>urlSheet(id),shots:()=>shotSheet(ids),note:()=>toast(I18N.t('這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。'))})};
 function urlSheet(id){const b=bot(id);
   $('veil').innerHTML=`<form class="sheet" id="uf"><h2>讓它打開網址</h2><p>用「<span data-u>${esc(b.name)}</span>」的瀏覽器打開，畫面在${browserHint()}：</p>
@@ -1540,13 +1562,11 @@ function remoteUrl(ids){
   <div class="bw" id="ruView"></div>
   <label class="field">要打開的網址<input id="uu" inputmode="url" autocomplete="url" placeholder="不填就打開 Google"></label>
   <p id="ruStat"></p>
-  <div class="row2"><button class="btn" type="submit">在電腦上打開</button><button class="ghost" type="button" id="ruShow">顯示電腦上的瀏覽器</button><button class="ghost" type="button" id="ruHide">收到背景</button></div>
+  <div class="row2"><button class="btn" type="submit">在電腦上打開</button></div>
   <div class="acts"><button type="button" class="no" id="sx">關閉</button></div></form>`;
   $('veil').hidden=false;paintRemote(true);$('uu').focus();
   $('sx').onclick=closeSheet;
   if($('ruBot'))$('ruBot').onchange=()=>paintRemote(true);
-  $('ruShow').onclick=()=>sendRemote(false);
-  $('ruHide').onclick=()=>sendRemote(true);
   $('remoteUrl').onsubmit=async ev=>{ev.preventDefault();const u=$('uu').value.trim();const ok=await sendRemote(false,u);
     if($('ruStat'))$('ruStat').textContent=ok?'已送到電腦。打開後，這裡的網址和畫面會自己更新。':'沒有送到電腦'}};
 function remoteBot(){const form=$('remoteUrl');if(!form)return '';return $('ruBot')?.value||String(form.dataset.ids||'').split(',')[0]}
@@ -1618,6 +1638,25 @@ function setReply(m){if(!m||m.tmp)return;
   paintReply();$('msg').focus()}
 $('replyx').onclick=()=>{replyTo=null;paintReply();$('msg').focus()};
 $('followGo').onclick=()=>{const id=$('followbar').dataset.conv;if(id)openConv(id)};
+$('stHand').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:true}).then(()=>{toast('已接手，機器人停止點擊');pollLive()}).catch(e=>toast(e.message))};
+$('stGo').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:false}).catch(()=>{});sendMsg('登入好了，繼續')};
+async function pollLive(){
+  const box=$('stage');if(!box)return;
+  if(window.octaDesktop||!cur||isG(cur)||$('app').hidden){box.hidden=true;return}
+  let d={};try{d=await api('live/'+encodeURIComponent(cur))}catch(e){return}
+  if(!d.ts){box.hidden=true;return}
+  box.hidden=false;
+  $('stTitle').textContent=d.title||'瀏覽器';
+  $('stUrl').textContent=d.url||'';
+  if(d.data)$('stPic').src='data:image/jpeg;base64,'+d.data;
+  $('stHold').hidden=!d.handed;
+}
+setInterval(()=>{if((TOKEN||CFG.local)&&!$('app').hidden)pollLive()},1200);
+window.octaDesktop?.onStage?.(d=>{
+  if(!d?.bot)return;
+  if(d.act==='hand')api('handoff','POST',{bot:d.bot,on:true}).then(()=>toast('已接手，機器人停止點擊')).catch(e=>toast(e.message));
+  if(d.act==='go'){api('handoff','POST',{bot:d.bot,on:false}).catch(()=>{});api('messages','POST',{conv:d.bot,text:'登入好了，繼續'}).then(()=>refresh()).catch(e=>toast(e.message))}
+});
 function msgMenu(anchor,m){if(!m||m.tmp)return;
   popMenu(anchor,`<button data-a="re"><span class="ck">↩</span>回覆這則</button><button data-a="cp"><span class="ck">⧉</span>複製文字</button><button data-a="frag"><span class="ck">✂</span>選取片段</button><button data-a="to"><span class="ck">➦</span>傳給別的機器人…</button>${m.by==='me'?'<button data-a="again"><span class="ck">↻</span>再傳一次</button>':''}`,
    {re:()=>setReply(m),
@@ -1804,7 +1843,7 @@ function settingsRows(){return [
     ['warm','⚡','AI 待機時間',warmText(S.warm??120)],
     ['noti','🔔','通知','這個裝置、Telegram、LINE'],
     ['conn','🔗','連接器','Telegram、LINE 和自己的服務'],
-    ['sched','⏰','例行任務排程',S.sched==='pc'?'電腦排程':'雲端排程'],
+    ['sched','⏰','例行任務排程',S.sched==='cloud'?'雲端觸發':'主機觸發'],
     ['files','📁','檔案儲存','附件、截圖、機器人的輸出'],
     ['notes','📝','共用資料','所有機器人都會讀'],
     ['tpl','🧩','範本','一鍵建立常用的機器人'],
@@ -1985,10 +2024,10 @@ async function openWarm(){let st={warm:120};try{st=await api('settings')}catch(e
   $('veil').querySelectorAll('input[name=wm]').forEach(r=>r.onchange=async()=>{try{await api('settings','PUT',{warm:+r.value});S.warm=+r.value;toast(I18N.t('已儲存 ✓'))}catch(e){toast(e.message)}})}
 /* routine schedule mode */
 function openSched(){
-  const v=S.sched==='pc'?'pc':'cloud';
-  subSheet('例行任務排程',`<p>決定例行任務由誰看時間、按時觸發。</p>
-  <div class="bchoice"><label class="bc"><input type="radio" name="sc" value="cloud" ${v==='cloud'?'checked':''}><span><b>雲端排程（建議）</b><small>時間到由雲端觸發。主機電腦剛好沒開時，任務會排隊，電腦一連上就執行，並用 Telegram／LINE 通知你。</small></span></label>
-  <label class="bc"><input type="radio" name="sc" value="pc" ${v==='pc'?'checked':''}><span><b>電腦排程</b><small>由主機電腦自己看時間。電腦沒開的時段就跳過，不會補做。</small></span></label></div>
+  const v=S.sched==='cloud'?'cloud':'pc';
+  subSheet('例行任務排程',`<p>例行任務由這台一直開著的主機觸發。主機重開機後，錯過的那一次會補做，並通知你。</p>
+  <div class="bchoice"><label class="bc"><input type="radio" name="sc" value="pc" ${v==='pc'?'checked':''}><span><b>主機觸發</b><small>時間到由這台主機執行。重開機後補做錯過的一次。</small></span></label>
+  <label class="bc"><input type="radio" name="sc" value="cloud" ${v==='cloud'?'checked':''}><span><b>雲端觸發</b><small>改由雲端看時間。只有選了這個，主機沒連上時才會先排隊。</small></span></label></div>
   <p class="hmuted">${CFG.local?'離線模式只能用電腦排程。':'時區：台灣時間（UTC+8）'}</p>`);
   $('veil').querySelectorAll('input[name=sc]').forEach(r=>r.onchange=async()=>{try{await api('settings','PUT',{sched:r.value});S.sched=r.value;toast(I18N.t('已儲存 ✓'))}catch(e){toast(e.message)}})}
 /* where files are kept */

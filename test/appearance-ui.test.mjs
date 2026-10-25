@@ -79,9 +79,10 @@ test('attachments show as thumbnails or file cards before and after sending', ()
 
 test('the desktop version matches the changelog, and the appearance release is still recorded', () => {
   assert.equal(pkg.version, log[0].v);
-  assert.equal(log[0].v, '3.0.29');
-  assert.ok(log[0].notes.some(n => n.includes('關閉瀏覽器')));
-  assert.ok(log[0].notes.some(n => n.includes('Google')));
+  assert.equal(log[0].v, '3.0.30');
+  assert.ok(log[0].notes.some(n => n.includes('接手')));
+  const google = log.find(x => x.v === '3.0.29');
+  assert.ok(google.notes.some(n => n.includes('Google')));
   const sync = log.find(x => x.v === '3.0.28');
   assert.ok(sync.notes.some(n => n.includes('同一則對話')));
   assert.match(page, /id="followbar"/);

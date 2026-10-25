@@ -603,6 +603,14 @@ ipcMain.on('octa:browser-pick', (e, index) => {
   if (!tab || tab.webContents.isDestroyed()) return;
   focusTab(bucket, tab);
 });
+function relayStage(e, act) {
+  if (!trusted(e)) return;
+  const bucket = chromeBucket(e.sender);
+  if (!bucket || !win || win.isDestroyed()) return;
+  win.webContents.send('octa:stage', { bot: bucket.botId, act });
+}
+ipcMain.on('octa:browser-hand', e => relayStage(e, 'hand'));
+ipcMain.on('octa:browser-continue', e => relayStage(e, 'go'));
 ipcMain.on('octa:browser-go', (e, raw) => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);

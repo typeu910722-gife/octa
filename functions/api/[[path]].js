@@ -115,6 +115,11 @@ async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
   }
   if (group && !turnsOf(group) && !ordered) for (const id of chain) await addJob(db, userId, conv, [id], prompt);
   else await addJob(db, userId, conv, chain, prompt);
+  const running = (await db.prepare("SELECT DISTINCT bot_id FROM jobs WHERE user_id=? AND status='running' AND (kind IS NULL OR kind='' OR kind='chat')").bind(userId).all()).results;
+  if (running.length >= 3) {
+    const names = (bots || []).filter(b => running.some(r => r.bot_id === b.id)).map(b => b.name);
+    await addMsg(db, userId, conv, 'sys', `先排隊。現在有 ${running.length} 個在工作${names.length ? '：' + names.join('、') : ''}。做完就輪到這個。`);
+  }
 }
 // a second record of the same bytes, so the copy survives if the source conversation is deleted
 async function cloneFile(db, userId, fileId, conv) {
@@ -234,18 +239,19 @@ const MIGRATIONS = [
   'ALTER TABLE code_tasks ADD COLUMN fb TEXT',
   'CREATE INDEX IF NOT EXISTS code_task_user ON code_tasks(user_id, created)',
   'CREATE TABLE IF NOT EXISTS code_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, user_id TEXT NOT NULL, ts INTEGER NOT NULL, role TEXT, kind TEXT NOT NULL, text TEXT, data TEXT)',
-  'CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id)'
+  'CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id)',
+  'CREATE TABLE IF NOT EXISTS live (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT, title TEXT, mime TEXT, data TEXT, ts INTEGER, handed INTEGER NOT NULL DEFAULT 0)'
 ];
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
-  try { await db.prepare('SELECT want FROM files LIMIT 0').all(); await db.prepare('SELECT k FROM logins LIMIT 0').all(); await db.prepare('SELECT progress, tokens FROM jobs LIMIT 0').all(); await db.prepare('SELECT hook, watch, wstate FROM routines LIMIT 0').all(); await db.prepare('SELECT pc FROM files LIMIT 0').all(); await db.prepare('SELECT bpc FROM bots LIMIT 0').all(); await db.prepare('SELECT pc, eng, tries FROM jobs LIMIT 0').all(); await db.prepare('SELECT fb FROM bots LIMIT 0').all(); await db.prepare('SELECT id, fb FROM code_tasks LIMIT 0').all(); await db.prepare('SELECT reply FROM messages LIMIT 0').all(); schemaReady.add(db); return; } catch { }
+  try { await db.prepare('SELECT want FROM files LIMIT 0').all(); await db.prepare('SELECT k FROM logins LIMIT 0').all(); await db.prepare('SELECT progress, tokens FROM jobs LIMIT 0').all(); await db.prepare('SELECT hook, watch, wstate FROM routines LIMIT 0').all(); await db.prepare('SELECT pc FROM files LIMIT 0').all(); await db.prepare('SELECT bpc FROM bots LIMIT 0').all(); await db.prepare('SELECT pc, eng, tries FROM jobs LIMIT 0').all(); await db.prepare('SELECT fb FROM bots LIMIT 0').all(); await db.prepare('SELECT id, fb FROM code_tasks LIMIT 0').all(); await db.prepare('SELECT reply FROM messages LIMIT 0').all(); await db.prepare('SELECT handed FROM live LIMIT 0').all(); schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
 }
 
 // requests that don't change anything other devices need to see
-const NO_BUMP = /^(signup|login|logout|pair|cron|wait|reset|password|devices|notify\/|settings|runner\/(next|blob|hello|bye|progress))/;
+const NO_BUMP = /^(signup|login|logout|pair|cron|wait|reset|password|devices|notify\/|settings|runner\/(next|blob|hello|bye|progress|live))/;
 const folderOk = (folders, id) => (id && folders.some(f => f.id === id) ? id : null);
 const MIMES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', pdf: 'application/pdf', txt: 'text/plain', csv: 'text/csv', md: 'text/markdown', json: 'application/json',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
@@ -268,13 +274,13 @@ async function hostInfo(db, userId) {
 }
 
 // ---------- 例行任務 ----------
-// sched 'cloud' (default): fired on time by the cloud (cron / any open client); if the host is off the job waits for it.
-// sched 'pc': fired only by the host computer itself; times missed while it was off are skipped.
+// The host computer is the clock. sched 'cloud' is the alternate: the cloud fires, and a disconnected host waits.
+// A time missed while the host was restarting is run once when it connects, and the person is told.
 async function fireRoutines(env, db, userId, byHost) {
   const list = (await db.prepare('SELECT * FROM routines WHERE user_id=? AND enabled=1').bind(userId).all()).results;
   if (!list.length) return 0;
   const st = await getSettings(db, userId);
-  const pc = st.sched === 'pc';
+  const pc = st.sched !== 'cloud';
   if (pc && !byHost) return 0;
   const { date, hm } = localNow(env), late = localNow(env, now() - 10 * MIN).hm;
   let n = 0, all = null, hostOnline = null;
@@ -293,7 +299,7 @@ async function fireRoutines(env, db, userId, byHost) {
     const upd = await db.prepare("UPDATE routines SET fired=? WHERE id=? AND IFNULL(fired,'')=IFNULL(?,'')").bind(JSON.stringify(fired), r.id, r.fired).run();
     if (!upd.meta.changes) continue;   // someone else fired it
     const t = isEvery(due[due.length - 1]) ? hm : due[due.length - 1];
-    if (pc && !isEvery(due[due.length - 1]) && hm >= '00:10' && t < late) { await addMsg(db, userId, r.conv, 'sys', `${t} 例行任務「${r.name}」：電腦當時沒開，已略過`); n++; continue; }
+    const catchup = pc && !isEvery(due[due.length - 1]) && hm >= '00:10' && t < late;
     all = all || await loadAll(db, userId);
     const g = all.groups.find(x => x.id === r.conv), b = all.bots.find(x => x.id === r.conv);
     if (!g && !b) continue;
@@ -304,8 +310,9 @@ async function fireRoutines(env, db, userId, byHost) {
       if (!(last?.by_ === 'sys' && last.text.startsWith('例行任務先暫停'))) { await addMsg(db, userId, r.conv, 'sys', `例行任務先暫停：「${r.name}」要等你在機器人的瀏覽器登入。登入後按「登入好了，繼續」或傳任何訊息，就會恢復。`); n++; }
       continue;
     }
-    if (r.name !== STANDBY) await addMsg(db, userId, r.conv, 'sys', `${t} 例行任務：${r.name}`);
-    await addJob(db, userId, r.conv, g ? g.members : [b.id], `（例行任務「${r.name}」）${r.prompt || '請執行你的指定任務，完成後回報結果。'}`);
+    if (r.name !== STANDBY) await addMsg(db, userId, r.conv, 'sys', catchup ? `補做錯過的例行任務「${r.name}」（${t}）。主機剛連上，這一次會補做。` : `${t} 例行任務：${r.name}`);
+    await addJob(db, userId, r.conv, g ? g.members : [b.id], `（例行任務「${r.name}」）${catchup ? '這是主機重開後補做的一次。' : ''}${r.prompt || '請執行你的指定任務，完成後回報結果。'}`);
+    if (catchup) await sendNotify(env, st, `【OCTA】補做錯過的例行任務「${r.name}」`);
     if (!byHost) {
       if (hostOnline === null) hostOnline = env.isLocal ? true : (await hostInfo(db, userId)).online;
       if (!hostOnline) {
@@ -1062,8 +1069,27 @@ async function route({ request: req, env, params }) {
       if (path === 'runner/progress' && m === 'POST') {   // what the bot is doing now; also tells the computer if 停止 was pressed
         const r = await db.prepare("UPDATE jobs SET progress=? WHERE id=? AND user_id=? AND status='running'").bind(clean(body.text, 120), +body.id, U).run();
         if (!r.meta.changes) return J({ stop: true });
+        const jobRow = await db.prepare('SELECT bot_id FROM jobs WHERE id=? AND user_id=?').bind(+body.id, U).first();
+        const handed = jobRow && await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(jobRow.bot_id, U).first();
         await bump(db, U);
-        return J({ ok: true });
+        return J({ ok: true, hand: !!handed?.handed });
+      }
+      if (path === 'runner/live' && m === 'POST') {
+        const bot = clean(body.bot, 64);
+        const owns = await db.prepare('SELECT id FROM bots WHERE id=? AND user_id=?').bind(bot, U).first();
+        if (!owns) return err('找不到', 404);
+        if (body.peek) {
+          const row = await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
+          return J({ hand: !!row?.handed });
+        }
+        const data = String(body.data || '');
+        if (data.length > 500000) return J({ ok: true, skipped: true });
+        const url = clean(body.url, 300), title = clean(body.title, 80);
+        const cur = await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
+        if (cur) await db.prepare('UPDATE live SET url=?, title=?, mime=?, data=?, ts=? WHERE bot_id=? AND user_id=?').bind(url, title, 'image/jpeg', data, now(), bot, U).run();
+        else await db.prepare('INSERT INTO live (bot_id,user_id,url,title,mime,data,ts,handed) VALUES (?,?,?,?,?,?,?,0)').bind(bot, U, url, title, 'image/jpeg', data, now()).run();
+        const handed = await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
+        return J({ ok: true, hand: !!handed?.handed });
       }
       if (path === 'runner/stored' && m === 'POST') {   // the host saved an uploaded file into its OCTA folder
         const p = safePath(body.path);
@@ -1407,7 +1433,7 @@ async function route({ request: req, env, params }) {
         me: me.name, local: me.kind === 'local', rev: rev.results[0]?.rev ?? 0,
         engines: h ? h.engines : JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || 'null'),
         runnerOnline: env.runnerOnline ? env.runnerOnline() : (h ? h.online : true),
-        host: h ? h.hostLabel : 'local', computers: h ? h.runners.length : 1, shareBrowser: st.shareBrowser !== false, nick: st.nick || '', sched: st.sched === 'pc' ? 'pc' : 'cloud', quick: st.quick || {}, allow: st.allow || {}, pins: st.pins || [], mute: st.mute || {}, memory: st.memory || {}, skills: st.skills || {}, nsk: Object.fromEntries(Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])), warm: WARM.includes(+st.warm) ? +st.warm : 120, models: h ? h.models : st._models || null,
+        host: h ? h.hostLabel : 'local', computers: h ? h.runners.length : 1, shareBrowser: st.shareBrowser !== false, nick: st.nick || '', sched: st.sched === 'cloud' ? 'cloud' : 'pc', quick: st.quick || {}, allow: st.allow || {}, pins: st.pins || [], mute: st.mute || {}, memory: st.memory || {}, skills: st.skills || {}, nsk: Object.fromEntries(Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])), warm: WARM.includes(+st.warm) ? +st.warm : 120, models: h ? h.models : st._models || null,
         focus: st.focus?.conv ? { conv: st.focus.conv, dev: st.focus.dev || '', at: st.focus.at || 0 } : null,
         ...all, last: last.results, ur: ur.results.map(r => [r.conv, r.id]), busy: busy.results
       });
@@ -1794,6 +1820,21 @@ async function route({ request: req, env, params }) {
       const j = await db.prepare('SELECT status,result FROM jobs WHERE id=? AND user_id=?').bind(+path.slice(4), U).first();
       return j ? J(j) : err('找不到', 404);
     }
+    if (path === 'handoff' && m === 'POST') {
+      const bot = clean(body.bot, 64);
+      const owns = await db.prepare('SELECT id FROM bots WHERE id=? AND user_id=?').bind(bot, U).first();
+      if (!owns) return err('找不到這個機器人', 404);
+      const on = !(body.on === false || body.on === 0);
+      const cur = await db.prepare('SELECT bot_id FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
+      if (cur) await db.prepare('UPDATE live SET handed=?, ts=? WHERE bot_id=? AND user_id=?').bind(on ? 1 : 0, now(), bot, U).run();
+      else await db.prepare('INSERT INTO live (bot_id,user_id,url,title,mime,data,ts,handed) VALUES (?,?,?,?,?,?,?,?)').bind(bot, U, '', '', 'image/jpeg', '', now(), on ? 1 : 0).run();
+      return ok({ handed: on });
+    }
+    if (path.startsWith('live/') && m === 'GET') {
+      const id = path.slice(5);
+      const row = await db.prepare('SELECT url,title,data,ts,handed FROM live WHERE bot_id=? AND user_id=?').bind(id, U).first();
+      return J(row ? { url: row.url || '', title: row.title || '', data: row.data || '', ts: row.ts || 0, handed: !!row.handed } : {});
+    }
     if (path === 'focus' && m === 'PUT') {
       const dev = clean(body.dev, 40), conv = clean(body.conv, 64);
       if (!/^[a-z0-9]{8,40}$/i.test(dev)) return err('這台裝置沒有代號');
@@ -1836,7 +1877,7 @@ async function route({ request: req, env, params }) {
     }
     if (path === 'settings' && m === 'GET') {
       const st = await getSettings(db, U);
-      return J({ warm: WARM.includes(+st.warm) ? +st.warm : 120, shareBrowser: st.shareBrowser !== false, notes: st.notes || '', notifyAll: !!st.notifyAll, sched: st.sched === 'pc' ? 'pc' : 'cloud', tg: { token: mask(st.tg?.token), chat: st.tg?.chat || '' }, line: { token: mask(st.line?.token), to: st.line?.to || '' } });
+      return J({ warm: WARM.includes(+st.warm) ? +st.warm : 120, shareBrowser: st.shareBrowser !== false, notes: st.notes || '', notifyAll: !!st.notifyAll, sched: st.sched === 'cloud' ? 'cloud' : 'pc', tg: { token: mask(st.tg?.token), chat: st.tg?.chat || '' }, line: { token: mask(st.line?.token), to: st.line?.to || '' } });
     }
     if (path === 'settings' && m === 'PUT') {
       const st = await getSettings(db, U);

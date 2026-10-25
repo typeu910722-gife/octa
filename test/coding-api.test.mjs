@@ -568,6 +568,35 @@ test('two devices share one open conversation, and a connector keeps its secret'
   assert.equal(left.data.custom.length, 0);
 });
 
+test('the host catches up one missed routine, and a fourth job waits', async () => {
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'hosty', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const state = await call(db, 'GET', 'state', { token });
+  assert.equal(state.data.sched, 'pc');
+  const bot = await call(db, 'POST', 'bots', { token, body: { name: '房務', task: '看房' } });
+  const id = bot.data.id;
+  const uid = db.raw.prepare('SELECT id FROM users').get().id;
+  db.raw.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)')
+    .run('r-miss', uid, id, '早報', '整理訂單', '["00:00"]', '{}', Date.now());
+  const rt = await runnerOf(db, token);
+  const next = await call(db, 'POST', 'runner/next', { token: rt, body: { slots: 1, wait: false } });
+  assert.equal(next.status, 200, JSON.stringify(next.data));
+  const msgs = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.ok(msgs.data.msgs.some(m => m.by === 'sys' && m.text.includes('補做錯過的例行任務')));
+  assert.match(next.data.job.prompt, /補做/);
+  await call(db, 'POST', 'runner/done', { token: rt, body: { id: next.data.job.id, ok: true, text: '好' } });
+  const names = ['甲', '乙', '丙', '丁'];
+  const ids = [];
+  for (const name of names) ids.push((await call(db, 'POST', 'bots', { token, body: { name, task: '工作' } })).data.id);
+  for (const bid of ids.slice(0, 3)) {
+    db.raw.prepare("INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,status,created,kind) VALUES (?,?,?,'[]','做', 'running', ?, 'chat')").run(uid, bid, bid, Date.now());
+  }
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: ids[3], text: '也做' } })).status, 200);
+  const queued = await call(db, 'GET', 'messages', { token, query: { conv: ids[3] } });
+  assert.ok(queued.data.msgs.some(m => m.by === 'sys' && m.text.includes('先排隊') && m.text.includes('甲')));
+});
+
 function openD1From(raw) {
   const norm = a => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? +v : v));
   class Stmt {

@@ -105,6 +105,16 @@ CREATE TABLE IF NOT EXISTS jobs (
   tries INTEGER NOT NULL DEFAULT 0 -- retries already used on that same model
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
+CREATE TABLE IF NOT EXISTS live (   -- the latest frame of a bot's own browser, for phones watching the host
+  bot_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  url TEXT,
+  title TEXT,
+  mime TEXT,
+  data TEXT,                     -- small jpeg, replaced in place
+  ts INTEGER,
+  handed INTEGER NOT NULL DEFAULT 0  -- 1: the person has the pointer; the bot must not click
+);
 CREATE TABLE IF NOT EXISTS shots (   -- latest browser screenshot per bot
   bot_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

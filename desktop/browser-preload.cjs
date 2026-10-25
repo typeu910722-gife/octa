@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('octaBrowser', {
   closeTab(i) { ipcRenderer.send('octa:browser-close', i); },
   engine(id) { ipcRenderer.send('octa:browser-engine', id); },
   go(url) { ipcRenderer.send('octa:browser-go', url); },
+  hand() { ipcRenderer.send('octa:browser-hand'); },
+  goOn() { ipcRenderer.send('octa:browser-continue'); },
   dragStart() { return ipcRenderer.sendSync('octa:browser-drag-start'); },
   dragBy(dx, dy, edge) { ipcRenderer.send('octa:browser-drag-by', { dx, dy, edge: edge || '' }); },
   dragEnd() { ipcRenderer.send('octa:browser-drag-end'); }

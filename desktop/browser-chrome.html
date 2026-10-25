@@ -58,6 +58,8 @@
           <input id="url" placeholder="https://" autocomplete="off" spellcheck="false" aria-label="網址">
           <button type="submit" class="tool">編輯</button>
         </form>
+        <button type="button" class="tool" id="hand">接手</button>
+        <button type="button" class="tool" id="goOn">繼續</button>
         <button type="button" class="back" id="collapse">收回</button>
       </div>
       <div class="engines" id="engines">
@@ -144,6 +146,8 @@
     document.getElementById('newTab').onclick = () => api()?.newTab();
     document.getElementById('collapse').onclick = () => api()?.toggle();
     document.getElementById('go').onsubmit = e => { e.preventDefault(); api()?.go(document.getElementById('url').value); };
+    document.getElementById('hand').onclick = () => api()?.hand();
+    document.getElementById('goOn').onclick = () => api()?.goOn();
     document.getElementById('engines').onclick = e => {
       const b = e.target.closest('[data-engine]');
       if (b) api()?.engine(b.dataset.engine);
