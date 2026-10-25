@@ -556,6 +556,31 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
 .fslide input[type=range]{flex:1;min-width:0;accent-color:var(--gold)}
 .fslab{color:var(--mute);font-size:13px}
 .frag{user-select:text;-webkit-user-select:text;white-space:pre-wrap;border:1px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg);max-height:280px;overflow:auto;line-height:1.7}
+/* the gold octopus sits in the conversation, above the composer and clear of the side panel */
+.buddy{position:absolute;left:16px;bottom:84px;z-index:3;width:132px;display:grid;justify-items:center;gap:2px;pointer-events:none}
+.buddy-say{max-width:150px;min-height:1.2em;background:var(--panel2);color:var(--ink);border:1px solid var(--gold);border-radius:14px 14px 14px 4px;padding:5px 8px;font-size:12px;line-height:1.4;box-shadow:0 8px 18px var(--shadow);text-align:center}
+.buddy-say:empty{display:none}
+.buddy-hit{pointer-events:auto;width:112px;height:128px;padding:0;border:0;background:none;filter:drop-shadow(0 10px 10px rgba(0,0,0,.32))}
+.buddy-hit svg{width:100%;height:100%;display:block;overflow:visible;animation:buddybob 2.6s ease-in-out infinite}
+.buddy.drag .buddy-hit svg,.buddy[data-face="sleep"] .buddy-hit svg{animation-duration:3.6s}
+.buddy[data-mood="work"] .buddy-hit svg{animation-duration:.95s}
+.buddy .wear,.buddy .extra{display:none}
+.buddy .mouth path,.buddy .mouth ellipse,.buddy .brows path{display:none}
+.buddy[data-look="explorer"] .wear-explorer,.buddy[data-look="engineer"] .wear-engineer,.buddy[data-look="student"] .wear-student,.buddy[data-look="astro"] .wear-astro,.buddy[data-look="wizard"] .wear-wizard,.buddy[data-look="casual"] .wear-casual,.buddy[data-look="ninja"] .wear-ninja,.buddy[data-look="bunny"] .wear-bunny,.buddy[data-look="santa"] .wear-santa{display:inline}
+.buddy[data-extra="glasses"] .extra-glasses,.buddy[data-extra="scarf"] .extra-scarf,.buddy[data-extra="pack"] .extra-pack,.buddy[data-extra="cape"] .extra-cape,.buddy[data-extra="collar"] .extra-collar{display:inline}
+.buddy[data-face="smile"] .m-smile,.buddy[data-face="wow"] .m-wow,.buddy[data-face="shy"] .m-shy,.buddy[data-face="angry"] .m-angry,.buddy[data-face="think"] .m-think,.buddy[data-face="grin"] .m-grin,.buddy[data-face="sleep"] .m-sleep{display:inline}
+.buddy[data-face="angry"] .b-angry,.buddy[data-face="think"] .b-think{display:inline}
+.buddy .blush,.buddy .zzz,.buddy .lids,.buddy .rings{opacity:0}
+.buddy[data-face="shy"] .blush,.buddy[data-face="sleep"] .zzz,.buddy[data-mood="work"] .rings{opacity:1}
+.buddy.blink .lids,.buddy[data-face="sleep"] .lids{opacity:1}
+.buddy.blink .iris,.buddy[data-face="sleep"] .iris{opacity:0}
+.buddy-picks{display:flex;flex-wrap:wrap;gap:6px}
+.buddy-picks button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 10px;font-size:13px}
+.buddy-picks button.on{border-color:var(--gold);background:var(--panel2);color:var(--gold2)}
+@keyframes buddybob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@media (prefers-reduced-motion:reduce){.buddy-hit svg{animation:none}}
+.pane:has(#buddy:not([hidden])) .msgs{padding-bottom:148px}
+@media (max-width:760px){.buddy{bottom:92px;width:112px}.buddy-hit{width:96px;height:110px}.buddy-say{font-size:11px}.pane:has(#buddy:not([hidden])) .msgs{padding-bottom:132px}}
 .look{display:grid;gap:18px}
 .look h3{margin:0}
 .look .toggle{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--card)}
@@ -720,6 +745,76 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
     <div class="att" id="att"></div>
     <form class="in" id="f" hidden><button type="button" class="clip" id="clip" aria-label="附加檔案">＋</button><input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.docx" hidden><textarea id="msg" rows="1" placeholder="輸入指示…"></textarea><button type="button" class="clip" id="mic" aria-label="語音輸入" hidden>🎙</button><button class="send" aria-label="送出"><span class="sl">送出</span><span class="sa2" aria-hidden="true">↑</span></button></form>
     <div class="note" id="note" hidden></div>
+    <div class="buddy" id="buddy" hidden data-face="smile" data-look="base" data-extra="none" data-mood="">
+      <div class="buddy-say" id="buddySay"></div>
+      <button type="button" class="buddy-hit" aria-label="金色小夥伴">
+        <svg viewBox="0 0 160 188" aria-hidden="true">
+          <defs>
+            <radialGradient id="octaBody" cx="42%" cy="36%" r="68%">
+              <stop offset="0%" stop-color="#fff1b0"/>
+              <stop offset="55%" stop-color="#f6c445"/>
+              <stop offset="100%" stop-color="#e08a16"/>
+            </radialGradient>
+          </defs>
+          <g class="rings" fill="none" stroke="#49d2ff" stroke-width="2"><ellipse cx="80" cy="172" rx="26" ry="5"/><ellipse cx="80" cy="172" rx="40" ry="8"/></g>
+          <path class="extra extra-cape" d="M50 112 C28 146 40 176 80 168 C120 176 132 146 110 112" fill="#6d3b72"/>
+          <g fill="none" stroke="#f6c445" stroke-width="13" stroke-linecap="round">
+            <path d="M46 128 C24 150 34 178 58 166"/>
+            <path d="M64 138 C48 164 70 184 90 166"/>
+            <path d="M82 142 C84 172 108 186 120 164"/>
+            <path d="M100 136 C124 158 116 182 132 164"/>
+            <path d="M116 126 C142 146 134 172 114 160"/>
+          </g>
+          <g fill="#c48412">
+            <circle cx="40" cy="158" r="2.2"/><circle cx="58" cy="170" r="2"/><circle cx="78" cy="174" r="2.2"/><circle cx="108" cy="172" r="2"/><circle cx="128" cy="156" r="2.2"/>
+          </g>
+          <path d="M38 86 C38 36 122 36 122 86" fill="none" stroke="#243044" stroke-width="8" stroke-linecap="round"/>
+          <circle cx="80" cy="90" r="48" fill="url(#octaBody)"/>
+          <ellipse cx="80" cy="104" rx="26" ry="16" fill="#ffe7a8" opacity=".5"/>
+          <ellipse cx="62" cy="68" rx="16" ry="8" fill="#fff" opacity=".38"/>
+          <circle cx="36" cy="90" r="15" fill="#1b2430"/><circle cx="36" cy="90" r="9" fill="#e4cb93"/><circle cx="36" cy="90" r="4.5" fill="#49d2ff"/>
+          <circle cx="124" cy="90" r="15" fill="#1b2430"/><circle cx="124" cy="90" r="9" fill="#e4cb93"/><circle cx="124" cy="90" r="4.5" fill="#49d2ff"/>
+          <g class="iris">
+            <ellipse cx="64" cy="86" rx="12" ry="14" fill="#1a2744"/><ellipse cx="96" cy="86" rx="12" ry="14" fill="#1a2744"/>
+            <ellipse cx="64" cy="88" rx="6" ry="7" fill="#3ec6ff"/><ellipse cx="96" cy="88" rx="6" ry="7" fill="#3ec6ff"/>
+            <circle cx="64" cy="89" r="3" fill="#0b1220"/><circle cx="96" cy="89" r="3" fill="#0b1220"/>
+            <circle cx="68" cy="82" r="2.4" fill="#fff"/><circle cx="100" cy="82" r="2.4" fill="#fff"/>
+          </g>
+          <g class="lids" stroke="#e08a16" stroke-width="3" fill="none" stroke-linecap="round">
+            <path d="M52 86 Q64 96 76 86"/><path d="M84 86 Q96 96 108 86"/>
+          </g>
+          <g class="blush" fill="#ff8b7a"><ellipse cx="48" cy="100" rx="7" ry="4" opacity=".8"/><ellipse cx="112" cy="100" rx="7" ry="4" opacity=".8"/></g>
+          <g class="brows" fill="none" stroke="#c48412" stroke-width="3" stroke-linecap="round">
+            <path class="b-angry" d="M50 68 L74 76 M110 68 L86 76"/>
+            <path class="b-think" d="M50 74 L72 68 M86 76 L108 74"/>
+          </g>
+          <g class="mouth" fill="none" stroke="#c45b4a" stroke-width="3" stroke-linecap="round">
+            <path class="m-smile" d="M68 106 Q80 118 92 106"/>
+            <ellipse class="m-wow" cx="80" cy="110" rx="6" ry="7"/>
+            <path class="m-shy" d="M72 108 Q80 114 88 108"/>
+            <path class="m-angry" d="M68 114 Q80 104 92 114"/>
+            <path class="m-think" d="M70 110 H90"/>
+            <path class="m-grin" d="M64 104 Q80 122 96 104"/>
+            <path class="m-sleep" d="M72 110 Q80 114 88 110"/>
+          </g>
+          <g class="zzz" fill="#e4cb93" font-family="sans-serif" font-size="14" font-weight="700"><text x="112" y="48">z</text><text x="124" y="36">z</text></g>
+          <g class="wear wear-explorer"><ellipse cx="80" cy="50" rx="36" ry="8" fill="#6b4423"/><path d="M56 50 C58 24 102 24 104 50 Z" fill="#8a5a2b"/><rect x="70" y="34" width="20" height="5" rx="2" fill="#e4cb93"/></g>
+          <g class="wear wear-engineer" fill="none" stroke="#3aa0c8" stroke-width="3"><circle cx="64" cy="42" r="9"/><circle cx="96" cy="42" r="9"/><path d="M73 42 H87"/></g>
+          <g class="wear wear-student"><path d="M46 50 L80 36 L114 50 L80 58 Z" fill="#24315a"/><rect x="78" y="24" width="4" height="14" fill="#24315a"/><circle cx="80" cy="22" r="3" fill="#e4cb93"/></g>
+          <g class="wear wear-astro"><path d="M40 98 C40 28 120 28 120 98" fill="#d7e6f5" opacity=".28" stroke="#9bb4c9" stroke-width="3"/><rect x="52" y="78" width="56" height="18" rx="8" fill="#7ec8ff" opacity=".35"/></g>
+          <g class="wear wear-wizard"><path d="M80 6 L112 54 H48 Z" fill="#5b3d8a"/><circle cx="86" cy="30" r="3.5" fill="#f0d060"/><rect x="48" y="50" width="64" height="8" rx="3" fill="#5b3d8a"/></g>
+          <g class="wear wear-casual"><rect x="48" y="78" width="26" height="14" rx="4" fill="#1b2430"/><rect x="86" y="78" width="26" height="14" rx="4" fill="#1b2430"/><path d="M74 84 H86" stroke="#1b2430" stroke-width="3"/></g>
+          <g class="wear wear-ninja"><path d="M34 108 C30 40 130 40 126 108" fill="none" stroke="#2a2f3a" stroke-width="18" stroke-linecap="round"/><path d="M50 100 H110" stroke="#2a2f3a" stroke-width="10" stroke-linecap="round"/></g>
+          <g class="wear wear-bunny"><ellipse cx="58" cy="30" rx="8" ry="18" fill="#f4c4d0" stroke="#f0b429" stroke-width="3"/><ellipse cx="102" cy="30" rx="8" ry="18" fill="#f4c4d0" stroke="#f0b429" stroke-width="3"/></g>
+          <g class="wear wear-santa"><path d="M48 54 C62 16 118 18 114 54 Z" fill="#c23b3b"/><circle cx="116" cy="34" r="8" fill="#fff"/><rect x="44" y="48" width="74" height="10" rx="4" fill="#fff"/></g>
+          <g class="extra extra-glasses" fill="none" stroke="#243044" stroke-width="2.4"><circle cx="64" cy="86" r="14"/><circle cx="96" cy="86" r="14"/><path d="M78 86 H82"/></g>
+          <path class="extra extra-scarf" d="M50 116 Q80 132 110 116 Q98 126 80 122 Q62 126 50 116" fill="#d4544a"/>
+          <rect class="extra extra-pack" x="112" y="108" width="22" height="28" rx="6" fill="#3d6b8a"/>
+          <g class="extra extra-collar" fill="none" stroke="#e4cb93" stroke-width="3"><ellipse cx="80" cy="124" rx="16" ry="6"/></g>
+          <circle class="extra extra-collar" cx="80" cy="130" r="3.2" fill="#49d2ff"/>
+        </svg>
+      </button>
+    </div>
   </section>
 </div>
 <aside class="askp" id="askp" hidden aria-label="機器人的提問"></aside>
@@ -1006,7 +1101,7 @@ function render(scroll){
   const c=cur&&conv(cur);
   ['ph','task','msgs','f','note'].forEach(k=>$(k).hidden=!c);if(!c)$('offb').hidden=true;$('blank').hidden=!!c;
   if(!c)setHTML($('blank'),!S.loaded?'':S.bots.length?'選一個人，直接跟他說。檔案丟進來就會附上，文字拖進輸入框就會貼上。':`<div class="guidecard"><div>還沒有機器人。取個名字，然後直接跟它說要做什麼。</div><button class="btn" onclick="openGuide()">開始設定</button></div>`);
-  if(!c){$('mention').innerHTML='';$('quick').innerHTML='';$('quick')._h='';return}
+  if(!c){$('mention').innerHTML='';$('quick').innerHTML='';$('quick')._h='';buddySync();return}
   const g=isG(cur);
   $('pav').className='av'+(g?' grp':'')+(!g&&busyIn(cur).some(x=>x.status==='running')?' awake':'');if(g)$('pav').textContent=c.members.length;else $('pav').innerHTML=avOf(c.id);$('pav').toggleAttribute('data-u',!g)
   $('pname').textContent=c.name;
@@ -1048,6 +1143,7 @@ function render(scroll){
   else if(changed){if(atBottom)box.scrollTo({top:box.scrollHeight,behavior:'smooth'});else $('jump').hidden=false}
   if(atBottom||switched||scroll){markSeen(cur)}
   $('note').textContent=S.runnerOnline?'在你的電腦上工作':'電腦沒開，訊息先排著';
+  buddySync();
 }
 
 /* ---------- events ---------- */
@@ -1724,6 +1820,7 @@ const field='flex:1;min-width:0;background:var(--bg);border:1px solid var(--line
 const settingsShell=()=>!phoneUI();
 function settingsRows(){return [
     ['look','🎨','外觀','深色或紙色、字體大小、語言'],
+    ['buddy','🐙','金色小夥伴','他待在對話旁邊，可以換裝'],
     ['me','🙂','個人資料',S.nick?`機器人稱呼你「${esc(S.nick)}」`:'設定機器人怎麼稱呼你'],
     ['acct','👤','帳號與裝置',CFG.local?'離線模式不使用帳號':esc(S.me)],
     ['pc','🖥','電腦與主機',S.runnerOnline?(CFG.local?'電腦在線':'主機在線'):(CFG.local?'電腦離線':'主機離線')],
@@ -1738,7 +1835,7 @@ function settingsRows(){return [
     ['logs','📋','工作紀錄','最近 100 筆'],
     ['guide','🧭','設定指引','從頭設定一次'],
     ['ver','✨','最新版本',(window._upd&&['available','ready'].includes(window._upd.state))?'有新版本':'版本與更新內容']]}
-const settingsGo={look:()=>openLook(),me:()=>openProfile(),warm:()=>openWarm(),acct:()=>openAccount(),pc:()=>openComputers(),ai:()=>openAI(),noti:()=>openNotify(),sched:()=>openSched(),files:()=>openStore(),notes:()=>openNotes(),tpl:()=>openTpl(),code:()=>openCode(),logs:()=>openLogs(),guide:()=>openGuide(),ver:()=>openVersion()};
+const settingsGo={look:()=>openLook(),buddy:()=>openBuddy(),me:()=>openProfile(),warm:()=>openWarm(),acct:()=>openAccount(),pc:()=>openComputers(),ai:()=>openAI(),noti:()=>openNotify(),sched:()=>openSched(),files:()=>openStore(),notes:()=>openNotes(),tpl:()=>openTpl(),code:()=>openCode(),logs:()=>openLogs(),guide:()=>openGuide(),ver:()=>openVersion()};
 function settingsFrame(){
   if($('sbody'))return;
   $('veil').innerHTML=`<div class="sheet settings"><div class="shd"><h2>設定</h2><button type="button" class="x" id="sx" aria-label="關閉">✕</button></div>
@@ -2206,6 +2303,67 @@ async function openCode(focus){
   if(tasks.some(t=>!CODE_DONE.has(t.status)))codeTimer=setInterval(()=>{const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;openCode()},2500);
 }
 
+/* ---------- the gold octopus who stays beside the conversation ---------- */
+const BUDDY_LOOKS=[['base','基本'],['explorer','冒險者'],['engineer','工程師'],['student','學生'],['astro','太空人'],['wizard','魔法師'],['casual','休閒'],['ninja','忍者'],['bunny','可愛'],['santa','聖誕']];
+const BUDDY_EXTRAS=[['none','無'],['glasses','眼鏡'],['scarf','圍巾'],['pack','背包'],['cape','披風'],['collar','項圈']];
+const buddyGreeted=new Set();
+let buddyHold=0;
+function buddyStore(k,v){try{if(v==null)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){}return null}
+function buddyOn(){return buddyStore('octa_buddy')!=='0'}
+function buddyLook(){const v=buddyStore('octa_buddy_look');return BUDDY_LOOKS.some(x=>x[0]===v)?v:'base'}
+function buddyExtra(){const v=buddyStore('octa_buddy_extra');return BUDDY_EXTRAS.some(x=>x[0]===v)?v:'none'}
+function buddySay(t){const n=$('buddySay');if(n)n.textContent=t||'';const lab=$('buddyLine');if(lab)lab.textContent=t||''}
+function buddyMood(mood,face,line){const el=$('buddy');if(!el)return;if(el.dataset.mood===mood&&el.dataset.face===face){if(line)buddySay(line);return}el.dataset.mood=mood;el.dataset.face=face;buddySay(line)}
+function buddyClamp(){const el=$('buddy');if(!el||el.hidden||!el.style.left)return;const w=$('pane').clientWidth,h=$('pane').clientHeight;const l=Math.max(8,Math.min(Math.max(8,w-el.offsetWidth-8),parseFloat(el.style.left)||0));const t=Math.max(8,Math.min(Math.max(8,h-el.offsetHeight-8),parseFloat(el.style.top)||0));el.style.left=l+'px';el.style.top=t+'px'}
+function buddySync(){
+  const el=$('buddy');if(!el)return;
+  const show=buddyOn()&&!$('app').hidden&&!!(cur&&conv(cur))&&(innerWidth>760||$('app').classList.contains('chat'));
+  el.hidden=!show;if(!show)return;
+  el.dataset.look=buddyLook();el.dataset.extra=buddyExtra();
+  const running=busyIn(cur).some(x=>x.status==='running');
+  if(running){buddyHold=0;buddyMood('work','think','認真處理任務');buddyClamp();return}
+  const typing=($('msg')?.value||'').trim();
+  if(typing){buddyMood('listen','wow','我在聽');buddyClamp();return}
+  if(Date.now()<buddyHold){buddyClamp();return}
+  if(!buddyGreeted.has(cur)){buddyGreeted.add(cur);buddyHold=Date.now()+12000;buddyMood('hi','smile','主人！我來了～');buddyClamp();return}
+  const last=convMsgs(cur).reduce((a,m)=>Math.max(a,m.ts||0),0);
+  const quiet=!last||Date.now()-last>90000;
+  if(quiet)buddyMood('rest','sleep','我在旁邊休息');
+  else if(el.dataset.mood==='rest'||!el.dataset.mood)buddyMood('follow','grin','我跟著你');
+  buddyClamp();
+}
+function openBuddy(){
+  const look=buddyLook(),extra=buddyExtra();
+  subSheet('金色小夥伴',`<div class="look"><p>他會待在這個對話旁邊。打開對話時打一聲招呼，工作的時候換表情，安靜久了會打盹。服裝跟配件可以換，不會動到對話。</p>
+  <p id="buddyLine">${esc($('buddySay')?.textContent||'主人！我來了～')}</p>
+  <label class="toggle"><span>顯示小夥伴</span><input type="checkbox" id="buddyOn" ${buddyOn()?'checked':''}></label>
+  <h3>服裝</h3><div class="buddy-picks">${BUDDY_LOOKS.map(([id,name])=>`<button type="button" data-buddy-look="${id}" class="${id===look?'on':''}">${name}</button>`).join('')}</div>
+  <h3>配件</h3><div class="buddy-picks">${BUDDY_EXTRAS.map(([id,name])=>`<button type="button" data-buddy-extra="${id}" class="${id===extra?'on':''}">${name}</button>`).join('')}</div>
+  <div class="row2"><button type="button" class="ghost" id="buddyNext">換一句</button></div></div>`);
+  $('buddyOn').onchange=()=>{buddyStore('octa_buddy',$('buddyOn').checked?'1':'0');buddySync()};
+  $('veil').querySelectorAll('[data-buddy-look]').forEach(b=>b.onclick=()=>{buddyStore('octa_buddy_look',b.dataset.buddyLook);$('veil').querySelectorAll('[data-buddy-look]').forEach(x=>x.classList.toggle('on',x===b));buddySync()});
+  $('veil').querySelectorAll('[data-buddy-extra]').forEach(b=>b.onclick=()=>{buddyStore('octa_buddy_extra',b.dataset.buddyExtra);$('veil').querySelectorAll('[data-buddy-extra]').forEach(x=>x.classList.toggle('on',x===b));buddySync()});
+  const lines=['主人！我來了～','我在這裡','一起完成吧','你說，我記著','我跟著你'];
+  $('buddyNext').onclick=()=>{const t=lines[Math.floor(Math.random()*lines.length)];buddyHold=Date.now()+8000;buddyMood('chat','grin',t);buddySay(t)};
+}
+function buddyBoot(){
+  const el=$('buddy');if(!el||el.dataset.ready)return;el.dataset.ready='1';
+  try{const at=JSON.parse(buddyStore('octa_buddy_at')||'null');if(at&&at.l&&at.t){el.style.left=at.l;el.style.top=at.t;el.style.bottom='auto'}}catch(e){}
+  const fig=el.querySelector('.buddy-hit');
+  fig.addEventListener('pointerdown',e=>{
+    if(e.button!=null&&e.button!==0)return;
+    const pane=$('pane').getBoundingClientRect(),r=el.getBoundingClientRect();
+    const start={x:e.clientX,y:e.clientY,l:r.left-pane.left,t:r.top-pane.top,moved:false};
+    el.classList.add('drag');
+    const move=ev=>{const dx=ev.clientX-start.x,dy=ev.clientY-start.y;if(Math.hypot(dx,dy)>4)start.moved=true;const w=$('pane').clientWidth,h=$('pane').clientHeight;el.style.left=Math.max(8,Math.min(w-el.offsetWidth-8,start.l+dx))+'px';el.style.top=Math.max(8,Math.min(h-el.offsetHeight-8,start.t+dy))+'px';el.style.bottom='auto'};
+    const up=()=>{fig.removeEventListener('pointermove',move);fig.removeEventListener('pointerup',up);el.classList.remove('drag');if(start.moved){fig.dataset.skip='1';buddyStore('octa_buddy_at',JSON.stringify({l:el.style.left,t:el.style.top}))}};
+    fig.setPointerCapture?.(e.pointerId);fig.addEventListener('pointermove',move);fig.addEventListener('pointerup',up);
+  });
+  fig.addEventListener('click',e=>{if(fig.dataset.skip){fig.dataset.skip='';e.preventDefault();return}openBuddy()});
+  $('msg').addEventListener('input',()=>{if($('buddy')?.hidden)return;buddyHold=0;buddySync()});
+  setInterval(()=>{const b=$('buddy');if(!b||b.hidden||b.dataset.face==='sleep')return;b.classList.add('blink');setTimeout(()=>b.classList.remove('blink'),140)},4200);
+  setInterval(()=>{if(!$('buddy')?.hidden)buddySync()},8000);
+}
 /* ---------- boot ---------- */
 let CFG={};
 async function start(){$('login').hidden=true;$('home').hidden=true;
@@ -2215,7 +2373,8 @@ async function start(){$('login').hidden=true;$('home').hidden=true;
   if(cur)await loadMsgs(cur,'first').catch(()=>{});
   $('app').hidden=false;
   focusBrowser();
-  addEventListener('resize',()=>focusBrowser());
+  buddyBoot();
+  addEventListener('resize',()=>{focusBrowser();buddyClamp()});
   boot.set(100,'完成');try{if(localStorage.getItem('octa_rail')==='0'&&innerWidth>760)$('app').classList.add('rail-collapsed')}catch(e){}boot.hide();render(true);live();
   let g=null;try{g=localStorage.getItem('ebot_guided')}catch(e){}if(!S.bots.length&&!g)openGuide();else whatsNew()}
 // once after every update: show what the latest version added

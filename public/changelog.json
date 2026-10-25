@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.23",
+  "date": "2026-10-25",
+  "notes": [
+   "對話旁邊多了一隻金色章魚小夥伴。打開對話他會打招呼，工作時換表情，安靜久了會打盹。可以換裝，也可以先把他收起來"
+  ],
+  "notes_en": [
+   "A gold octopus stays beside the conversation. He greets you, changes face while work is running, and dozes when it is quiet. His outfit and accessories can be changed, and he can be hidden"
+  ]
+ },
+ {
   "v": "3.0.22",
   "date": "2026-10-25",
   "notes": [
