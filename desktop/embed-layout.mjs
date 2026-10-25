@@ -4,6 +4,8 @@
 
 export const PAGE = { width: 1280, height: 800 };
 export const THUMB_RADIUS = 18;
+export const OPEN_BAR = 48;
+export const TAB_ROW = 28;
 
 // Where the collapsed browser card sits. `at` is the place the person dragged it to.
 export function thumbBox(w, h, at) {
@@ -30,8 +32,8 @@ export function isBlankUrl(url) {
 }
 
 // thumb: a corner preview, the chat keeps the whole window.
-// open: the page docks beside or under the chat, with a bar to collapse it.
-export function embedFrames(w, h, mode, at) {
+// open: the page docks beside or under the chat, under a bar for back, a new tab, and the address.
+export function embedFrames(w, h, mode, at, opts) {
   w = Math.max(1, Math.round(w));
   h = Math.max(1, Math.round(h));
   const main = { x: 0, y: 0, width: w, height: h };
@@ -40,7 +42,7 @@ export function embedFrames(w, h, mode, at) {
   }
   if (mode === 'open') {
     const dock = dockLayout(w, h);
-    const bar = 40;
+    const bar = OPEN_BAR + ((opts?.tabs || 0) > 1 ? TAB_ROW : 0);
     const side = dock.side;
     return {
       mode: 'open',

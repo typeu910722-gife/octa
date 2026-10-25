@@ -65,18 +65,33 @@ test('a thumbnail leaves the chat full width', () => {
   assert.ok(lay.chrome.width >= 120);
 });
 
-test('opening the browser docks it under a collapse bar', () => {
+test('opening the browser docks it under a toolbar', () => {
   const wide = embedFrames(1920, 1000, 'open');
   assert.equal(wide.mode, 'open');
   assert.ok(wide.main.width >= 920);
-  assert.equal(wide.chrome.height, 40);
+  assert.equal(wide.chrome.height, 48);
   assert.equal(wide.page.y, wide.chrome.y + wide.chrome.height);
   assert.equal(wide.main.width + wide.page.width, 1920);
+  const tabs = embedFrames(1920, 1000, 'open', null, { tabs: 2 });
+  assert.equal(tabs.chrome.height, 76);
+  assert.equal(tabs.page.y, tabs.chrome.y + tabs.chrome.height);
+  assert.equal(tabs.chrome.height + tabs.page.height, wide.chrome.height + wide.page.height);
   const narrow = embedFrames(1366, 768, 'open');
   assert.equal(narrow.main.width, 1366);
   assert.equal(narrow.chrome.y, narrow.main.height);
   assert.equal(narrow.page.y, narrow.chrome.y + narrow.chrome.height);
   assert.equal(narrow.main.height + narrow.chrome.height + narrow.page.height, 768);
+  const html = readFileSync(new URL('../desktop/browser-chrome.html', import.meta.url), 'utf8');
+  assert.match(html, /返回上一頁/);
+  assert.match(html, /開啟新分頁/);
+  assert.match(html, />編輯</);
+  assert.match(html, /id="goBack"/);
+  const main = readFileSync(new URL('../desktop/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /octa:browser-back/);
+  assert.match(main, /octa:browser-tab/);
+  assert.match(main, /octa:browser-go/);
+  assert.match(main, /navigationHistory\.goBack/);
+  assert.match(main, /tabs: side\.tabs\?\.length/);
 });
 
 test('a dragged thumbnail stays where it was put and stays on screen', () => {

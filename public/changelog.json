@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.19",
+  "date": "2026-10-25",
+  "notes": [
+   "內建瀏覽器打開後，上方有返回上一頁、開啟新分頁，也可以編輯網址"
+  ],
+  "notes_en": [
+   "The open built-in browser has back, a new tab, and a way to edit the address"
+  ]
+ },
+ {
   "v": "3.0.18",
   "date": "2026-10-25",
   "notes": [

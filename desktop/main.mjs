@@ -171,15 +171,30 @@ function parkView(bucket, view, visible) {
   try { if (!host.contentView.children.includes(view)) host.contentView.addChildView(view); } catch { }
   fitView(view, { x: 0, y: 0, width: PAGE.width, height: PAGE.height }, visible);
 }
+function shownUrl(wc) {
+  if (!wc || wc.isDestroyed()) return '';
+  const u = wc.getURL() || '';
+  return isBlankUrl(u) ? '' : u;
+}
+function canGoBack(wc) {
+  if (!wc || wc.isDestroyed()) return false;
+  try { return !!wc.navigationHistory?.canGoBack?.(); } catch { return false; }
+}
+function tabTitle(wc) {
+  if (!wc || wc.isDestroyed()) return '新分頁';
+  return (wc.getTitle() || '').replace(/^【[^】]*】/, '').trim().slice(0, 18) || '新分頁';
+}
 function sendFrame(bucket, extra) {
   const wc = bucket.chrome?.webContents;
   if (!wc || wc.isDestroyed()) return;
+  const page = bucket.active?.webContents;
   const drag = bucket.dragging && bucket.thumbBox ? { dragging: true, x: bucket.thumbBox.x, y: bucket.thumbBox.y, w: bucket.thumbBox.width, h: bucket.thumbBox.height } : {};
-  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', ...drag, ...extra });
+  const tabs = bucket.tabs.map((v, i) => ({ i, on: v === bucket.active, title: tabTitle(v.webContents) }));
+  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', url: shownUrl(page), canBack: canGoBack(page), tabs, ...drag, ...extra });
 }
-function roundChrome(view, radius) {
+function roundChrome(view, radius, solid) {
   if (!view) return;
-  try { view.setBackgroundColor('#00000000'); } catch { }
+  try { view.setBackgroundColor(solid ? '#1c1814' : '#00000000'); } catch { }
   try { view.setBorderRadius?.(Math.max(0, radius || 0)); } catch { }
 }
 function savedThumbAt() {
@@ -214,7 +229,7 @@ function placeBucket(bucket, frames) {
   if (frames.chrome && bucket.chrome && win) {
     if (!win.contentView.children.includes(bucket.chrome)) win.contentView.addChildView(bucket.chrome);
     fitView(bucket.chrome, frames.chrome, true);
-    roundChrome(bucket.chrome, frames.mode === 'thumb' ? THUMB_RADIUS : 0);
+    roundChrome(bucket.chrome, frames.mode === 'thumb' ? THUMB_RADIUS : 0, frames.mode === 'open');
     try { win.contentView.removeChildView(bucket.chrome); win.contentView.addChildView(bucket.chrome); } catch { }
   }
 }
@@ -224,7 +239,7 @@ function layoutEmbed() {
   const main = win.contentView.children.find(v => v.webContents === win.webContents);
   const side = [...embeds.values()].find(e => e.shown);
   if (!side) { fitView(main, { x: 0, y: 0, width: w, height: h }, true); return; }
-  const frames = embedFrames(w, h, side.shown, side.thumbAt || savedThumbAt());
+  const frames = embedFrames(w, h, side.shown, side.thumbAt || savedThumbAt(), { tabs: side.tabs?.length || 0 });
   fitView(main, frames.main, true);
   if (side.dragging && side.shown === 'thumb' && side.chrome) {
     const box = thumbBox(w, h, side.thumbAt);
@@ -243,6 +258,10 @@ function hookPage(wc, id, bucket) {
   try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) logError('debugger', e); }
   wc.debugger.on('message', (_e, method, params) => bucket.onEvent?.(id, method, params));
   bucket.pages.set(id, { wc });
+  const ping = () => { if (bucket.active?.webContents === wc) sendFrame(bucket, {}); };
+  wc.on('did-navigate', ping);
+  wc.on('did-navigate-in-page', ping);
+  wc.on('did-finish-load', ping);
   return id;
 }
 function pageId(bucket, wc) {
@@ -251,6 +270,31 @@ function pageId(bucket, wc) {
 function focusTab(bucket, view) {
   bucket.active = view;
   layoutEmbed();
+  sendFrame(bucket, {});
+}
+function bindOpen(bucket, tab) {
+  tab.webContents.setWindowOpenHandler(({ url }) => {
+    focusTab(bucket, tab);
+    tab.webContents.loadURL(url).catch(() => { });
+    embedShow(bucket.port, true);
+    return { action: 'deny' };
+  });
+}
+function addEmbedTab(bucket, url) {
+  const tab = new WebContentsView({ webPreferences: bucket.prefs });
+  const id = 'p' + (++embedSeq);
+  bucket.tabs.push(tab);
+  hookPage(tab.webContents, id, bucket);
+  bindOpen(bucket, tab);
+  tab.webContents.loadURL(url && !isBlankUrl(url) ? url : 'about:blank').catch(() => { });
+  focusTab(bucket, tab);
+  return { id, title: '', url: url || 'about:blank' };
+}
+function goTo(wc, raw) {
+  let url = String(raw || '').trim();
+  if (!url || !wc || wc.isDestroyed()) return;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  wc.loadURL(url).catch(() => { });
 }
 // true keeps an open dock open and otherwise shows the thumbnail. 'open' and 'thumb' are explicit.
 async function embedShow(port, show) {
@@ -299,7 +343,7 @@ async function embedStart(bot, port) {
   const bucket = { port, prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: savedThumbAt(), dragging: false, thumbBox: null };
   roundChrome(chrome, THUMB_RADIUS);
   hookPage(view.webContents, 'p' + (++embedSeq), bucket);
-  view.webContents.setWindowOpenHandler(({ url }) => { focusTab(bucket, view); view.webContents.loadURL(url).catch(() => { }); embedShow(port, true); return { action: 'deny' }; });
+  bindOpen(bucket, view);
   bucket.splash = `data:text/html;charset=utf-8,${encodeURIComponent(`<title>${name} 的瀏覽器</title><body style="margin:0;display:grid;place-items:center;height:100vh;background:#1c1814;color:#f3ead3;font-family:sans-serif;text-align:center"><div style="font-size:40px">🐙</div><div style="font-size:18px;margin-top:8px">${name}</div><div style="font:400 14px sans-serif;opacity:.8;margin-top:10px">網頁會開在這裡，登入會留在這台電腦</div></body>`)}`;
   view.webContents.loadURL(bucket.splash).catch(() => { });
   chrome.webContents.loadFile(join(here, 'browser-chrome.html')).catch(() => { });
@@ -348,15 +392,9 @@ async function embedStart(bot, port) {
         await embedShow(port, true);
         return { id, title: active.webContents.getTitle(), url };
       }
-      const tab = new WebContentsView({ webPreferences: prefs });
-      const id = 'p' + (++embedSeq);
-      bucket.tabs.push(tab);
-      hookPage(tab.webContents, id, bucket);
-      tab.webContents.setWindowOpenHandler(({ url: next }) => { focusTab(bucket, tab); tab.webContents.loadURL(next).catch(() => { }); embedShow(port, true); return { action: 'deny' }; });
-      tab.webContents.loadURL(url).catch(() => { });
-      focusTab(bucket, tab);
+      const made = addEmbedTab(bucket, url);
       await embedShow(port, true);
-      return { id, title: '', url };
+      return made;
     },
     async closeTarget(id) {
       const page = bucket.pages.get(id);
@@ -371,6 +409,7 @@ async function embedStart(bot, port) {
         try { bucket.host?.contentView.removeChildView(tab); } catch { }
         try { tab.webContents.close(); } catch { }
         layoutEmbed();
+        sendFrame(bucket, {});
         return;
       }
       bucket.pages.delete(id);
@@ -428,6 +467,34 @@ ipcMain.on('octa:browser-toggle', e => {
   const bucket = chromeBucket(e.sender);
   if (!bucket || bucket.dragging) return;
   embedShow(bucket.port, bucket.shown === 'open' ? 'thumb' : 'open');
+});
+ipcMain.on('octa:browser-back', e => {
+  if (!trusted(e)) return;
+  const wc = chromeBucket(e.sender)?.active?.webContents;
+  if (!wc || wc.isDestroyed() || !canGoBack(wc)) return;
+  try { wc.navigationHistory.goBack(); } catch { }
+});
+ipcMain.on('octa:browser-tab', e => {
+  if (!trusted(e)) return;
+  const bucket = chromeBucket(e.sender);
+  if (!bucket) return;
+  addEmbedTab(bucket, 'about:blank');
+  embedShow(bucket.port, 'open');
+});
+ipcMain.on('octa:browser-pick', (e, index) => {
+  if (!trusted(e)) return;
+  const bucket = chromeBucket(e.sender);
+  const tab = bucket?.tabs?.[index];
+  if (!tab || tab.webContents.isDestroyed()) return;
+  focusTab(bucket, tab);
+});
+ipcMain.on('octa:browser-go', (e, raw) => {
+  if (!trusted(e)) return;
+  const bucket = chromeBucket(e.sender);
+  const wc = bucket?.active?.webContents;
+  if (!bucket || !wc) return;
+  goTo(wc, raw);
+  embedShow(bucket.port, 'open');
 });
 ipcMain.on('octa:browser-drag-start', e => {
   const none = { dragging: false };
