@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { ENGINE_ROW, OPEN_BAR, PANEL_EDGE, TAB_ROW, THUMB_RADIUS, embedFrames, isBlankUrl, resizeBox, sidebarBox, thumbBox } from '../desktop/embed-layout.mjs';
+import { ENGINE_ROW, OPEN_BAR, PANEL_EDGE, TAB_ROW, THUMB_RADIUS, embedFrames, freshOpen, isBlankUrl, resizeBox, sidebarBox, thumbBox } from '../desktop/embed-layout.mjs';
 import { pickLivePage } from '../public/octa-runner.mjs';
 
 test('the opened browser is a side panel and the chat keeps the whole window', () => {
@@ -11,7 +11,17 @@ test('the opened browser is a side panel and the chat keeps the whole window', (
   assert.equal(lay.main.height, 1000);
   assert.equal(lay.box.y, 12);
   assert.equal(lay.box.x, 1920 - lay.box.width - 12);
-  assert.ok(lay.box.width >= 360 && lay.box.width <= 520);
+  assert.ok(lay.box.width > lay.box.height);
+  assert.ok(Math.abs(lay.box.width / lay.box.height - 8 / 5) < 0.02);
+  const short = embedFrames(1600, 700, 'open');
+  assert.ok(short.box.width > short.box.height);
+  assert.ok(Math.abs(short.box.width / short.box.height - 8 / 5) < 0.02);
+  assert.equal(freshOpen({ x: 12, y: 12, w: 480, h: 900 }), null);
+  const kept = freshOpen({ x: 40, y: 80, w: 960, h: 600 });
+  assert.equal(kept.w, 960);
+  const again = embedFrames(1920, 1000, 'open', freshOpen({ x: 1400, y: 12, w: 500, h: 976 }));
+  assert.equal(again.box.width, lay.box.width);
+  assert.equal(again.box.height, lay.box.height);
   assert.equal(lay.chrome.x, lay.box.x);
   assert.equal(lay.chrome.width, lay.box.width);
   assert.equal(lay.chrome.height, lay.box.height);
@@ -98,6 +108,7 @@ test('opening the browser keeps a toolbar and a closable tab row inside the pane
   assert.match(main, /octa:browser-back/);
   assert.match(main, /octa:browser-tab/);
   assert.match(main, /octa:browser-go/);
+  assert.match(main, /freshOpen/);
   assert.match(main, /octa:browser-close/);
   assert.match(main, /navigationHistory\.goBack/);
   assert.match(main, /tabs: bucket\.tabs\.length/);

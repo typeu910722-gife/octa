@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.25",
+  "date": "2026-10-25",
+  "notes": [
+   "內建瀏覽器打開時改成一般橫向視窗的比例，不再是細長的一條"
+  ],
+  "notes_en": [
+   "The built-in browser opens in a normal landscape proportion instead of a tall strip"
+  ]
+ },
+ {
   "v": "3.0.24",
   "date": "2026-10-25",
   "notes": [

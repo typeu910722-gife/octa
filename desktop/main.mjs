@@ -10,7 +10,7 @@ import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmS
 import os from 'node:os';
 import { startServer } from './server.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
-import { PAGE, THUMB_RADIUS, embedFrames, isBlankUrl, resizeBox, sidebarBox, thumbBox } from './embed-layout.mjs';
+import { PAGE, THUMB_RADIUS, embedFrames, freshOpen, isBlankUrl, resizeBox, sidebarBox, thumbBox } from './embed-layout.mjs';
 import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, braveDownload, chromeDownload, edgeDownload, firefoxDownload, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
 // ---------- updates (GitHub Releases) ----------
@@ -276,6 +276,7 @@ function layoutEmbed() {
       holdOffscreen(bucket);
       continue;
     }
+    if (bucket.shown === 'open') bucket.openAt = freshOpen(bucket.openAt);
     const at = bucket.shown === 'open' ? bucket.openAt : (bucket.thumbAt || savedThumbAt());
     const frames = embedFrames(w, h, bucket.shown, at, { tabs: bucket.tabs.length });
     if (bucket.dragging && bucket.chrome) {
@@ -609,7 +610,10 @@ ipcMain.on('octa:browser-go', (e, raw) => {
   embedShow(bucket.port, 'open');
 });
 function panelFrom(bucket, w, h) {
-  if (bucket.shown === 'open') return sidebarBox(w, h, bucket.openAt);
+  if (bucket.shown === 'open') {
+    bucket.openAt = freshOpen(bucket.openAt);
+    return sidebarBox(w, h, bucket.openAt);
+  }
   return thumbBox(w, h, bucket.thumbAt || savedThumbAt());
 }
 function rememberPanel(bucket, box) {

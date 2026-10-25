@@ -37,8 +37,32 @@ export function isBlankUrl(url) {
 
 function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
+// A normal browser window is wider than it is tall. 8:5 is 16:10.
+const OPEN_W = 8;
+const OPEN_H = 5;
+
+// The old default was a full-height strip at most 520px wide. Drop that saved place
+// so the next open uses the normal proportion. A box the person actually widened stays.
+export function freshOpen(at) {
+  if (!at || !Number.isFinite(+at.w) || !Number.isFinite(+at.h)) return null;
+  if (+at.h > +at.w && +at.w <= 520) return null;
+  return at;
+}
+
+function defaultOpen(maxW, maxH, minW, minH) {
+  let width = maxW;
+  let height = Math.round(width * OPEN_H / OPEN_W);
+  if (height > maxH) {
+    height = maxH;
+    width = Math.round(height * OPEN_W / OPEN_H);
+  }
+  width = clamp(width, minW, maxW);
+  height = clamp(height, minH, maxH);
+  return { width, height };
+}
+
 // The opened browser. `at` is {x, y, w, h} after the person drags or resizes it.
-// With no `at`, it stands on the right, like a side panel, inside the window.
+// With no `at`, it opens on the right as a normal landscape window, inside this window.
 export function sidebarBox(w, h, at) {
   w = Math.max(1, Math.round(w));
   h = Math.max(1, Math.round(h));
@@ -47,12 +71,13 @@ export function sidebarBox(w, h, at) {
   const minH = Math.min(PANEL_MIN.height, Math.max(160, h - margin * 2));
   const maxW = Math.max(minW, w - margin * 2);
   const maxH = Math.max(minH, h - margin * 2);
-  const width = clamp(at && Number.isFinite(+at.w) ? Math.round(+at.w) : Math.min(520, Math.max(minW, Math.round(w * 0.34))), minW, maxW);
-  const height = clamp(at && Number.isFinite(+at.h) ? Math.round(+at.h) : Math.max(minH, h - margin * 2), minH, maxH);
+  const fresh = defaultOpen(maxW, maxH, minW, minH);
+  const width = clamp(at && Number.isFinite(+at.w) ? Math.round(+at.w) : fresh.width, minW, maxW);
+  const height = clamp(at && Number.isFinite(+at.h) ? Math.round(+at.h) : fresh.height, minH, maxH);
   const maxX = Math.max(margin, w - width - margin);
   const maxY = Math.max(margin, h - height - margin);
   const x = at && Number.isFinite(+at.x) ? Math.round(+at.x) : maxX;
-  const y = at && Number.isFinite(+at.y) ? Math.round(+at.y) : margin;
+  const y = at && Number.isFinite(+at.y) ? Math.round(+at.y) : margin + Math.round((maxH - height) / 2);
   return {
     x: clamp(x, Math.min(margin, maxX), maxX),
     y: clamp(y, Math.min(margin, maxY), maxY),
