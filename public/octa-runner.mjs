@@ -20,6 +20,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider } from './coding-runtime.mjs';
+import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 
 export const VERSION = '17.12';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -598,7 +599,11 @@ async function runEngine(engine, prompt, b, model, live = {}) {
   const E = ENGINES[engine] || ENGINES.claude;
   if (r.missing) return { ok: false, text: `⚠ 這台電腦沒有安裝 ${E.label}。請到「AI 連線」安裝並登入（${E.site}），或在任務設定把這個機器人改用其他 AI。` };
   if (tokens == null) { const tm = String((r.err || '') + (r.out || '')).match(/tokens used[:\s]*([\d,]+)/i); if (tm) tokens = +tm[1].replace(/,/g, ''); }
-  if (r.code === 0 && text) return { ok: true, text, tokens };
+  // Exit 0 with only "流量不夠" is not an answer: report it as a failure so the backup runs.
+  const refused = r.code === 0 && replyIsProviderRefusal(text);
+  if (r.code === 0 && text && !refused) return { ok: true, text, tokens };
+  const quoted = providerFailureText([text, r.err, r.out]);
+  if (refused || quoted) return { ok: false, text: refused ? text : quoted };
   return { ok: false, text: `⚠ ${E.label} 執行失敗：` + failText(r, prompt) };
 }
 // the useful part of a failed run: CLIs like Codex echo the whole prompt into their log, which buried the real error

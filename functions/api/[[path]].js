@@ -1,4 +1,4 @@
-import { classifyModelFailure, decideRoute } from '../../public/model-route.mjs';
+import { classifyModelFailure, decideRoute, replyIsProviderRefusal } from '../../public/model-route.mjs';
 // OCTA API — Cloudflare Pages Function, single router.
 // Web app uses a "web" session token; each computer's runner uses its own "runner" token.
 // One computer per account is the 主機 (host): it runs every bot. Phones and other computers
@@ -178,8 +178,30 @@ const CODE_FB = ['ollama', 'opencode', 'claude', 'codex', 'gemini'];
 const codeFbOk = v => JSON.stringify((Array.isArray(v) ? v : []).map(x => String(x || '').split('|')).filter(([e]) => CODE_FB.includes(e)).slice(0, 2).map(([e, m]) => e + (clean(m, 80) ? '|' + clean(m, 80) : '')));
 // a bot's message that waits on the user (a question, something to confirm or decide)
 const asksUser = t => /❓/.test(String(t || '')) || (!/@\S/.test(String(t || '').trim().split('\n').pop()) && /[？?]\s*$/.test(String(t || '').trim()));
-// "Resets in 156h16m" → when that AI can be used again
-const resetAt = t => { const m = String(t).match(/resets? in\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?/i); return m && (m[1] || m[2]) ? now() + ((+m[1] || 0) * 60 + (+m[2] || 0)) * 60000 : now() + 60 * 60000; };
+// "Resets in 156h16m" or "5 小時後" → when that AI can be used again. Unknown windows wait an hour, not forever.
+const resetAt = t => {
+  const s = String(t);
+  const m = s.match(/resets? in\s*(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:in(?:ute)?s?)?)?/i);
+  if (m && (m[1] || m[2])) return now() + ((+m[1] || 0) * 60 + (+m[2] || 0)) * 60000;
+  const zh = s.match(/(\d+)\s*個?\s*小時/);
+  const zm = s.match(/(\d+)\s*分鐘/);
+  if (zh || zm) {
+    const mins = (zh ? +zh[1] * 60 : 0) + (zm ? +zm[1] : 0);
+    if (mins > 0 && mins < 14 * 24 * 60) return now() + mins * 60000;
+  }
+  return now() + 60 * 60000;
+};
+// job.eng is "engine" or "engine|model". A saved model that no longer matches exactly (opus → sonnet)
+// still belongs to that engine, so a failure there must not be charged to the primary again.
+const chainIndex = (chain, current) => {
+  const id = String(current || '');
+  const exact = chain.indexOf(id);
+  if (exact >= 0) return exact;
+  const head = id.split('|')[0];
+  if (!head) return 0;
+  const loose = chain.findIndex(x => x === head || String(x).startsWith(head + '|'));
+  return loose >= 0 ? loose : 0;
+};
 const ENGINE_NAMES = { claude: 'Claude', codex: 'ChatGPT', gemini: 'Antigravity', grokbot: 'Grok Bot', opencode: 'Ollama' };
 const engineOk = e => (ENGINES.includes(e) ? e : 'claude');
 const avatarOk = a => { const v = clean(a, 16); return v && !/[<>&"']/.test(v) ? v : null; };
@@ -1080,35 +1102,40 @@ async function route({ request: req, env, params }) {
       if (path === 'runner/done' && m === 'POST') {
         const job = await db.prepare("SELECT * FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
         if (!job) return err('找不到執行中的任務', 404);
-        const good = body.ok !== false;
+        let good = body.ok !== false;
         // Classify the failure before choosing a backup. Quota, HTTP 429, auth, and
         // transient outages are not the same action, and a code or tool failure does not switch models.
-        if (!good && job.kind === 'chat') {
+        // A model that exits 0 and only says the quota is gone is the same failure: call the backup,
+        // and do not show that sentence as the answer.
+        if (job.kind === 'chat') {
           const b = (await loadAll(db, U)).bots.find(x => x.id === job.bot_id);
-          if (b) {
+          const refused = good && !body.stopped && replyIsProviderRefusal(body.text, { files: Array.isArray(body.files) ? body.files.length : 0 });
+          if (b && (!good || refused)) {
+            if (refused) good = false;
             const st = await getSettings(db, U);
             st.spent = Object.fromEntries(Object.entries(st.spent || {}).filter(([, t]) => t > now()));
             const chain = [b.engine + (b.model ? '|' + b.model : ''), ...(b.fb || [])];
             const current = job.eng || chain[0];
-            let index = chain.indexOf(current);
-            if (index < 0) index = 0;
-            const kind = classifyModelFailure(body.text, { stopped: !!body.stopped });
+            const index = chainIndex(chain, current);
+            const raw = String(body.text || '');
+            const kind = refused || classifyModelFailure(raw, { stopped: !!body.stopped });
             const decision = decideRoute({
               kind, tries: +job.tries || 0, index,
-              resetsAt: /resets? in/i.test(String(body.text || '')) ? resetAt(body.text) : 0,
+              resetsAt: /resets? in|小時|分鐘/i.test(raw) ? resetAt(raw) : 0,
               now: now(),
               chain: chain.map(id => ({ id, spentUntil: st.spent[id] || 0 }))
             });
             const lab = x => { const [e, mm] = String(x || '').split('|'); return (ENGINE_NAMES[e] || e) + (mm ? `（${mm}）` : ''); };
+            const why = decision.reason === 'quota' ? '額度用完' : decision.reason === 'rate_limit' ? '被限流' : decision.reason === 'unavailable' ? '這台電腦還沒安裝' : '暫時故障';
             if (decision.action === 'retry' || decision.action === 'switch') {
-              if (decision.spend) st.spent[chain[index]] = resetAt(body.text);
+              if (decision.spend) st.spent[chain[index]] = resetAt(raw);
               await putSettings(db, U, st);
               const nextEng = decision.action === 'switch' ? chain[decision.index] : current;
               const nextTries = decision.action === 'retry' ? (+job.tries || 0) + 1 : 0;
-              await db.prepare("UPDATE jobs SET status='error', finished=?, result=? WHERE id=?").bind(now(), clean(body.text, 500), job.id).run();
+              await db.prepare("UPDATE jobs SET status='error', finished=?, result=? WHERE id=?").bind(now(), clean(raw, 500), job.id).run();
               await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries) VALUES (?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, job.prompt, now(), job.depth || 0, nextEng, nextTries).run();
               const note = decision.action === 'switch'
-                ? `「${b.name}」的 ${lab(chain[index])} ${decision.reason === 'quota' ? '額度用完' : decision.reason === 'rate_limit' ? '被限流' : '暫時故障'}，改由 ${lab(nextEng)} 接手。已完成的對話會保留，不會重做已完成的步驟。`
+                ? `「${b.name}」的 ${lab(chain[index])} ${why}，改由 ${lab(nextEng)} 接手。已完成的對話會保留，不會重做已完成的步驟。`
                 : `「${b.name}」的 ${lab(current)} ${decision.reason === 'rate_limit' ? '被限流，同一個模型再試一次' : '暫時故障，同一個模型再試一次'}（第 ${nextTries} 次）。`;
               await addMsg(db, U, job.conv, 'sys', note);
               await bump(db, U);
@@ -1235,7 +1262,7 @@ async function route({ request: req, env, params }) {
         if (!good || job.kind !== 'chat') return ok();
         // the bot stopped halfway ("還沒完成…"): send it straight back to finish, at most twice
         const round = +((job.prompt.match(/^（自動接續 (\d)）/) || [])[1] || 0);
-        if (round < 2 && !passed(text) && /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) && !/需要使用者在電腦上登入/.test(text)) {
+        if (round < 2 && !passed(text) && /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) && !/需要使用者在電腦上登入/.test(text) && classifyModelFailure(text) !== 'quota' && classifyModelFailure(text) !== 'rate_limit') {
           const orig = job.prompt.replace(/^（自動接續 \d）[\s\S]*?原本的指示：/, '');
           await addMsg(db, U, job.conv, 'sys', '還沒做完，請它接著把剩下的做完…');
           await addJob(db, U, job.conv, [{ b: job.bot_id, p: `（自動接續 ${round + 1}）你上一則說還沒做完。現在直接接著做完剩下的部分：用你的工作筆記和剛才查到的資料，補查還沒查的地方（兩館都要），不要再停下來問，最後給完整的結果；真的做不到的項目才在最後列出原因。\n原本的指示：${orig}` }, ...JSON.parse(job.chain)], orig, job.depth);

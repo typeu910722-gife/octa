@@ -301,6 +301,68 @@ test('a stopped chat and a code failure do not queue another model', async () =>
   assert.equal(/改由/.test(text), false);
 });
 
+test('a new bot that is told the quota is gone calls the backups in order', async () => {
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'hoa', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const bot = await call(db, 'POST', 'bots', {
+    token,
+    body: { name: '新助手', task: '處理工作', engine: 'gemini', model: '', fb: ['claude|opus', 'codex', 'opencode|qwen3:latest'] }
+  });
+  assert.equal(bot.status, 200, JSON.stringify(bot.data));
+  const id = bot.data.id;
+  await call(db, 'POST', 'messages', { token, body: { conv: id, text: '請看一下後台' } });
+  const rt = await runnerOf(db, token);
+  const first = await claimChat(db, rt);
+  assert.equal(first.bot.engine, 'gemini');
+  assert.equal(first.bot.model, '');
+  const said = await call(db, 'POST', 'runner/done', { token: rt, body: { id: first.id, ok: true, text: '目前這個 AI 的流量不夠，請 5 小時後再試。' } });
+  assert.equal(said.status, 200, JSON.stringify(said.data));
+  const second = await claimChat(db, rt);
+  assert.equal(second.bot.engine, 'claude');
+  assert.equal(second.bot.model, 'opus');
+  assert.equal(second.prompt, '請看一下後台');
+  const missing = await call(db, 'POST', 'runner/done', { token: rt, body: { id: second.id, ok: false, text: '⚠ 這台電腦沒有安裝 Claude Code。請到「AI 連線」安裝並登入。' } });
+  assert.equal(missing.status, 200, JSON.stringify(missing.data));
+  const third = await claimChat(db, rt);
+  assert.equal(third.bot.engine, 'codex');
+  assert.equal(third.bot.model, '');
+  const hidden = await call(db, 'POST', 'runner/done', { token: rt, body: { id: third.id, ok: false, text: 'Error: request failed\n目前流量不夠，請稍後再試' } });
+  assert.equal(hidden.status, 200, JSON.stringify(hidden.data));
+  const fourth = await claimChat(db, rt);
+  assert.equal(fourth.bot.engine, 'opencode');
+  assert.equal(fourth.bot.model, 'qwen3:latest');
+  const local = await call(db, 'POST', 'runner/done', { token: rt, body: { id: fourth.id, ok: true, text: '後台目前沒有新訊息。' } });
+  assert.equal(local.status, 200);
+  const quiet = await claimChat(db, rt);
+  assert.equal(quiet, null);
+  const msgs = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  const bubbles = msgs.data.msgs.filter(m => m.by === id).map(m => m.text);
+  assert.deepEqual(bubbles, ['後台目前沒有新訊息。']);
+  const sys = msgs.data.msgs.filter(m => m.by === 'sys').map(m => m.text).join('\n');
+  assert.match(sys, /Antigravity 額度用完，改由 Claude（opus）/);
+  assert.match(sys, /Claude（opus） 這台電腦還沒安裝，改由 ChatGPT/);
+  assert.match(sys, /ChatGPT 額度用完，改由 Ollama（qwen3:latest）/);
+  assert.equal(bubbles.some(t => t.includes('流量不夠')), false);
+  const again = await call(db, 'POST', 'messages', { token, body: { conv: id, text: '再看一次' } });
+  assert.equal(again.status, 200);
+  const skipped = await claimChat(db, rt);
+  assert.equal(skipped.bot.engine, 'opencode');
+  assert.equal(skipped.bot.model, 'qwen3:latest');
+  assert.equal(skipped.prompt, '再看一次');
+  const ordinary = await call(db, 'POST', 'runner/done', { token: rt, body: { id: skipped.id, ok: true, text: '人流量不夠，不建議開店' } });
+  assert.equal(ordinary.status, 200);
+  const noHop = await claimChat(db, rt);
+  assert.equal(noHop, null);
+  const kept = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.ok(kept.data.msgs.some(m => m.by === id && m.text === '人流量不夠，不建議開店'));
+  const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.match(page, /模型說流量不夠或額度用完，會立刻改叫下一個備援/);
+  const runner = readFileSync(join(import.meta.dirname, '..', 'public', 'octa-runner.mjs'), 'utf8');
+  assert.match(runner, /replyIsProviderRefusal\(text\)/);
+  assert.match(runner, /providerFailureText\(\[text, r\.err, r\.out\]\)/);
+});
+
 test('dragging a message copies it, and replace removes the original', async () => {
   const db = openD1();
   const su = await call(db, 'POST', 'signup', { body: { name: 'copya', pw: 'correcthorsebattery' } });

@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.20",
+  "date": "2026-10-25",
+  "notes": [
+   "模型說流量不夠時會自動改叫備援：額度用完依序交給下一個 AI，這台電腦沒裝的會跳過"
+  ],
+  "notes_en": [
+   "When a model says its quota is gone, the next backup AI is called. A backup that is not installed on this computer is skipped"
+  ]
+ },
+ {
   "v": "3.0.19",
   "date": "2026-10-25",
   "notes": [
