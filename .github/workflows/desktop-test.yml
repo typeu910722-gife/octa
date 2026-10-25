@@ -4,8 +4,6 @@ name: Desktop test build
 # It is a prerelease and does not upload latest.yml, so the installed
 # desktop app's auto-update stays on the stable release.
 on:
-  push:
-    branches: [cursor/stop-the-loop-4a4f]
   workflow_dispatch:
 
 permissions:
@@ -31,8 +29,8 @@ jobs:
           node <<'EOF'
           const fs = require('fs');
           const p = fs.readFileSync('package.json', 'utf8');
-          const from = '"version": "3.0.33"';
-          const to = '"version": "3.0.33-test.2"';
+          const from = '"version": "3.0.34"';
+          const to = '"version": "3.0.34-test.1"';
           if (!p.includes(from)) throw new Error('version line missing');
           fs.writeFileSync('package.json', p.replace(from, to));
           EOF
@@ -46,15 +44,15 @@ jobs:
           test -f dist/OCTA-Setup.exe
       - uses: actions/upload-artifact@v4
         with:
-          name: OCTA-Setup-3.0.33-test.2
+          name: OCTA-Setup-3.0.34-test.1
           path: desktop/dist/OCTA-Setup.exe
           if-no-files-found: error
       - name: Publish prerelease without latest.yml
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: test-3.0.33-test.2
+          tag_name: test-3.0.34-test.1
           target_commitish: ${{ github.sha }}
-          name: OCTA 3.0.33-test.2（測試，不會自動更新）
+          name: OCTA 3.0.34-test.1（測試，不會自動更新）
           prerelease: true
           make_latest: false
           draft: false

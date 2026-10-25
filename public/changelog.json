@@ -1,12 +1,12 @@
 [
  {
-  "v": "3.0.33",
+  "v": "3.0.34",
   "date": "2026-10-25",
   "notes": [
-   "本機模型不再用被截斷的長指示一直重複同一句。群組改為依序做。登入卡住兩次就停下，只通知一次。工作筆記不會留下畫面上沒有的房號"
+   "本機模型不再用被截斷的長指示一直重複同一句。群組改為依序做。登入卡住兩次就停下，只通知一次。工作筆記不會留下畫面上沒有的房號。舊的離線資料庫會自動補上欄位，原來的對話還在"
   ],
   "notes_en": [
-   "A local model no longer repeats itself from a truncated prompt. A group works one member at a time. Two sign-in stalls stop, with one notice. Work notes do not keep room numbers that were not on the page"
+   "A local model no longer repeats itself from a truncated prompt. A group works one member at a time. Two sign-in stalls stop, with one notice. Work notes do not keep room numbers that were not on the page. An older offline database gains the new column and keeps its messages"
   ]
  },
  {

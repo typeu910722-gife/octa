@@ -79,7 +79,7 @@ test('attachments show as thumbnails or file cards before and after sending', ()
 
 test('the desktop version matches the changelog, and the appearance release is still recorded', () => {
   assert.equal(pkg.version, log[0].v);
-  assert.equal(log[0].v, '3.0.33');
+  assert.equal(log[0].v, '3.0.34');
   assert.ok(log[0].notes.some(n => n.includes('依序')));
   const backup = log.find(x => x.v === '3.0.32');
   assert.ok(backup.notes.some(n => n.includes('備援')));
