@@ -523,6 +523,51 @@ test('a reply points at one message, and a group answer goes only to that bot', 
   assert.equal(await claimChat(db, rt), null);
 });
 
+test('two devices share one open conversation, and a connector keeps its secret', async () => {
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'synca', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const again = await call(db, 'POST', 'login', { body: { name: 'synca', pw: 'correcthorsebattery' } });
+  const phone = again.data.token;
+  const bot = await call(db, 'POST', 'bots', { token, body: { name: '房務', task: '看房' } });
+  const id = bot.data.id;
+  const missing = await call(db, 'PUT', 'focus', { token, body: { conv: 'nope', dev: 'devicephone1' } });
+  assert.equal(missing.status, 404);
+  const put = await call(db, 'PUT', 'focus', { token: phone, body: { conv: id, dev: 'devicephone1' } });
+  assert.equal(put.status, 200, JSON.stringify(put.data));
+  const desk = await call(db, 'GET', 'state', { token });
+  const hand = await call(db, 'GET', 'state', { token: phone });
+  assert.equal(desk.data.focus.conv, id);
+  assert.equal(desk.data.focus.dev, 'devicephone1');
+  assert.equal(hand.data.focus.conv, id);
+  const bad = await call(db, 'POST', 'connectors', { token, body: { name: '內網', base: 'https://127.0.0.1/secret', header: 'Authorization', secret: 'nope' } });
+  assert.equal(bad.status, 400);
+  const http = await call(db, 'POST', 'connectors', { token, body: { name: '訂單', base: 'http://api.example.com/v1', secret: 'super-secret-key' } });
+  assert.equal(http.status, 400);
+  const added = await call(db, 'POST', 'connectors', { token, body: { name: '訂單', base: 'https://api.example.com/v1', header: 'Authorization', secret: 'super-secret-key' } });
+  assert.equal(added.status, 200, JSON.stringify(added.data));
+  const list = await call(db, 'GET', 'connectors', { token: phone });
+  assert.equal(list.data.custom[0].name, '訂單');
+  assert.equal(list.data.custom[0].secret.includes('super-secret-key'), false);
+  assert.match(list.data.custom[0].secret, /••••/);
+  await call(db, 'PUT', 'settings', { token, body: { tg: { token: 'tg-secret-token', chat: '99' } } });
+  assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: id, text: '看訂單' } })).status, 200);
+  const rt = await runnerOf(db, token);
+  const job = await claimChat(db, rt);
+  assert.ok(job.connectors.some(c => c.name === '訂單' && c.can.includes('讀取')));
+  assert.ok(job.connectors.some(c => c.name === 'Telegram' && !c.can.includes('讀取')));
+  assert.equal(JSON.stringify(job).includes('super-secret-key'), false);
+  assert.equal(JSON.stringify(job).includes('tg-secret-token'), false);
+  const held = await call(db, 'POST', 'runner/connector', { token: rt, body: { job: job.id, name: 'Telegram', action: '送出', content: '你好' } });
+  assert.equal(held.status, 200, JSON.stringify(held.data));
+  assert.equal(held.data.ok, false);
+  assert.match(held.data.text, /沒有送出/);
+  const gone = await call(db, 'DELETE', 'connectors/' + added.data.id, { token: phone });
+  assert.equal(gone.status, 200);
+  const left = await call(db, 'GET', 'connectors', { token });
+  assert.equal(left.data.custom.length, 0);
+});
+
 function openD1From(raw) {
   const norm = a => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? +v : v));
   class Stmt {

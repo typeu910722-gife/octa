@@ -286,6 +286,10 @@ form.in .send,form.in .clip{height:46px}
 .replybar b{display:block;font-size:12px;color:var(--gold);font-weight:500}
 .replybar .rq span{display:block;font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .replybar button{border:0;background:none;color:var(--mute);font-size:18px;line-height:1;padding:4px 6px}
+.followbar{display:none;align-items:center;gap:8px;margin:0 20px 6px;padding:8px 10px;border-radius:12px;background:var(--panel);color:var(--ink);font-size:13px}
+.followbar:not([hidden]){display:flex}
+.followbar span{flex:1;min-width:0}
+.followbar button{border:0;background:var(--gold);color:#1a1408;border-radius:999px;padding:6px 10px;font:inherit}
 .qref{display:flex;flex-direction:column;align-items:flex-start;gap:1px;margin:0 0 6px;padding:4px 8px;border:0;border-left:3px solid var(--gold);background:transparent;color:var(--mute);font:inherit;font-size:12px;line-height:1.4;text-align:left;max-width:100%;cursor:pointer}
 .qref b{color:var(--gold);font-weight:500}
 .qref span{overflow:hidden;max-height:2.8em}
@@ -315,6 +319,7 @@ pre.code{max-width:100%;box-sizing:border-box;margin:0;background:var(--bg);bord
   .back{display:block}
   .ph,form.in{padding-left:max(16px,env(safe-area-inset-left,0px))}
   .replybar{margin-left:max(16px,env(safe-area-inset-left,0px));margin-right:max(16px,env(safe-area-inset-right,0px))}
+  .followbar{margin-left:max(16px,env(safe-area-inset-left,0px));margin-right:max(16px,env(safe-area-inset-right,0px))}
   .msgs,.mention{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   .task{margin-left:max(16px,env(safe-area-inset-left,0px));margin-right:16px}
 }
@@ -581,7 +586,9 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
 .pane:has(#buddy:not([hidden])) .msgs{padding-bottom:196px}
 @media (max-width:760px){.buddy{bottom:88px;width:132px}.buddy-hit{width:124px;height:124px}.buddy-say{font-size:11px}.pane:has(#buddy:not([hidden])) .msgs{padding-bottom:156px}}
 .pane:has(#buddy:not([hidden])) .replybar{margin-left:200px}
+.pane:has(#buddy:not([hidden])) .followbar{margin-left:200px}
 @media (max-width:760px){.pane:has(#buddy:not([hidden])) .replybar{margin-left:max(156px,env(safe-area-inset-left,0px))}}
+@media (max-width:760px){.pane:has(#buddy:not([hidden])) .followbar{margin-left:max(156px,env(safe-area-inset-left,0px))}}
 .look{display:grid;gap:18px}
 .look h3{margin:0}
 .look .toggle{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--card)}
@@ -745,6 +752,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
     <div class="atpop" id="atpop" hidden></div>
     <div class="att" id="att"></div>
     <div class="replybar" id="replybar" hidden><div class="rq"><b id="replyWho"></b><span id="replyBit"></span></div><button type="button" id="replyx" aria-label="取消回覆">×</button></div>
+    <div class="followbar" id="followbar" hidden><span id="followBit"></span><button type="button" id="followGo">改看這則對話</button></div>
     <form class="in" id="f" hidden><button type="button" class="clip" id="clip" aria-label="附加檔案">＋</button><input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.docx" hidden><textarea id="msg" rows="1" placeholder="輸入指示…"></textarea><button type="button" class="clip" id="mic" aria-label="語音輸入" hidden>🎙</button><button class="send" aria-label="送出"><span class="sl">送出</span><span class="sa2" aria-hidden="true">↑</span></button></form>
     <div class="note" id="note" hidden></div>
     <div class="buddy" id="buddy" hidden data-face="smile" data-look="base" data-extra="none" data-mood="">
@@ -775,6 +783,8 @@ const boot={set(p,t){const f=$('bootFill');if(!f)return;f.style.width=p+'%';$('b
   hide(){const b=$('boot');if(b.hidden)return;b.classList.add('done');setTimeout(()=>{if(b.classList.contains('done'))b.hidden=true},320)}};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let TOKEN=null; try{TOKEN=localStorage.getItem('ebot_token')}catch(e){}
+let myDev='';try{myDev=localStorage.getItem('octa_dev')||''}catch(e){}
+if(!/^[a-z0-9]{8,40}$/i.test(myDev)){myDev=Math.random().toString(36).slice(2,10)+Date.now().toString(36);try{localStorage.setItem('octa_dev',myDev)}catch(e){}}
 let S={bots:[],groups:[],folders:[],routines:[],last:[],ur:[],busy:[],runnerOnline:false,me:'',rev:-1}, cur=null, liveOn=false;
 /* messages are loaded per conversation: MSG[conv] = {list, more, loaded} */
 let MSG={};
@@ -808,7 +818,7 @@ const ybar={n:0,t:null,on(block){this.n++;clearTimeout(this.t);this.t=setTimeout
   off(){if(--this.n<=0){this.n=0;clearTimeout(this.t);document.body.classList.remove('yloading','yblock')}}};
 const HEAVY=/^(template|signup|login|pair|runner-token|engine-test|desktop\/install|desktop\/remote|desktop\/autostart)/;
 async function api(path,method='GET',body){
-  const quiet=/^(state|wait|job\/|file\/|messages|shot\/|ai-usage|devices$|me$|code\/)/.test(path);
+  const quiet=/^(state|wait|job\/|file\/|messages|shot\/|ai-usage|devices$|me$|code\/|focus$)/.test(path);
   if(!quiet)ybar.on(HEAVY.test(path));
   try{return await api_(path,method,body)}finally{if(!quiet)ybar.off()}
 }
@@ -868,6 +878,8 @@ async function refresh(){
     Object.assign(S,{me:d.me,bots:d.bots,groups:d.groups,folders:d.folders,routines:d.routines,busy:d.busy,runnerOnline:d.runnerOnline,engines:d.engines,
       last:d.last,ur:d.ur,rev:d.rev,host:d.host,computers:d.computers,sched:d.sched,quick:d.quick||{},allow:d.allow||{},warm:d.warm??120,tokens:d.tokens||{},models:d.models||{},pins:d.pins||[],mute:d.mute||{},memory:d.memory||{},skills:d.skills||{},nsk:d.nsk||{},shareBrowser:d.shareBrowser!==false,nick:d.nick||""});
     if(cur&&!conv(cur))cur=null;
+    if(d.focus?.conv&&d.focus.dev&&d.focus.dev!==myDev&&conv(d.focus.conv))followRemote(d.focus);
+    else if(cur&&conv(cur)&&d.focus?.conv!==cur)publishFocus(cur);
     if(cur)await loadMsgs(cur,'new');
     if(prevTop!==null)notifyNew(prevTop);
     S.loaded=true;
@@ -1200,17 +1212,26 @@ function focusBrowser(){
   const paneOn=!matchMedia('(max-width:760px)').matches||$('app').classList.contains('chat');
   const id=paneOn&&cur&&bot(cur)?cur:'';
   window.octaDesktop?.focusBot?.(id)?.catch?.(()=>{})}
-function openConv(id){saveDraft();if(replyTo&&replyTo.conv!==id)replyTo=null;cur=id;try{localStorage.setItem('ebot_cur',cur)}catch(e){}
+function hideFollow(){const bar=$('followbar');if(bar)bar.hidden=true}
+function followRemote(f){
+  if(!f?.conv||f.conv===cur||!conv(f.conv)){hideFollow();return}
+  const typing=((($('msg')&&$('msg').value)||'').trim())||replyTo;
+  if(typing){const bar=$('followbar');if(!bar)return;bar.hidden=false;bar.dataset.conv=f.conv;$('followBit').textContent='另一台裝置正在看「'+(conv(f.conv)?.name||'對話')+'」';return}
+  hideFollow();openConv(f.conv,{remote:true})}
+function publishFocus(id){if(!id||!myDev)return;api('focus','PUT',{conv:id,dev:myDev}).catch(()=>{})}
+function openConv(id,opt){saveDraft();if(replyTo&&replyTo.conv!==id)replyTo=null;cur=id;try{localStorage.setItem('ebot_cur',cur)}catch(e){}
+  hideFollow();
   if(!$('app').classList.contains('chat'))navPush('chat');
   pending=[];renderAtt();loadDraft();render(true);$('app').classList.add('chat');
   focusBrowser();
   loadMsgs(id,MSG[id]?.loaded?'new':'first').then(()=>{if(cur===id)render(true)}).catch(()=>{});
+  if(!opt||!opt.remote)publishFocus(id);
   if(matchMedia('(min-width:761px)').matches)$('msg').focus()}
 const draftKey=()=>'octa_draft_'+cur;
 function saveDraft(){if(!cur)return;try{const v=$('msg').value;v?localStorage.setItem(draftKey(),v):localStorage.removeItem(draftKey())}catch(e){}}
 function loadDraft(){let v='';try{v=localStorage.getItem(draftKey())||''}catch(e){}$('msg').value=v;grow()}
 function grow(){const t=$('msg');$('f').classList.toggle('empty',!t.value.trim()&&!pending.length);if(!t.offsetParent){t.style.height='';return}t.style.height='auto';t.style.height=Math.min(Math.max(t.scrollHeight,46),140)+'px'}   // hidden (phone list view): measure later
-$('msg').addEventListener('input',()=>{grow();clearTimeout(grow.t);grow.t=setTimeout(saveDraft,400)});
+$('msg').addEventListener('input',()=>{grow();clearTimeout(grow.t);grow.t=setTimeout(saveDraft,400);if(!$('msg').value.trim()&&!replyTo&&$('followbar')&&!$('followbar').hidden){const id=$('followbar').dataset.conv;if(id)openConv(id,{remote:true})}});
 $('q').addEventListener('input',()=>render(false));
 $('q').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('list').querySelector('.item');if(f){openConv(f.dataset.id);$('q').value='';render(false)}}if(e.key==='Escape'){$('q').value='';render(false);$('q').blur()}});
 $('jump').onclick=()=>{const b=$('msgs');b.scrollTo({top:b.scrollHeight,behavior:'smooth'});$('jump').hidden=true};
@@ -1596,6 +1617,7 @@ function setReply(m){if(!m||m.tmp)return;
   replyTo={id:m.id,conv:cur,who:nameOf(m.by),text:String(m.text||'').replace(/\s+/g,' ').trim().slice(0,80)};
   paintReply();$('msg').focus()}
 $('replyx').onclick=()=>{replyTo=null;paintReply();$('msg').focus()};
+$('followGo').onclick=()=>{const id=$('followbar').dataset.conv;if(id)openConv(id)};
 function msgMenu(anchor,m){if(!m||m.tmp)return;
   popMenu(anchor,`<button data-a="re"><span class="ck">↩</span>回覆這則</button><button data-a="cp"><span class="ck">⧉</span>複製文字</button><button data-a="frag"><span class="ck">✂</span>選取片段</button><button data-a="to"><span class="ck">➦</span>傳給別的機器人…</button>${m.by==='me'?'<button data-a="again"><span class="ck">↻</span>再傳一次</button>':''}`,
    {re:()=>setReply(m),
@@ -1781,6 +1803,7 @@ function settingsRows(){return [
     ['ai','🔌','AI 連線','連接 AI、查看剩餘流量'],
     ['warm','⚡','AI 待機時間',warmText(S.warm??120)],
     ['noti','🔔','通知','這個裝置、Telegram、LINE'],
+    ['conn','🔗','連接器','Telegram、LINE 和自己的服務'],
     ['sched','⏰','例行任務排程',S.sched==='pc'?'電腦排程':'雲端排程'],
     ['files','📁','檔案儲存','附件、截圖、機器人的輸出'],
     ['notes','📝','共用資料','所有機器人都會讀'],
@@ -1789,7 +1812,7 @@ function settingsRows(){return [
     ['logs','📋','工作紀錄','最近 100 筆'],
     ['guide','🧭','設定指引','從頭設定一次'],
     ['ver','✨','最新版本',(window._upd&&['available','ready'].includes(window._upd.state))?'有新版本':'版本與更新內容']]}
-const settingsGo={look:()=>openLook(),buddy:()=>openBuddy(),me:()=>openProfile(),warm:()=>openWarm(),acct:()=>openAccount(),pc:()=>openComputers(),ai:()=>openAI(),noti:()=>openNotify(),sched:()=>openSched(),files:()=>openStore(),notes:()=>openNotes(),tpl:()=>openTpl(),code:()=>openCode(),logs:()=>openLogs(),guide:()=>openGuide(),ver:()=>openVersion()};
+const settingsGo={look:()=>openLook(),buddy:()=>openBuddy(),me:()=>openProfile(),warm:()=>openWarm(),acct:()=>openAccount(),pc:()=>openComputers(),ai:()=>openAI(),noti:()=>openNotify(),conn:()=>openConnectors(),sched:()=>openSched(),files:()=>openStore(),notes:()=>openNotes(),tpl:()=>openTpl(),code:()=>openCode(),logs:()=>openLogs(),guide:()=>openGuide(),ver:()=>openVersion()};
 function settingsFrame(){
   if($('sbody'))return;
   $('veil').innerHTML=`<div class="sheet settings"><div class="shd"><h2>設定</h2><button type="button" class="x" id="sx" aria-label="關閉">✕</button></div>
@@ -1935,6 +1958,23 @@ async function openNotify(){
   $('sSave').onclick=async()=>{try{await saveS();say(I18N.t('已儲存 ✓'))}catch(e){say(e.message)}};
   $('nTest').onclick=async()=>{try{await saveS();const r=await api('notify/test','POST');say(I18N.t('已送出：')+r.sent.join('、'))}catch(e){say(e.message)}};
   $('tgDet').onclick=async()=>{try{await saveS();const r=await api('notify/detect','POST');$('tgChat').value=r.chat;say(I18N.t('找到 Chat ID ✓'))}catch(e){say(e.message)}}}
+async function openConnectors(){
+  let d={builtins:[],custom:[]};try{d=await api('connectors')}catch(e){}
+  const rows=(d.builtins||[]).map(b=>`<div class="kv"><span>${esc(b.name)}</span><b>${b.on?'已接上':'尚未接上'}</b></div>`).join('');
+  const custom=(d.custom||[]).map(c=>`<div class="log"><b data-u>${esc(c.name)}</b><small data-u>${esc(c.base)}</small><button type="button" class="ghost" data-rmc="${esc(c.id)}">移除</button></div>`).join('')||'<p>還沒有自己的服務。</p>';
+  subSheet('連接器',`<p>有接上的服務，機器人直接問它，金鑰留在這個帳號，不會進對話。沒有接上的，才會改開瀏覽器。</p>
+  <h3>Telegram／LINE</h3><p>用通知頁裡的金鑰。接上之後可以送一則文字，送出前仍會先問你。</p>
+  ${rows}<div class="row2"><button class="ghost" id="cNoti">到通知頁填寫</button></div>
+  <h3>自己的服務</h3><p>只接受公開的 https。機器人可以讀取，送出要先得到你這一次的同意。</p>
+  <div class="logs" id="cList">${custom}</div>
+  <label class="field">名稱<input id="cName" maxlength="20" placeholder="例如 訂單"></label>
+  <label class="field">https 網址<input id="cBase" placeholder="https://api.example.com/v1"></label>
+  <label class="field">金鑰放在哪個標頭<input id="cHead" placeholder="Authorization" value="Authorization"></label>
+  <label class="field">金鑰<input id="cSec" type="password" autocomplete="off"></label>
+  <div class="row2"><button class="btn" id="cAdd">接上</button><span id="cMsg" style="font-size:12px;color:var(--mute)"></span></div>`);
+  $('cNoti').onclick=()=>openNotify();
+  $('cAdd').onclick=async()=>{try{await api('connectors','POST',{name:$('cName').value,base:$('cBase').value,header:$('cHead').value,secret:$('cSec').value});toast(I18N.t('已接上'));openConnectors()}catch(e){$('cMsg').textContent=e.message}};
+  $('cList').querySelectorAll('[data-rmc]').forEach(b=>b.onclick=async()=>{try{await api('connectors/'+b.dataset.rmc,'DELETE');openConnectors()}catch(e){$('cMsg').textContent=e.message}})}
 /* AI 待機: keep the AI running for a while after it replies, so the next message is fast */
 const WARMS=[0,30,60,120,300,600,-1];
 function warmText(v){return v===0?I18N.t('不待機'):v===-1?I18N.t('永不（一直待機）'):v<60?v+' '+I18N.t('秒'):v/60+' '+I18N.t('分鐘')}

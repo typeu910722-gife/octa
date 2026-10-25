@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.28",
+  "date": "2026-10-25",
+  "notes": [
+   "設定裡可以接上 Telegram、LINE 和自己的服務。金鑰留在帳號，機器人只看到結果。手機和電腦會打開同一則對話"
+  ],
+  "notes_en": [
+   "Settings can connect Telegram, LINE, and your own service. The key stays on the account and the bot only sees the result. Phone and computer open the same conversation"
+  ]
+ },
+ {
   "v": "3.0.27",
   "date": "2026-10-25",
   "notes": [

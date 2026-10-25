@@ -21,8 +21,9 @@ import os from 'node:os';
 import { createHash } from 'node:crypto';
 import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider } from './coding-runtime.mjs';
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
+import { connectorLines, stripConnectorTask, takeConnectorTask } from './connectors.mjs';
 
-export const VERSION = '17.13';
+export const VERSION = '17.14';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
@@ -175,13 +176,13 @@ function workLoop() {
     '做事順序（每一則都照這五步，不要跳、不要先寫結論）：',
     '1. 先看完再下結論。有圖就整張讀完，有網頁就先看目前畫面。還沒看完，不要寫結果。',
     '2. 回覆裡把三樣分開寫：畫面上的原文、我的判斷、還沒看到的。判斷可以寫，但要讓人看得出是判斷；沒看到的留白，不要用猜的補上。',
-    '3. 自己做下一步。檔案和公開網頁這一步就做。已登入的網頁寫【派瀏覽】，不要自己點。畫面寫了誰去做，就照那個做，不要改成叫使用者做。',
+    '3. 自己做下一步。檔案和公開網頁這一步就做。有接上的服務寫【連接器】。已登入的網頁寫【派瀏覽】，不要自己點。畫面寫了誰去做，就照那個做，不要改成叫使用者做。',
     '4. 做一步就再看一次。檔案或公開網頁做完就再讀一次。已登入的頁面等報告回來再決定下一步，不要沿用想像。',
     '5. 對完再回。使用者要的每一項都對回這一次看到的畫面或檔案。沒有逐項對過，不能說「一致」或「跟目前的一樣」。對不上就寫對不上的那一項。'
   ];
 }
 function turnGuide() {
-  return '先判斷這則指示的類型：(1) 只問你的設定、任務內容、AI 方案 → 直接回答，不用工具。(2) 問到網頁上、畫面上、帳號裡現在的狀況（例如「你看到什麼」「現在有幾則訊息」），或使用者說他幫你打開、登入好了 → 先看完再下結論。用 Read 讀「畫面.jpg」，畫面上的數字只能照這次看到的抄。要再看已登入的頁面或點開才出現的內容，不要自己點，改寫【派瀏覽】到【派完】，而且不要同時寫【回覆】。(3) 問你會不會、能不能，或要你做一件還沒做過的事（包含玩遊戲、學新軟體）→ 不要推辭。先用一句話說你會學，然後立刻做第一個學習動作（搜尋做法、用 WebFetch 讀公開頁，或在自己的資料夾試一個最小例子）；已登入的網站改寫【派瀏覽】。需要他指定對象時，一邊查通用做法，一邊只問要哪一個。(4) 其他要你做事的 → 照五步做完再回，不要只回計畫。公開網頁用 WebFetch；已登入的網頁寫【派瀏覽】。這個判斷和 octa-task.md 都是內部說明，回覆裡不要提到它們，也不要自稱是別的產品。工作過程中不要輸出「Let me…」「先用瀏覽器看看」之類的說明；最後給使用者的回覆前，單獨一行寫「【回覆】」，後面接繁體中文回覆。若這則只是在派瀏覽，就不要寫【回覆】。';
+  return '先判斷這則指示的類型：(1) 只問你的設定、任務內容、AI 方案 → 直接回答，不用工具。(2) 問到網頁上、畫面上、帳號裡現在的狀況（例如「你看到什麼」「現在有幾則訊息」），或使用者說他幫你打開、登入好了 → 先看完再下結論。用 Read 讀「畫面.jpg」，畫面上的數字只能照這次看到的抄。要再看已登入的頁面或點開才出現的內容，不要自己點，改寫【派瀏覽】到【派完】，而且不要同時寫【回覆】。(3) 問你會不會、能不能，或要你做一件還沒做過的事（包含玩遊戲、學新軟體）→ 不要推辭。先用一句話說你會學，然後立刻做第一個學習動作（搜尋做法、用 WebFetch 讀公開頁，或在自己的資料夾試一個最小例子）；已登入的網站改寫【派瀏覽】。需要他指定對象時，一邊查通用做法，一邊只問要哪一個。(4) 其他要你做事的 → 照五步做完再回，不要只回計畫。有接上的服務寫【連接器】；公開網頁用 WebFetch；已登入的網頁寫【派瀏覽】。這個判斷和 octa-task.md 都是內部說明，回覆裡不要提到它們，也不要自稱是別的產品。工作過程中不要輸出「Let me…」「先用瀏覽器看看」之類的說明；最後給使用者的回覆前，單獨一行寫「【回覆】」，後面接繁體中文回覆。若這則只是在派瀏覽，就不要寫【回覆】。';
 }
 // today's date said plainly, and the bot's own work notes (what it already found), so it doesn't start from zero each time
 function dayInfo(job) {
@@ -250,6 +251,7 @@ export function buildPrompt(job, here) {
     `- 用${({ 'zh-TW': '繁體中文', 'zh-CN': '簡體中文', en: '英文（English）', ja: '日文（日本語）' })[job.lang] || '繁體中文'}回覆，簡潔、先給結果。你的最後輸出會原封不動顯示成聊天訊息。`,
     '- 說話要像真人同事在 LINE 上回訊息：口語、自然、短句，先講重點，可以有一點語氣（「好喔」「我看了一下」「這間有點怪」）。不要用標題、粗體、表格、分隔線；名單或多筆資料才用簡單的換行清單。內文不要講系統用語（「依規則」「根據指示」「執行」「類型」），也不要每次重述自己的職責；✅待確認、❓問你、@同事 這些標記照規定單獨一行寫。沒做成就直接說卡在哪、需要什麼。',
     '- 公開網頁（不需要登入）用 WebFetch 讀成文字，不帶登入。工作區裡已經有的檔案直接讀，不必開瀏覽器。',
+    ...connectorLines(job.connectors),
     '- 已登入的網頁、要點了才出現的內容，你不能自己點、不能打字、不能捲動、不能讀 Cookie。需要時單獨寫下面這一段，不要同時寫【回覆】：\n【派瀏覽】\n網址：https://完整網址（不知道就寫目前頁面）\n要做的事：要得到的結果、限制、怎樣算做完\n【派完】',
     '- 派出去的那一輪會用這台電腦上已登入的瀏覽器讀頁面、點下一步，做完只交回文字：網址、頁面上有什麼、做成了什麼、卡在哪裡。你根據那份報告回答，不要把整頁內容貼進對話。同一則使用者的話最多派兩次。',
     '- 要確認它停在哪，用 Read 讀「畫面.jpg」。那張圖只用來對位置，不代替報告。',
@@ -333,8 +335,10 @@ export function stripBrowserTask(text) {
 export function keepBrowserTask(text) {
   const raw = String(text || '');
   const task = takeBrowserTask(raw);
+  const conn = takeConnectorTask(raw);
   const k = raw.lastIndexOf('【回覆】');
   let out = k >= 0 ? (raw.slice(k + 4).trim() || raw.replace(/【回覆】/g, '').trim()) : raw.trim();
+  if (conn && !takeConnectorTask(out)) out = `【連接器】\n名稱：${conn.name}\n動作：${conn.action}${conn.path ? '\n路徑：' + conn.path : ''}${conn.content ? '\n內容：' + conn.content : ''}\n【接完】\n${out}`.trim();
   if (task && !takeBrowserTask(out)) out = `【派瀏覽】\n網址：${task.url || '目前頁面'}\n要做的事：${task.prompt}\n【派完】\n${out}`.trim();
   return out;
 }
@@ -737,9 +741,15 @@ async function chatRun(job) {
       : engine === 'claude' && job.warm && (await has('claude'))
       ? await warmClaude(job, b, here, { progress, ctl })        // AI 待機: reuse the running Claude session
       : await runEngine(engine, buildPrompt(job, here), b, job.bot.model, { progress, ctl, browser: false });
-    if (res?.ok && engine !== 'grokbot') res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
+    if (res?.ok && engine !== 'grokbot') {
+      const pendingBrowser = takeBrowserTask(res.text);
+      res = await connectorRounds(job, b, here, engine, res, { progress, ctl });
+      if (pendingBrowser && res?.ok && !takeBrowserTask(res.text)) res = { ...res, text: `【派瀏覽】\n網址：${pendingBrowser.url || '目前頁面'}\n要做的事：${pendingBrowser.prompt}\n【派完】\n${stripConnectorTask(res.text)}` };
+      res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
+    }
   }
   finally { clearTimeout(timerP); clearInterval(beat); busyBots.delete(job.bot.id); if (port) touchBrowser(job.bot.id); }
+  if (res?.text) res.text = stripConnectorTask(stripBrowserTask(res.text)) || '這次沒有新的結果。';
   if (port && shareBrowser) await syncOut(port);
   // 📒工作筆記：…📒結束 — the bot couldn't write its notes file itself (sandbox): OCTA saves it
   if (res?.text) res.text = res.text.replace(/📒\s*工作筆記[:：]\s*([\s\S]*?)📒\s*結束/g, (_, n) => { try { mkdirSync(dirname(notesFile(job)), { recursive: true }); writeFileSync(notesFile(job), n.trim() + '\n'); log(`📒 已更新 ${job.bot.name} 的工作筆記`); } catch (e) { log('工作筆記寫入失敗：' + e.message); } return ''; }).trim() || '（已更新工作筆記）';
@@ -772,6 +782,42 @@ async function parentFollow(job, b, here, engine, follow, live) {
   if (b.applyBrowser) b.applyBrowser(false);
   if (engine === 'claude' && job.warm && sessions.get(job.bot.id)) return warmSend(job, follow, live);
   return runEngine(engine, buildPrompt({ ...job, prompt: follow }, here), b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: false });
+}
+async function connectorRounds(job, b, here, engine, res, live) {
+  for (let depth = 0; depth < 2 && res?.ok; depth++) {
+    const task = takeConnectorTask(res.text);
+    if (!task) break;
+    const known = (job.connectors || []).some(c => c.name === task.name);
+    const approved = /核准[:：]/.test(job.prompt || '');
+    if (!known || (task.action === '送出' && !approved)) {
+      const why = !known
+        ? `沒有接上「${task.name}」。已接上的只有：${(job.connectors || []).map(c => c.name).join('、') || '（沒有）'}。不要再寫【連接器】，直接用【回覆】說明。`
+        : `「${task.name}」這次沒有送出。對別人送出要先寫 ✅待確認，等使用者回「核准：」再做。不要再寫【連接器】，直接用【回覆】寫出準備送出的內容。`;
+      const next = await parentFollow(job, b, here, engine, why, live);
+      const text = next?.ok ? (stripConnectorTask(next.text) || why) : why;
+      return { ok: true, text, tokens: addTokens(res.tokens, next?.tokens) };
+    }
+    live.progress?.('呼叫連接器 ' + task.name);
+    let report = '連接器沒有完成。';
+    try {
+      const r = await api('runner/connector', { job: job.id, name: task.name, action: task.action, path: task.path, content: task.content });
+      report = stripConnectorTask(r.text || report).slice(0, 4000) || report;
+    } catch (e) { report = '連接器沒有完成：' + e.message; }
+    const follow = [
+      `下面是連接器「${task.name}」的結果。只根據這份結果回答，不要貼金鑰，也不要把整段原文以外的內容說成你看到的。`,
+      depth + 1 < 2 ? '還要再呼叫一次就寫【連接器】到【接完】，而且不要寫【回覆】。夠了就用【回覆】回答。' : '不能再呼叫連接器。直接用【回覆】回答。',
+      '結果：', report,
+      '使用者原本的指示：', job.prompt
+    ].join('\n');
+    const next = await parentFollow(job, b, here, engine, follow, live);
+    const tokens = addTokens(res.tokens, next?.tokens);
+    if (!next?.ok) return { ok: true, text: report, tokens };
+    let text = next.text || '';
+    if (depth + 1 >= 2 || !takeConnectorTask(text)) text = stripConnectorTask(text) || report;
+    res = { ok: true, text, tokens };
+  }
+  if (res?.text) res = { ...res, text: stripConnectorTask(res.text) || '這次沒有新的結果。' };
+  return res;
 }
 async function browseRounds(job, b, here, engine, res, live) {
   const port = live.port, mine = job.bot.browser === 'mine';

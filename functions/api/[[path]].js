@@ -1,4 +1,5 @@
 import { classifyModelFailure, decideRoute, replyIsProviderRefusal } from '../../public/model-route.mjs';
+import { normalizeCustom, publicConnectors, runConnector } from '../../public/connectors.mjs';
 // OCTA API — Cloudflare Pages Function, single router.
 // Web app uses a "web" session token; each computer's runner uses its own "runner" token.
 // One computer per account is the 主機 (host): it runs every bot. Phones and other computers
@@ -1103,6 +1104,13 @@ async function route({ request: req, env, params }) {
         if (body.last) await db.prepare('UPDATE files SET want=-1 WHERE id=?').bind(id).run();
         return J({ ok: true });
       }
+      if (path === 'runner/connector' && m === 'POST') {
+        const job = await db.prepare('SELECT id,prompt FROM jobs WHERE id=? AND user_id=?').bind(+body.job, U).first();
+        if (!job) return err('找不到這次工作', 404);
+        const st = await getSettings(db, U);
+        const task = { name: clean(body.name, 40), action: clean(body.action, 10), path: clean(body.path, 200), content: clean(body.content, 4000) };
+        return J(await runConnector(st, task, { approved: /核准[:：]/.test(job.prompt || '') }));
+      }
       if (path === 'runner/done' && m === 'POST') {
         const job = await db.prepare("SELECT * FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
         if (!job) return err('找不到執行中的任務', 404);
@@ -1400,6 +1408,7 @@ async function route({ request: req, env, params }) {
         engines: h ? h.engines : JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || 'null'),
         runnerOnline: env.runnerOnline ? env.runnerOnline() : (h ? h.online : true),
         host: h ? h.hostLabel : 'local', computers: h ? h.runners.length : 1, shareBrowser: st.shareBrowser !== false, nick: st.nick || '', sched: st.sched === 'pc' ? 'pc' : 'cloud', quick: st.quick || {}, allow: st.allow || {}, pins: st.pins || [], mute: st.mute || {}, memory: st.memory || {}, skills: st.skills || {}, nsk: Object.fromEntries(Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])), warm: WARM.includes(+st.warm) ? +st.warm : 120, models: h ? h.models : st._models || null,
+        focus: st.focus?.conv ? { conv: st.focus.conv, dev: st.focus.dev || '', at: st.focus.at || 0 } : null,
         ...all, last: last.results, ur: ur.results.map(r => [r.conv, r.id]), busy: busy.results
       });
     }
@@ -1785,6 +1794,46 @@ async function route({ request: req, env, params }) {
       const j = await db.prepare('SELECT status,result FROM jobs WHERE id=? AND user_id=?').bind(+path.slice(4), U).first();
       return j ? J(j) : err('找不到', 404);
     }
+    if (path === 'focus' && m === 'PUT') {
+      const dev = clean(body.dev, 40), conv = clean(body.conv, 64);
+      if (!/^[a-z0-9]{8,40}$/i.test(dev)) return err('這台裝置沒有代號');
+      const { bots, groups } = await loadAll(db, U);
+      if (![...bots, ...groups].some(x => x.id === conv)) return err('找不到這個對話', 404);
+      const st = await getSettings(db, U);
+      st.focus = { conv, dev, at: now() };
+      await putSettings(db, U, st);
+      return ok({ ok: true });
+    }
+    if (path === 'connectors' && m === 'GET') {
+      const st = await getSettings(db, U);
+      return J({
+        builtins: [
+          { name: 'Telegram', on: !!(st.tg?.token && st.tg?.chat), can: ['送出'], where: '通知' },
+          { name: 'LINE', on: !!(st.line?.token && st.line?.to), can: ['送出'], where: '通知' }
+        ],
+        custom: (st.connectors || []).map(c => ({ id: c.id, name: c.name, base: c.base, header: c.header || 'Authorization', secret: mask(c.secret) }))
+      });
+    }
+    if (path === 'connectors' && m === 'POST') {
+      const st = await getSettings(db, U);
+      const list = st.connectors || [];
+      if (list.length >= 8) return err('最多接 8 個自己的服務');
+      const n = normalizeCustom(body, list);
+      if (n.error) return err(n.error);
+      const id = 'c-' + uid();
+      st.connectors = [...list, { ...n.item, id }];
+      await putSettings(db, U, st);
+      return ok({ id });
+    }
+    if (path.startsWith('connectors/') && m === 'DELETE') {
+      const id = path.slice('connectors/'.length);
+      const st = await getSettings(db, U);
+      const list = st.connectors || [];
+      if (!list.some(c => c.id === id)) return err('找不到這個連接器', 404);
+      st.connectors = list.filter(c => c.id !== id);
+      await putSettings(db, U, st);
+      return ok({ ok: true });
+    }
     if (path === 'settings' && m === 'GET') {
       const st = await getSettings(db, U);
       return J({ warm: WARM.includes(+st.warm) ? +st.warm : 120, shareBrowser: st.shareBrowser !== false, notes: st.notes || '', notifyAll: !!st.notifyAll, sched: st.sched === 'pc' ? 'pc' : 'cloud', tg: { token: mask(st.tg?.token), chat: st.tg?.chat || '' }, line: { token: mask(st.line?.token), to: st.line?.to || '' } });
@@ -2057,6 +2106,7 @@ async function jobPayload(env, db, U, job) {
     nick: st.nick || '',
     sites: Object.entries(st.sites || {}).map(([d, l]) => `${d}：\n` + l.map(x => '- ' + x).join('\n')).join('\n').slice(-6000),
     lang: st.lang || 'zh-TW',
+    connectors: publicConnectors(st),
     colleagues: bots.filter(b => b.id !== bot.id).sort((a, b) => ((a.folder || null) === (bot.folder || null) ? 0 : 1) - ((b.folder || null) === (bot.folder || null) ? 0 : 1)).slice(0, 20).map(b => ({ id: b.id, name: b.name, task: b.task })),
     group: group ? { name: group.name, task: group.task, members: group.members.map(name), mode: turnsOf(group) ? 'turns' : 'parallel' } : null,
     history: hist.map(h => {

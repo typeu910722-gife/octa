@@ -11,7 +11,8 @@ function prompt(extra = {}) {
     nick: 'Yzz',
     lang: 'zh-TW',
     group: extra.group,
-    eyes: extra.eyes
+    eyes: extra.eyes,
+    connectors: extra.connectors
   }, '/tmp/octa-studio-aim');
 }
 
@@ -99,10 +100,19 @@ test('the main turn dispatches a logged-in page and does not click it', () => {
   assert.match(text, /公開網頁/);
   assert.match(text, /需要使用者在電腦上登入/);
   assert.match(text, /不能自己點/);
+  assert.match(text, /還沒有接上任何連接器/);
   assert.equal(text.includes('browser_snapshot'), false);
   assert.equal(text.includes('browser_click'), false);
   assert.equal(text.includes('browser_mouse_click_xy'), false);
   assert.equal(text.includes('你是 Grok Bot'), false);
+});
+
+test('a connected service is named in the prompt and its secret is not', () => {
+  const text = prompt({ connectors: [{ name: '訂單', kind: 'http', can: ['讀取', '送出'] }], prompt: '今天的訂單' });
+  assert.match(text, /【連接器】/);
+  assert.match(text, /訂單/);
+  assert.match(text, /金鑰留在帳號裡/);
+  assert.equal(text.includes('super-secret'), false);
 });
 
 test('a browsing round reads by snapshot ref and reports in text', () => {

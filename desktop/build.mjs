@@ -6,8 +6,10 @@ const here = dirname(fileURLToPath(import.meta.url)), root = join(here, '..');
 rmSync(join(here, 'web'), { recursive: true, force: true });
 cpSync(join(root, 'public'), join(here, 'web'), { recursive: true, filter: s => !/(ebot|octa)-runner\.json$|[\\/]work([\\/]|$)/.test(s) });
 const apiSrc = readFileSync(join(root, 'functions', 'api', '[[path]].js'), 'utf8')
-  .replaceAll("from '../../public/model-route.mjs'", "from './model-route.mjs'");
+  .replaceAll("from '../../public/model-route.mjs'", "from './model-route.mjs'")
+  .replaceAll("from '../../public/connectors.mjs'", "from './connectors.mjs'");
 writeFileSync(join(here, 'api.js'), apiSrc);
 copyFileSync(join(root, 'public', 'model-route.mjs'), join(here, 'model-route.mjs'));
+copyFileSync(join(root, 'public', 'connectors.mjs'), join(here, 'connectors.mjs'));
 copyFileSync(join(root, 'schema.sql'), join(here, 'schema.sql'));
-console.log('web, api.js, model-route.mjs, schema.sql 已更新');
+console.log('web, api.js, model-route.mjs, connectors.mjs, schema.sql 已更新');

@@ -28,7 +28,7 @@ function packaged(rel) {
 test('the desktop installer packs every file the rewritten API imports', () => {
   const src = desktopApiSource();
   const specs = [...src.matchAll(/from '(\.[^']+)'/g)].map(m => m[1]);
-  assert.deepEqual(specs, ['./model-route.mjs']);
+  assert.deepEqual(specs, ['./model-route.mjs', './connectors.mjs']);
   for (const spec of specs) {
     const rel = spec.slice(2);
     assert.equal(packaged(rel), true, `${rel} is imported by desktop api.js but missing from electron-builder files`);
