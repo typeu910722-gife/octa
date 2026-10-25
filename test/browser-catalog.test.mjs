@@ -55,6 +55,8 @@ test('the desktop app applies that identity before the page loads and can downlo
   assert.match(main, /Emulation\.setUserAgentOverride/);
   assert.match(main, /octa:browser-engine/);
   assert.match(main, /await hookPage/);
+  assert.match(main, /function raiseView/);
+  assert.match(main, /Promise\.race\(/);
   assert.match(main, /'-profile', profile, '-no-remote'/);
   assert.match(main, /已改用 Edge 的身分/);
   const pkg = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8'));

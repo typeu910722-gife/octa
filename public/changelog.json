@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.24",
+  "date": "2026-10-25",
+  "notes": [
+   "金色小夥伴改成角色圖裡的那一隻。瀏覽器打開時會回到畫面最前面，不再被對話蓋住"
+  ],
+  "notes_en": [
+   "The gold companion is the character from the sheet. The built-in browser comes back in front of the chat when it opens"
+  ]
+ },
+ {
   "v": "3.0.23",
   "date": "2026-10-25",
   "notes": [

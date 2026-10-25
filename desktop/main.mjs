@@ -235,6 +235,11 @@ function detachChrome(bucket) {
   stopThumbs(bucket);
   try { if (win && !win.isDestroyed() && bucket.chrome) win.contentView.removeChildView(bucket.chrome); } catch { }
 }
+function raiseView(view) {
+  if (!view || !win || win.isDestroyed()) return;
+  try { win.contentView.removeChildView(view); } catch { }
+  try { win.contentView.addChildView(view); } catch { }
+}
 function placeBucket(bucket, frames) {
   const page = frames.mode === 'open' && frames.page ? bucket.active : null;
   for (const v of bucket.tabs) {
@@ -243,15 +248,15 @@ function placeBucket(bucket, frames) {
     parkView(bucket, v, v === bucket.active);
   }
   if (frames.chrome && bucket.chrome && win) {
-    if (!win.contentView.children.includes(bucket.chrome)) win.contentView.addChildView(bucket.chrome);
+    // put the panel back above the chat every time, so a reload cannot cover it
+    raiseView(bucket.chrome);
     fitView(bucket.chrome, frames.chrome, true);
     roundChrome(bucket.chrome, THUMB_RADIUS, frames.mode === 'open');
   }
   // the page sits above the panel frame; the frame's edges stay outside the page and can still be grabbed
   if (page && frames.page && win) {
     try { bucket.host?.contentView.removeChildView(page); } catch { }
-    try { win.contentView.removeChildView(page); } catch { }
-    win.contentView.addChildView(page);
+    raiseView(page);
     fitView(page, frames.page, true);
     roundChrome(page, 12, true);
   }
@@ -276,7 +281,7 @@ function layoutEmbed() {
     if (bucket.dragging && bucket.chrome) {
       for (const v of bucket.tabs) parkView(bucket, v, bucket.shown === 'thumb' && v === bucket.active);
       roundChrome(bucket.chrome, 0, false);
-      if (!win.contentView.children.includes(bucket.chrome)) win.contentView.addChildView(bucket.chrome);
+      raiseView(bucket.chrome);
       fitView(bucket.chrome, { x: 0, y: 0, width: w, height: h }, true);
       sendFrame(bucket, {});
       continue;
@@ -303,7 +308,11 @@ async function applyIdentity(wc, engine) {
     if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
     const params = { userAgent: id.userAgent, acceptLanguage: 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7', platform: id.platform };
     if (id.metadata) params.userAgentMetadata = id.metadata;
-    await wc.debugger.sendCommand('Emulation.setUserAgentOverride', params);
+    // a slow override must not hold the browser off the screen
+    await Promise.race([
+      wc.debugger.sendCommand('Emulation.setUserAgentOverride', params),
+      new Promise(r => setTimeout(r, 400))
+    ]);
   } catch (e) { logError('ua', e); }
 }
 function dressSession(ses, bucket) {
@@ -419,6 +428,8 @@ async function embedShow(port, show) {
   if (!bucket || !win || win.isDestroyed()) return;
   const mode = show === 'open' || show === 'thumb' ? show : (show ? (bucket.shown === 'open' ? 'open' : 'thumb') : false);
   bucket.shown = mode || false;
+  // an explicit open while no chat is focused still has to land on screen
+  if (mode && !focusBotId) focusBotId = bucket.botId;
   if (!mode) {
     detachChrome(bucket);
     for (const v of bucket.tabs) parkView(bucket, v, false);
@@ -730,7 +741,7 @@ ipcMain.on('octa:browser-drag-start', e => {
     bucket.dragging = true;
     rememberPanel(bucket, box);
     roundChrome(bucket.chrome, 0, false);
-    if (!win.contentView.children.includes(bucket.chrome)) win.contentView.addChildView(bucket.chrome);
+    raiseView(bucket.chrome);
     fitView(bucket.chrome, { x: 0, y: 0, width: w, height: h }, true);
     for (const v of bucket.tabs) parkView(bucket, v, bucket.shown === 'thumb' && v === bucket.active);
     e.returnValue = { dragging: true, x: box.x, y: box.y, w: box.width, h: box.height };

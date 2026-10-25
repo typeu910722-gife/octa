@@ -27,9 +27,9 @@ test('text size applies to the whole interface and is remembered on the device',
   assert.match(page, /function buddySync/);
   assert.match(page, /主人！我來了～/);
   assert.match(page, /id="buddy"/);
-  assert.match(page, /data-buddy-look/);
-  assert.match(page, /冒險者/);
+  assert.match(page, /\/buddy\.png/);
   assert.match(page, /octa_buddy/);
+  assert.match(page, /focusBot\(id\)/);
   // applied before first paint, like the theme, including the old named sizes
   assert.match(page, /var f=localStorage\.getItem\('octa_fs'\);var map=\{s:\.93,m:1,l:1\.12,xl:2\}/);
   assert.match(page, /html\[data-fs="s"\]\{--fz:\.93\}html\[data-fs="l"\]\{--fz:1\.12\}html\[data-fs="xl"\]\{--fz:2\}/);
@@ -76,9 +76,11 @@ test('attachments show as thumbnails or file cards before and after sending', ()
 
 test('the desktop version matches the changelog, and the appearance release is still recorded', () => {
   assert.equal(pkg.version, log[0].v);
-  assert.equal(log[0].v, '3.0.23');
-  assert.ok(log[0].notes.some(n => n.includes('金色章魚')));
-  assert.ok(log[0].notes.some(n => n.includes('換裝')));
+  assert.equal(log[0].v, '3.0.24');
+  assert.ok(log[0].notes.some(n => n.includes('角色圖')));
+  assert.ok(log[0].notes.some(n => n.includes('瀏覽器')));
+  const pet = log.find(x => x.v === '3.0.23');
+  assert.ok(pet.notes.some(n => n.includes('金色章魚')));
   const line = log.find(x => x.v === '3.0.22');
   assert.ok(line.notes.some(n => n.includes('Chrome')));
   assert.ok(line.notes.some(n => n.includes('選一段')));
