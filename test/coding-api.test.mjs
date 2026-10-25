@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { runCodingTask, selectProvider } from '../public/coding-runtime.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
-const { onRequest } = await import(apiUrl);
+const { onRequest, schedulesFromTurn } = await import(apiUrl);
 const schema = readFileSync(join(import.meta.dirname, '..', 'schema.sql'), 'utf8');
 
 function openD1() {
@@ -286,11 +286,13 @@ test('a weekly limit reply still calls the backup when the task text follows it'
   const rt = await runnerOf(db, token);
   const first = await claimChat(db, rt);
   assert.equal(first.bot.engine, 'claude');
+  assert.equal(first.backup, false);
   const text = "You've hit your weekly limit - resets Oct 26, 11pm (Asia/Taipei)\n" + '規則——只讀。'.repeat(200);
   const done = await call(db, 'POST', 'runner/done', { token: rt, body: { id: first.id, ok: true, text } });
   assert.equal(done.status, 200, JSON.stringify(done.data));
   const second = await claimChat(db, rt);
   assert.equal(second.bot.engine, 'gemini');
+  assert.equal(second.backup, true);
   assert.equal(second.prompt, '整理今天的訂單');
   const msgs = await call(db, 'GET', 'messages', { token, query: { conv: bot.data.id } });
   assert.equal(msgs.data.msgs.some(m => m.by === bot.data.id && /weekly limit/.test(m.text)), false);
@@ -615,6 +617,83 @@ test('the host catches up one missed routine, and a fourth job waits', async () 
   assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: ids[3], text: '也做' } })).status, 200);
   const queued = await call(db, 'GET', 'messages', { token, query: { conv: ids[3] } });
   assert.ok(queued.data.msgs.some(m => m.by === 'sys' && m.text.includes('先排隊') && m.text.includes('甲')));
+});
+
+test('schedule times come from the instruction, and a backup still saves memory', () => {
+  const handoff = '請建立例行任務：06:04 和 15:30 的補助名單要給補助小蝦人；06:41 早報要給整備員；11:20 入住名單要給快遞員';
+  const invented = '任務排程已建好\n00:46 核對前一天\n01:46 登入檢查\n⏰例行任務：登入檢查｜00:46｜檢查登入';
+  const saved = schedulesFromTurn(handoff, invented);
+  assert.equal(saved.fromPrompt, true);
+  assert.deepEqual(saved.routines.map(r => [r.name, r.times]), [
+    ['補助名單', ['06:04', '15:30']],
+    ['早報', ['06:41']],
+    ['入住名單', ['11:20']]
+  ]);
+  const later = schedulesFromTurn('請把那幾個時間建在例行任務裡', '06:04 補助名單\n06:41 早報\n今天 15:30 見');
+  assert.equal(later.fromPrompt, false);
+  assert.deepEqual(later.routines.map(r => [r.name, r.times]), [
+    ['補助名單', ['06:04']],
+    ['早報', ['06:41']]
+  ]);
+  assert.deepEqual(schedulesFromTurn('今天 15:30 見', '00:46 登入檢查\n排程已建好').routines, []);
+  const duty = schedulesFromTurn('交接的工作：06:04 和 15:30 的補助名單要給「補助小蝦人」；06:41 早報要給「Eroom整備員」', '00:46 登入檢查');
+  assert.deepEqual(duty.routines.map(r => r.times), [['06:04', '15:30'], ['06:41']]);
+  assert.equal(duty.routines.some(r => r.times.includes('00:46')), false);
+});
+
+test('an Ollama reply still stores the instruction routines, memory, and skill', async () => {
+  const db = openD1();
+  const su = await call(db, 'POST', 'signup', { body: { name: 'olla', pw: 'correcthorsebattery' } });
+  const token = su.data.token;
+  const bot = await call(db, 'POST', 'bots', { token, body: { name: '備援助手', task: '看房號', engine: 'opencode', model: 'qwen3' } });
+  assert.equal(bot.status, 200, JSON.stringify(bot.data));
+  const id = bot.data.id;
+  const prompt = '請建立例行任務：06:04 和 15:30 的補助名單要給補助小蝦人；06:41 早報要給整備員；11:20 入住名單要給快遞員';
+  await call(db, 'POST', 'messages', { token, body: { conv: id, text: prompt } });
+  const rt = await runnerOf(db, token);
+  const job = await claimChat(db, rt);
+  assert.equal(job.bot.engine, 'opencode');
+  assert.equal(job.backup, false);
+  const reply = [
+    '任務排程已建好，包含以下每日例行任務：',
+    '00:46 核對前一天',
+    '01:46 登入檢查',
+    '⏰例行任務：登入檢查｜00:46｜檢查登入',
+    '📌記住：302 房冷氣壞了',
+    '🗺️網站筆記：example.com｜左側是訂單',
+    '🧩技能：查房',
+    '打開後台',
+    '看房號',
+    '🧩結束'
+  ].join('\n');
+  const done = await call(db, 'POST', 'runner/done', { token: rt, body: { id: job.id, ok: true, text: reply } });
+  assert.equal(done.status, 200, JSON.stringify(done.data));
+  const state = await call(db, 'GET', 'state', { token });
+  const routines = Object.fromEntries(state.data.routines.map(r => [r.name, r.times]));
+  assert.deepEqual(routines, {
+    補助名單: ['06:04', '15:30'],
+    早報: ['06:41'],
+    入住名單: ['11:20']
+  });
+  assert.deepEqual(state.data.memory[id], ['302 房冷氣壞了']);
+  assert.equal(state.data.skills[id][0].name, '查房');
+  const msgs = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  const sys = msgs.data.msgs.filter(m => m.by === 'sys').map(m => m.text).join('\n');
+  assert.match(sys, /已新增例行任務「補助名單」/);
+  assert.match(sys, /已記住：302 房冷氣壞了/);
+  assert.match(sys, /已存成技能「查房」/);
+  assert.equal(sys.includes('沒有新增例行任務'), false);
+  assert.equal(sys.includes('00:46'), false);
+  await call(db, 'POST', 'messages', { token, body: { conv: id, text: '再看一次' } });
+  const next = await claimChat(db, rt);
+  assert.match(next.sites, /example.com/);
+  assert.match(next.sites, /左側是訂單/);
+  const bare = await call(db, 'POST', 'runner/done', { token: rt, body: { id: next.id, ok: true, text: '排程已建好' } });
+  assert.equal(bare.status, 200);
+  const after = await call(db, 'GET', 'messages', { token, query: { conv: id } });
+  assert.ok(after.data.msgs.some(m => m.by === 'sys' && m.text.includes('沒有新增例行任務')));
+  const still = await call(db, 'GET', 'state', { token });
+  assert.equal(still.data.routines.length, 3);
 });
 
 function openD1From(raw) {

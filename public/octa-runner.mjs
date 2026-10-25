@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.16';
+export const VERSION = '17.17';
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
@@ -195,6 +195,7 @@ function dayInfo(job) {
     `應掃房＝昨晚有人住、今晚沒有同一組客人續住的房間：把昨晚 ${f(y)} 有住的房間全部列出，扣掉今日續住的房，就是今天要掃的；不要只找暱稱寫明今天退房的。房況以 eroom 為準時要去 eroom 對照。`,
     `整理名單時兩館分開，每館照房號由小到大排，每行「館別 房號 姓名」；一暱稱多房、同房多組、延期、取消等另外列給使用者決定。`,
     `一次把整件事做完再回覆（兩館都查、需要對照的網站都對照），花幾分鐘沒關係；不要回「還沒查完」「需要繼續搜尋」，也不要因為有疑點就整份不給、反過來要使用者確認。先把能確定的整理出來，有疑點的另外列在最後。`,
+    `館別、房號、姓名只能抄這一次畫面上的字。不准自己編館、編房號範圍、編客人姓名。畫面沒有的空著，不要補一個看起來完整的名單。`,
     `暱稱裡的日期沒有年份，一律當成今年、離今天最近的那個日期；最後一則訊息是好幾個月前、或明顯是往年的舊聊天就跳過，不用問。`,
     `找名單不能只看畫面上看得到的：要在搜尋框分別搜尋今天、昨天和前幾天的日期（例如「${f(d)}」「${f(y)}」「${d.getMonth() + 1}/1」「${d.getMonth() + 1}/2」），兩館都要切換過去查，往下捲到清單載入完整；每筆都要算過再分類。`);
   return out;
@@ -213,6 +214,7 @@ export function buildPrompt(job, here) {
     job.bot.task ? `你的指定任務（長期本業，不是能力上限）：${job.bot.task}` : '你還沒有指定任務：從對話學會你要長期負責什麼。在那之前，使用者問的每件事都接，不會就學。',
     ...studioAim()
   ];
+  if (job.backup) lines.push('你是在其他 AI 沒有額度時代替它把這件工作做完。該查的頁面要查，該建的例行任務要寫成⏰那一行，該抄的名單只能抄畫面。不要因為自己是備援就少做。');
   if (job.group) lines.push(
     `你在群組「${job.group.name}」，成員依序為：${job.group.members.join('、')}。`,
     job.group.task ? `群組協作規則：${job.group.task}` : '群組沒有特別規則：依各成員的指定任務分工。',
@@ -274,17 +276,16 @@ export function buildPrompt(job, here) {
     '- 需要使用者核准才能做的事，在回覆最後單獨一行寫「✅待確認：要做的事（一句話）」（「✅待確認：」這幾個字照抄，不要翻譯），然後停下。使用者回「核准：…」後才執行。',
     ...(job.allowed?.length ? ['- 使用者已經「一律允許」你做下面這些事：遇到同一類的事直接做，不用再寫 ✅待確認，做完在回覆裡清楚列出做了什麼（對象、數量、內容）。只限這些事本身，不要擴大解讀；付款、刪除資料、更改帳號設定仍然每次都要問：', ...job.allowed.map(t => '  · ' + t)] : []),
     '- 只回報實際完成的事，做不到就直說。',
-    `- 自動排程：使用者要你定時或持續做某件事（每天幾點、每隔多久巡一次）時，不要叫他自己去設定，在回覆最後加一行「⏰例行任務：名稱｜時間｜每次要做的事」。時間寫法：每天固定時間用 24 小時制（08:00,13:30），每隔一段時間寫「每30分鐘」或「每2小時」，兩種可以並用。例如「⏰例行任務：巡 LINE 訊息｜每30分鐘｜檢查 LINE 官方帳號新訊息，擬好回覆給我確認」（「⏰例行任務：」和「｜」照抄）。要「有新東西才做」時，時間欄寫「每10分鐘監看 網址」（系統會不花 AI 流量地檢查那個網頁，內容有變化才叫你），或寫「外部事件」（給一個觸發網址讓 LINE、表單等服務呼叫）。系統會自動建立；同名的會更新。你的任務本身就是要持續盯著某個地方（訊息、訂單、後台）時，主動建議並建立一個每隔一段時間的例行任務。${job.routines?.length ? '你已經有的例行任務（被問到下次什麼時候做時照這些回答）：' + job.routines.map(r => `${r.name}（${r.times.map(t => t.startsWith('*/') ? `每 ${t.slice(2)} 分鐘` : t).join('、')}${r.enabled ? '' : '，已停用'}）`).join('；') + '。' : ''}`,
+    `- 自動排程：使用者要你定時或持續做某件事（每天幾點、每隔多久巡一次）時，不要叫他自己去設定，在回覆最後加一行「⏰例行任務：名稱｜時間｜每次要做的事」。時間寫法：每天固定時間用 24 小時制（08:00,13:30），每隔一段時間寫「每30分鐘」或「每2小時」，兩種可以並用。例如「⏰例行任務：巡 LINE 訊息｜每30分鐘｜檢查 LINE 官方帳號新訊息，擬好回覆給我確認」（「⏰例行任務：」和「｜」照抄）。要「有新東西才做」時，時間欄寫「每10分鐘監看 網址」（系統會不花 AI 流量地檢查那個網頁，內容有變化才叫你），或寫「外部事件」（給一個觸發網址讓 LINE、表單等服務呼叫）。系統會自動建立；同名的會更新。你的任務本身就是要持續盯著某個地方（訊息、訂單、後台）時，主動建議並建立一個每隔一段時間的例行任務。指示裡已經寫了時間，就只用那些時間，不要另編指示裡沒有的時間。每一件都要寫成「⏰例行任務：名稱｜時間｜要做的事」那一行；沒有那一行就沒有建立。禁止只寫「排程已建好」「已建立例行任務」「例行任務已建好」。${job.routines?.length ? '你已經有的例行任務（被問到下次什麼時候做時照這些回答）：' + job.routines.map(r => `${r.name}（${r.times.map(t => t.startsWith('*/') ? `每 ${t.slice(2)} 分鐘` : t).join('、')}${r.enabled ? '' : '，已停用'}）`).join('；') + '。' : ''}`,
     '- 自動整理指定任務：當使用者在對話中說明你長期要負責的工作、固定做法、規則或排程（不是一次性的小請求）時，在回覆最後加上：「📝任務更新：」換行後寫出完整、更新後的指定任務（把原本的任務和新的說明合併成一份，條列清楚：負責什麼、去哪裡做、怎麼做、結果怎麼回報、要注意的規則），最後一行寫「📝結束」。這兩個標記照抄。沒有新的長期工作說明就不要寫。',
     '- 回覆最後一行可以寫「📍 目前頁面：網址」。不用自己截圖，執行器會拍畫面。',
     '',
     '對話紀錄（舊到新）：'
   );
-  // older messages are shortened; the last few stay whole
-  // small local models (Ollama) get a shorter history: they are slower and get confused by long conversations
-  const small = (job.bot.engine || 'claude') === 'opencode', hist = small ? job.history.slice(-8) : job.history, cut = small ? 300 : 600;
+  // older messages are shortened; the last few stay whole. A backup does the same job, so it gets the same history.
+  const hist = job.history || [], cut = 600;
   hist.forEach((h, i) => {
-    const recent = i >= hist.length - (small ? 2 : 4), t = recent || h.text.length <= cut ? h.text : h.text.slice(0, cut) + '…（較早的訊息，已截短）';
+    const recent = i >= hist.length - 4, t = recent || h.text.length <= cut ? h.text : h.text.slice(0, cut) + '…（較早的訊息，已截短）';
     const quote = h.replyText ? `（回覆${h.replyWho ? '「' + h.replyWho + '」' : ''}：${h.replyText}）\n` : '';
     lines.push(`【${h.who}】${quote}${t}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : ''));
   });
@@ -315,6 +316,7 @@ function seeNow(job) {
   const pics = picturePaths(job);
   const lines = ['看畫面要用眼睛。回答畫面上的數字或「你看到什麼」之前，先把圖整張讀完。圖裡沒有的數字寫「這次畫面沒有這個數字」。讀不到圖就老實說，不要編。遊戲、畫布、分數、電池、機架若這張圖是空的，就寫【派瀏覽】請那一輪看圖，不要自己編。'];
   lines.push('時間、金額、房號、按鈕上的字，畫面上看得到的全部照抄，不要只抄最上面幾筆。鍵盤或邊緣切掉的，只指出被切掉的那一列；還看得到的數字要寫出來，不能說「下面的都被擋住」。按鈕還在畫面上，只代表這一頁開著，不要說使用者沒有按。');
+  lines.push('館別、房號範圍、客人姓名不准編。畫面沒有的空著。');
   lines.push('轉述畫面時，要做什麼、步驟、條件整段照抄，這條比講得口語優先。不要改寫、不要漏半句。誰做、要不要略過，都照畫面的字；不要把「自己點登入」說成「讓使用者登入」，也不要把寫了的條件說成沒有。');
   if (pics.length) lines.push(`這一輪要讀的圖，用 Read 讀它：${pics.join('、')}`);
   else lines.push('這輪還沒有現成的圖。要看已登入的頁面就寫【派瀏覽】，不要自己截圖。使用者傳了圖片就讀那個附件，不要用猜的。');
@@ -345,6 +347,20 @@ export function keepBrowserTask(text) {
   if (conn && !takeConnectorTask(out)) out = `【連接器】\n名稱：${conn.name}\n動作：${conn.action}${conn.path ? '\n路徑：' + conn.path : ''}${conn.content ? '\n內容：' + conn.content : ''}\n【接完】\n${out}`.trim();
   if (task && !takeBrowserTask(out)) out = `【派瀏覽】\n網址：${task.url || '目前頁面'}\n要做的事：${task.prompt}\n【派完】\n${out}`.trim();
   return out;
+}
+const PAGE_RE = /入住|退房|續住|掃房|房號|訂房|eroom|後台|訂單/i;
+// A lodging or order job still has to open the page. A short greeting does not.
+export function needsPage(job) {
+  const prompt = String(job?.prompt || ''), task = String(job?.bot?.task || '');
+  if (PAGE_RE.test(prompt)) return true;
+  return PAGE_RE.test(task) && /查|看|名單|整理|對照|掃|訂單|入住|房號|後台|eroom/i.test(prompt);
+}
+export function forcedBrowseTask(job) {
+  if (!job || job.didBrowse || job.handed) return null;
+  if ((job.bot?.engine || 'claude') === 'grokbot') return null;
+  if (browserWindowAsk(job.prompt) === 'close') return null;
+  if (!needsPage(job)) return null;
+  return '到已登入的頁面把名單抄下來。房號、館別、姓名只能抄畫面上的字。沒看到的空著，不准編。';
 }
 export function planBrowserRound(text, { engine, port, mine, depth } = {}) {
   if (engine === 'grokbot') return { action: 'keep' };
@@ -753,6 +769,11 @@ async function chatRun(job) {
       res = await connectorRounds(job, b, here, engine, res, { progress, ctl });
       if (pendingBrowser && res?.ok && !takeBrowserTask(res.text)) res = { ...res, text: `【派瀏覽】\n網址：${pendingBrowser.url || '目前頁面'}\n要做的事：${pendingBrowser.prompt}\n【派完】\n${stripConnectorTask(res.text)}` };
       res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
+      const again = res?.ok && port && !job.handed ? forcedBrowseTask(job) : null;
+      if (again) {
+        res = { ...res, text: `【派瀏覽】\n網址：目前頁面\n要做的事：${again}\n【派完】` };
+        res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
+      }
     }
   }
   finally { clearTimeout(timerP); clearInterval(beat); clearInterval(liveBeat); busyBots.delete(job.bot.id); if (port) touchBrowser(job.bot.id); }
@@ -834,6 +855,7 @@ async function browseRounds(job, b, here, engine, res, live) {
     const plan = planBrowserRound(res.text, { engine, port, mine, depth });
     if (plan.action === 'keep') break;
     if (plan.action === 'strip') { res = { ...res, text: stripBrowserTask(res.text) || '這次的頁面沒有新的結果。' }; break; }
+    if (plan.action === 'work') job.didBrowse = true;
     const viaTool = toolForBrowse(plan.task, job.connectors);
     if (viaTool) {
       const next = await parentFollow(job, b, here, engine, `這件事連接器「${viaTool.name}」做得到。不要開瀏覽器，改寫【連接器】。名稱用「${viaTool.name}」。讀取可以直接做，送出要先 ✅待確認。`, live);

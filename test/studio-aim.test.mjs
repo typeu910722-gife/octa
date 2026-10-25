@@ -1,18 +1,19 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { GOOGLE_HOME, browserWindowAsk, buildBrowserPrompt, buildPrompt, keepBrowserTask, planBrowserRound, takeBrowserTask, takeWindowMarks } from '../public/octa-runner.mjs';
+import { GOOGLE_HOME, browserWindowAsk, buildBrowserPrompt, buildPrompt, forcedBrowseTask, keepBrowserTask, needsPage, planBrowserRound, takeBrowserTask, takeWindowMarks } from '../public/octa-runner.mjs';
 
 function prompt(extra = {}) {
   return buildPrompt({
-    bot: { id: 'b1', name: '測', engine: 'claude', task: extra.task || '' },
+    bot: { id: 'b1', name: '測', engine: extra.engine || 'claude', task: extra.task || '' },
     prompt: extra.prompt || '你可以玩遊戲嗎',
     history: extra.history || [],
     nick: 'Yzz',
     lang: 'zh-TW',
     group: extra.group,
     eyes: extra.eyes,
-    connectors: extra.connectors
+    connectors: extra.connectors,
+    backup: extra.backup
   }, '/tmp/octa-studio-aim');
 }
 
@@ -26,6 +27,9 @@ test('a capability question is something to learn, not a work-only refusal', () 
   assert.match(text, /包含玩遊戲/);
   assert.match(text, /你可以玩遊戲嗎/);
   assert.match(text, /安裝軟體、付款、刪除、更改帳號、對別人發出訊息，先寫 ✅待確認/);
+  assert.match(text, /沒有那一行就沒有建立/);
+  assert.match(text, /館別、房號範圍、客人姓名不准編/);
+  assert.equal(text.includes('不要因為自己是備援就少做'), false);
   assert.match(text, /頁面上的數字不准編/);
   assert.match(text, /機架/);
   assert.match(text, /這次畫面沒有這個數字/);
@@ -34,6 +38,18 @@ test('a capability question is something to learn, not a work-only refusal', () 
   assert.match(text, /畫面\.jpg/);
   assert.equal(text.includes('我目前的功能主要用來處理工作'), false);
   assert.equal(text.includes('視窗右側'), false);
+});
+
+test('a backup gets the full history and is told to finish the same job', () => {
+  const history = [{ who: '使用者', text: '最早的交代：' + '甲'.repeat(450) }];
+  for (let i = 1; i < 10; i++) history.push({ who: '使用者', text: '第' + i + '則' });
+  const text = prompt({ engine: 'opencode', backup: true, history, prompt: '照最早的交代做', task: '掃房' });
+  assert.match(text, /最早的交代/);
+  assert.match(text, /甲{450}/);
+  assert.equal(text.includes('已截短'), false);
+  assert.match(text, /不要因為自己是備援就少做/);
+  assert.match(text, /不准自己編館/);
+  assert.match(text, /第1則/);
 });
 
 test('a reply in the history names the message it answers', () => {
@@ -160,9 +176,19 @@ test('a browsing round reads by snapshot ref and reports in text', () => {
   assert.match(worker, /做成了什麼/);
   assert.match(worker, /卡在哪裡/);
   assert.equal(worker.includes('【派瀏覽】'), false);
+  assert.equal(needsPage({ bot: { task: '回答' }, prompt: '你好' }), false);
+  assert.equal(needsPage({ bot: { task: '看房號' }, prompt: '整理今日入住' }), true);
+  assert.equal(needsPage({ bot: { task: '回答' }, prompt: '看 eroom 的訂單' }), true);
+  assert.match(forcedBrowseTask({ bot: { task: '訂單', engine: 'opencode' }, prompt: '看後台' }), /只能抄畫面上的字/);
+  assert.equal(forcedBrowseTask({ bot: { task: '訂單', engine: 'opencode' }, prompt: '看後台', didBrowse: true }), null);
+  assert.equal(forcedBrowseTask({ bot: { task: '訂單', engine: 'grokbot' }, prompt: '看後台' }), null);
+  assert.equal(forcedBrowseTask({ bot: { task: '房號' }, prompt: '關閉瀏覽器' }), null);
+  assert.equal(forcedBrowseTask({ bot: { task: '回答' }, prompt: '你好' }), null);
   const src = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
   assert.match(src, /const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep'/);
   assert.match(src, /const WORKER_TOOLS = 'mcp__browser,Read'/);
   assert.match(src, /--allowedTools', PARENT_TOOLS/);
   assert.match(src, /useBrowser \? WORKER_TOOLS : PARENT_TOOLS/);
+  assert.match(src, /job\.didBrowse = true/);
+  assert.match(src, /forcedBrowseTask\(job\)/);
 });

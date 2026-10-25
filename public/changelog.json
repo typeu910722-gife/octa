@@ -1,5 +1,15 @@
 [
  {
+  "v": "3.0.32",
+  "date": "2026-10-25",
+  "notes": [
+   "備援接手時照樣做完整件事：該看的頁面會看，房號只抄畫面，指示裡的時間會建成例行任務"
+  ],
+  "notes_en": [
+   "When a backup takes over, it still does the whole job: it reads the page, copies only what is on screen, and saves routines from the times in the instruction"
+  ]
+ },
+ {
   "v": "3.0.31",
   "date": "2026-10-25",
   "notes": [

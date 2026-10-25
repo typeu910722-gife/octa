@@ -79,6 +79,87 @@ const cleanTimes = a => {
   const ev = list.map(s => String(s).match(/^\*\/(\d+)$/)).filter(Boolean).map(mm => Math.min(720, Math.max(5, +mm[1])))[0];
   return ev ? ['*/' + ev, ...fixed] : fixed;
 };
+const CLOCK_RE = /(?<![0-9])([01]?\d|2[0-3])[:：]([0-5]\d)(?![0-9])/g;
+function clockHits(text) {
+  const hits = [];
+  const re = new RegExp(CLOCK_RE.source, 'g');
+  let m;
+  while ((m = re.exec(String(text || '')))) hits.push({ t: m[1].padStart(2, '0') + ':' + m[2], i: m.index, end: m.index + m[0].length });
+  return hits;
+}
+function routineName(raw) {
+  let name = String(raw || '').replace(/^[的\s:：,，、和與及]+/, '');
+  name = name.replace(/[（(].*$/, '');
+  name = name.replace(/(要給|交給|給「|給『|，|。|；|;|→|➡).*$/, '');
+  name = name.replace(/^(請|幫我|建立|新增|設定|例行任務|排程|每天|每日|的)+/, '').trim();
+  return clean(name, 40);
+}
+// Times written in the instruction win. A prose "已建好" does not.
+export function schedulesFromTurn(prompt, reply) {
+  const src = String(prompt || '');
+  const asks = /例行任務/.test(src)
+    || /(?:建立|新增|設定|做成|改成|排進|寫成|建成).{0,16}排程|排程.{0,16}(?:建立|新增|設定|做成|改成|建成)/.test(src)
+    || (/交接/.test(src) && clockHits(src).length && /名單|早報|入住|退房|續住|掃房|訂單|每天|每日|例行|排程|要給|交給/.test(src));
+  if (!asks) return { fromPrompt: false, routines: [] };
+  const hits = clockHits(src);
+  if (hits.length) {
+    const routines = routinesFromClocks(src, hits);
+    return { fromPrompt: routines.length > 0, routines };
+  }
+  return { fromPrompt: false, routines: routinesFromReplyLines(reply) };
+}
+function routinesFromClocks(text, hits) {
+  const groups = [];
+  let cur = [hits[0]];
+  for (let i = 1; i < hits.length; i++) {
+    const between = text.slice(cur[cur.length - 1].end, hits[i].i);
+    if (/^[\s,，、和與及的]+$/.test(between)) cur.push(hits[i]);
+    else { groups.push(cur); cur = [hits[i]]; }
+  }
+  groups.push(cur);
+  const out = [];
+  const skip = /^(結束|為止|之前|之後|左右|開始|停止|見|回我|再說)$/;
+  for (let g = 0; g < groups.length && out.length < 12; g++) {
+    const group = groups[g];
+    const nameEnd = g + 1 < groups.length ? groups[g + 1][0].i : text.length;
+    const times = cleanTimes(group.map(x => x.t));
+    if (!times.length) continue;
+    let name = routineName(text.slice(group[group.length - 1].end, nameEnd));
+    if (skip.test(name)) continue;
+    if (!name) name = clean('每天 ' + times.join('、'), 40);
+    out.push({ name, times, prompt: clean(text.slice(group[0].i, nameEnd), 2000) });
+  }
+  return out;
+}
+function routinesFromReplyLines(reply) {
+  const out = [];
+  for (const line of String(reply || '').split('\n')) {
+    const m = line.trim().match(/^(?:\d+\s*[.、．)）]\s*)?([01]?\d|2[0-3])[:：]([0-5]\d)\s+(\S.{0,80})/);
+    if (!m) continue;
+    const name = routineName(m[3]);
+    const times = cleanTimes([m[1].padStart(2, '0') + ':' + m[2]]);
+    if (!name || !times.length || /^(結束|為止|之前|之後|左右|開始|停止|見|回我|再說)$/.test(name)) continue;
+    out.push({ name, times, prompt: clean(line, 2000) });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+function applySchedules(plans, prompt, reply) {
+  const asked = schedulesFromTurn(prompt, reply);
+  if (asked.fromPrompt) {
+    const sets = new Set(asked.routines.map(r => r.times.join(',')));
+    for (let i = plans.length - 1; i >= 0; i--) {
+      const p = plans[i];
+      if (p.trigger || p.times.every(isEvery)) continue;
+      if (!sets.has(p.times.filter(t => !isEvery(t)).join(','))) plans.splice(i, 1);
+    }
+  }
+  for (const r of asked.routines) {
+    if (plans.some(p => !p.trigger && (p.name === r.name || (p.times.length === r.times.length && p.times.every((t, i) => t === r.times[i]))))) continue;
+    plans.push(r);
+  }
+  return plans;
+}
 const localNow = (env, t = now()) => {
   const d = new Date(t + (+env.TZ_OFFSET_MIN || 0) * 60000);
   return { date: d.toISOString().slice(0, 10), hm: d.toISOString().slice(11, 16) };
@@ -1235,13 +1316,11 @@ async function route({ request: req, env, params }) {
         const remember = [], sitesNew = [];
         // 🧩技能：名稱 … 🧩結束 — a workflow saved to rerun later (shown in the / menu)
         const skillsNew = [];
-        // small local models (Ollama) fire these on everything ("已記住：自我介紹已完成…"): their markers are dropped, not saved
-        const small = (await db.prepare('SELECT engine FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first())?.engine === 'opencode';
         if (good && job.kind === 'chat') {
-          text = text.replace(/^\s*📌\s*記住[:：]\s*(.+)$/gm, (_, t) => { const v = clean(t, 300); if (v && !small) remember.push(v); return ''; });
+          text = text.replace(/^\s*📌\s*記住[:：]\s*(.+)$/gm, (_, t) => { const v = clean(t, 300); if (v) remember.push(v); return ''; });
           // 🗺️網站筆記：網域｜做法 — how to get around a website, shared with every bot
-          text = text.replace(/^\s*🗺️?\s*網站筆記[:：]\s*([^｜|\n]+)\s*[｜|]\s*(.+)$/gm, (_, d, t) => { const dom = clean(d, 60).toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''), v = clean(t, 300); if (dom && v && !small) sitesNew.push([dom, v]); return ''; });
-          text = text.replace(/🧩\s*技能[:：]\s*([^\n]+)\n([\s\S]*?)🧩\s*結束/g, (_, n, st2) => { const name = clean(n, 40), steps = clean(st2, 3000); if (name && steps && !small) skillsNew.push({ name, steps }); return ''; });
+          text = text.replace(/^\s*🗺️?\s*網站筆記[:：]\s*([^｜|\n]+)\s*[｜|]\s*(.+)$/gm, (_, d, t) => { const dom = clean(d, 60).toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''), v = clean(t, 300); if (dom && v) sitesNew.push([dom, v]); return ''; });
+          text = text.replace(/🧩\s*技能[:：]\s*([^\n]+)\n([\s\S]*?)🧩\s*結束/g, (_, n, st2) => { const name = clean(n, 40), steps = clean(st2, 3000); if (name && steps) skillsNew.push({ name, steps }); return ''; });
           text = text.trim() || '（已記下）';
         }
         // ⏰例行任務：名稱｜08:00,13:30｜要做的事 — the bot sets up a daily routine the user asked for
@@ -1255,7 +1334,9 @@ async function route({ request: req, env, params }) {
             if (clean(n, 40) && times.length) plans.push({ name: clean(n, 40), times, prompt: clean(p, 2000) });
             return '';
           }).trim() || '（已設定例行任務）';
+          applySchedules(plans, job.prompt, text);
         }
+        const claimedBuilt = good && job.kind === 'chat' && /排程已建好|例行任務已建好|已建立例行任務|已建好例行/.test(text);
         const tk = Number.isFinite(+body.tokens) && body.tokens !== null ? Math.max(0, Math.round(+body.tokens)) : null;
         await db.prepare('UPDATE jobs SET status=?, finished=?, tokens=? WHERE id=?').bind(good ? 'done' : 'error', now(), tk, job.id).run();
         // where its website logins live: the first computer its browser ran on, until they're moved
@@ -1291,7 +1372,7 @@ async function route({ request: req, env, params }) {
           else await db.prepare("INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created,hook,watch) VALUES (?,?,?,?,?,'[]',1,'{}',?,?,?)").bind('r-' + uid(), U, job.conv, r.name, r.prompt, now(), trig.hook, trig.watch).run();
           await addMsg(db, U, job.conv, 'sys', r.trigger === 'watch' ? `已設定例行任務「${r.name}」：網頁 ${r.watch.url} 有變化時開始（每 ${r.watch.every || 10} 分鐘檢查）` : `已設定例行任務「${r.name}」：外部事件觸發。觸發網址在任務設定 → 例行任務裡`);
         }
-        for (const r of plans.filter(x => !x.trigger).slice(0, 5)) {
+        for (const r of plans.filter(x => !x.trigger).slice(0, 12)) {
           const { date, hm } = localNow(env);
           const fired = JSON.stringify(Object.fromEntries(r.times.filter(t => !isEvery(t) && t <= hm).map(t => [t, date])));   // times already past today start tomorrow
           const old = await db.prepare('SELECT id FROM routines WHERE user_id=? AND conv=? AND name=?').bind(U, job.conv, r.name).first();
@@ -1299,6 +1380,7 @@ async function route({ request: req, env, params }) {
           else await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)').bind('r-' + uid(), U, job.conv, r.name, r.prompt, JSON.stringify(r.times), fired, now()).run();
           await addMsg(db, U, job.conv, 'sys', `已${old ? '更新' : '新增'}例行任務「${r.name}」：${r.times.map(t => isEvery(t) ? `每 ${t.slice(2)} 分鐘` : '每天 ' + t).join('、')}`);
         }
+        if (claimedBuilt && !plans.length) await addMsg(db, U, job.conv, 'sys', '這次回覆說排程已建好，但沒有寫出可以建立的時間，所以沒有新增例行任務。');
         if (learned && learned.length >= 4) {
           const cur = await db.prepare('SELECT task FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first();
           if (cur && cur.task !== learned) {
@@ -2156,6 +2238,7 @@ async function jobPayload(env, db, U, job) {
     canAsk: job.depth < MAX_ASK_DEPTH,
     conv: { id: conv.id, name: conv.name },
     shareBrowser: st.shareBrowser !== false,
+    backup: !!(job.eng && job.eng !== ((bot.engine || 'claude') + (bot.model ? '|' + bot.model : ''))),
     bot: { id: bot.id, name: bot.name, task: bot.task, page: bot.page, engine: (job.eng ? job.eng.split('|')[0] : bot.engine) || 'claude', model: job.eng ? job.eng.split('|')[1] || '' : bot.model || '', browser: bot.browser === 'mine' ? 'mine' : 'own' },
     folder: folders.find(f => f.id === bot.folder)?.name || null,
     folderNotes: folders.find(f => f.id === bot.folder)?.notes || '',
