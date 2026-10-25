@@ -1,0 +1,64 @@
+name: Desktop test build
+
+# A Windows installer for a branch, for someone to install by hand.
+# It is a prerelease and does not upload latest.yml, so the installed
+# desktop app's auto-update stays on the stable release.
+on:
+  push:
+    branches: [cursor/stop-the-loop-4a4f]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - name: Use a prerelease version only for this build
+        shell: bash
+        run: |
+          node -e "
+          const fs=require('fs');
+          const p=JSON.parse(fs.readFileSync('package.json','utf8'));
+          p.version='3.0.33-test.1';
+          p.build.nsis=Object.assign({}, p.build.nsis, {allowDowngrade:true});
+          fs.writeFileSync('package.json', JSON.stringify(p,null,2));
+          "
+      - name: Build installer
+        run: npm run dist
+      - name: Keep the auto-update manifest out of this build
+        shell: bash
+        run: |
+          rm -f dist/latest.yml dist/*.blockmap
+          test ! -f dist/latest.yml
+          test -f dist/OCTA-Setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OCTA-Setup-3.0.33-test.1
+          path: desktop/dist/OCTA-Setup.exe
+          if-no-files-found: error
+      - name: Publish prerelease without latest.yml
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-3.0.33-test.1
+          target_commitish: ${{ github.sha }}
+          name: OCTA 3.0.33-test.1（測試，不會自動更新）
+          prerelease: true
+          make_latest: false
+          draft: false
+          body: |
+            這是 PR #33 的測試安裝檔，不是正式版。
+            沒有附上 latest.yml。現有桌面版的自動更新不會抓到這一個。
+            測完請改回安裝正式版。
+          files: desktop/dist/OCTA-Setup.exe
