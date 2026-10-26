@@ -1096,7 +1096,7 @@ function retryHtml(m){if(!/^⚠/.test(m.text)||NEEDLOGIN.test(m.text))return '';
 const NEEDLOGIN=/需要使用者在電腦上登入|需要.{0,6}登入/;
 function loginHtml(m){const b=bot(m.by);if(!b||b.browser==='mine'||!NEEDLOGIN.test(m.text))return '';
   if(convMsgs(m.conv).some(x=>x.id>m.id&&x.by===m.by))return '';
-  return `<div class="appr"><button type="button" class="btn" data-hand="${esc(m.by)}">接手</button><button type="button" class="no" data-retry="${m.id}">繼續</button><small class="hint2">機器人已停止點擊。在旁邊的即時畫面上自己登入，再按繼續。密碼不要貼到聊天裡。</small></div>`}
+  return `<div class="appr"><button type="button" class="btn" data-hand="${esc(m.by)}">接手</button><button type="button" class="no" data-resume="${esc(m.by)}">繼續</button><small class="hint2">機器人已停止點擊。在旁邊的即時畫面上自己登入，再按繼續。密碼不要貼到聊天裡。</small></div>`}
 function apprHtml(m){const a=m.text.match(APPR);if(!a)return '';
   const later=convMsgs(m.conv).some(x=>x.id>m.id&&(x.by==='me'||x.by===m.by));
   if(later)return '';
@@ -1394,6 +1394,7 @@ $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).th
   const rt=e.target.closest('[data-retry]');if(rt){const ms=convMsgs(cur),i=ms.findIndex(x=>String(x.id)===rt.dataset.retry);
     const last=ms.slice(0,i).reverse().find(x=>x.by==='me');if(!last){toast(I18N.t('找不到上一則指示'));return}
     rt.disabled=true;sendMsg(last.text==='（附件）'?'':last.text,(last.files||[]).map(f=>f.id),last.files||[]);return}
+  const rs=e.target.closest('[data-resume]');if(rs){rs.disabled=true;api('handoff','POST',{bot:rs.dataset.resume,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作');return}   // the earlier instruction is already in the chat, don't send it again
   const hd=e.target.closest('[data-hand]');if(hd){api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(err=>toast(err.message));return}
   const ob=e.target.closest('[data-openb]');if(ob){ob.disabled=true;openBrowser(ob.dataset.openb);return}
   const im=e.target.closest('img[data-file]');if(im)openFile(im.dataset.file);
@@ -1725,7 +1726,7 @@ function setReply(m){if(!m||m.tmp)return;
 $('replyx').onclick=()=>{replyTo=null;paintReply();$('msg').focus()};
 $('followGo').onclick=()=>{const id=$('followbar').dataset.conv;if(id)openConv(id)};
 $('stHand').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:true}).then(()=>{toast('已接手，機器人停止點擊');pollLive()}).catch(e=>toast(e.message))};
-$('stGo').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:false}).catch(()=>{});sendMsg('登入好了，繼續')};
+$('stGo').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作')};
 async function pollLive(){
   const box=$('stage');if(!box)return;
   if(window.octaDesktop||!cur||isG(cur)||$('app').hidden){box.hidden=true;return}
