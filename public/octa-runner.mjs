@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.18';
+export const VERSION = '17.19';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -191,28 +191,27 @@ function dayInfo(job) {
   const d = new Date(), f = x => `${x.getMonth() + 1}/${x.getDate()}`, wk = '日一二三四五六';
   const y = new Date(d - 864e5), t = new Date(+d + 864e5);
   const out = [`今天是 ${d.getFullYear()}/${f(d)}（週${wk[d.getDay()]}），昨天是 ${f(y)}（週${wk[y.getDay()]}），明天是 ${f(t)}。`];
-  if (/入住|退房|續住|掃房|房號|訂房/.test([job.bot.task, job.notes, job.folderNotes, job.group?.task, job.prompt].join(' '))) out.push(
-    `判斷住宿日期時，先把每個暱稱的日期換成「住哪幾晚」再分類（照規則：「10/21-23」＝住 10/21、10/22、10/23 三晚，10/24 退房）：第一晚是今天 ${f(d)} → 今日入住；昨天 ${f(y)} 也住、今天 ${f(d)} 也住 → 今日續住（最後一晚是今天的人明天才退房，今天算續住，不是退房）；最後一晚是昨天 ${f(y)} → 今天退房。`,
-    `應掃房＝昨晚有人住、今晚沒有同一組客人續住的房間：把昨晚 ${f(y)} 有住的房間全部列出，扣掉今日續住的房，就是今天要掃的；不要只找暱稱寫明今天退房的。房況以 eroom 為準時要去 eroom 對照。`,
-    `整理名單時兩館分開，每館照房號由小到大排，每行「館別 房號 姓名」；一暱稱多房、同房多組、延期、取消等另外列給使用者決定。`,
-    `一次把整件事做完再回覆（兩館都查、需要對照的網站都對照），花幾分鐘沒關係；不要回「還沒查完」「需要繼續搜尋」，也不要因為有疑點就整份不給、反過來要使用者確認。先把能確定的整理出來，有疑點的另外列在最後。`,
-    `館別、房號、姓名只能抄這一次畫面上的字。不准自己編館、編房號範圍、編客人姓名。畫面沒有的空著，不要補一個看起來完整的名單。`,
-    `暱稱裡的日期沒有年份，一律當成今年、離今天最近的那個日期；最後一則訊息是好幾個月前、或明顯是往年的舊聊天就跳過，不用問。`,
-    `找名單不能只看畫面上看得到的：要在搜尋框分別搜尋今天、昨天和前幾天的日期（例如「${f(d)}」「${f(y)}」「${d.getMonth() + 1}/1」「${d.getMonth() + 1}/2」），兩館都要切換過去查，往下捲到清單載入完整；每筆都要算過再分類。`);
+  // general working rules for any kind of job; anything specific to one business lives in that bot's task or its section's notes
+  out.push(
+    '一次把整件事做完再回覆，花幾分鐘沒關係；能確定的先整理出來，有疑點的另外列在最後，不要因為有疑點就整份不給。',
+    '名字、編號、數字、金額只能抄這一次畫面上或資料裡看到的字，不准自己編；沒看到的空著。',
+    '日期沒有寫年份時，當成今年、離今天最近的那一天。',
+    '找資料不能只看畫面上看得到的：用搜尋、篩選、往下捲到載入完整，相關的帳號和頁面都要看過。');
   return out;
 }
 const notesFile = job => join(workDir, 'bots', String(job.bot.id).replace(/[^\w-]/g, ''), '工作筆記.md');
 function workNotes(job) {
   let t = ''; try { t = readFileSync(notesFile(job), 'utf8').trim(); } catch { }
   if (t.length > 6000) t = '…' + t.slice(-6000);
-  return [`你的工作筆記（檔案 ${notesFile(job)}，由你自己維護）：查到值得留下的資料就更新這個檔案，例如今天的名單與房況、網站上東西在哪、做到哪一步，每段寫上查到的時間；舊日期、用不到的就刪掉。只能寫這一次畫面上看得到的字。畫面上沒有的房號、館別、姓名不要寫，OCTA 會把那些列拿掉。檔案寫不進去（例如顯示唯讀）時，改在回覆最後寫「📒工作筆記：」換行接完整的新筆記，最後一行寫「📒結束」，OCTA 會幫你存，不用跟使用者提這件事。下次先看筆記，只補查可能變動的部分，不用每次從頭查。使用者再問一樣的事、而筆記裡已經有今天整理好的結果時，先告訴他「上次幾點查的、結果是什麼」，再用 ❓ 問他要不要重新查（A. 現在重新查 B. 用剛才那份就好）。`,
+  return [`你的工作筆記（檔案 ${notesFile(job)}，由你自己維護）：查到值得留下的資料就更新這個檔案，例如查到的名單和數字、網站上東西在哪、做到哪一步，每段寫上查到的時間；舊日期、用不到的就刪掉。只能寫這一次畫面上看得到的字。畫面上沒有的編號、名字、數字不要寫，OCTA 會把那些列拿掉。檔案寫不進去（例如顯示唯讀）時，改在回覆最後寫「📒工作筆記：」換行接完整的新筆記，最後一行寫「📒結束」，OCTA 會幫你存，不用跟使用者提這件事。下次先看筆記，只補查可能變動的部分，不用每次從頭查。使用者再問一樣的事、而筆記裡已經有今天整理好的結果時，先告訴他「上次幾點查的、結果是什麼」，再用 ❓ 問他要不要重新查（A. 現在重新查 B. 用剛才那份就好）。`,
     t ? '目前筆記內容：\n' + t : '（目前筆記是空的）'];
 }
 export function buildPrompt(job, here) {
   const lines = [
     `你是 OCTA（奧克塔）裡的機器人「${job.bot.name}」，在使用者自己的電腦上執行。`,
     callUser(job),
-    job.bot.task ? `你的指定任務（長期本業，不是能力上限）：${job.bot.task}` : '你還沒有指定任務：從對話學會你要長期負責什麼。在那之前，使用者問的每件事都接，不會就學。',
+    job.bot.task ? `你的指定任務（長期本業，不是能力上限）：${job.bot.task}` : '你還沒有指定任務：只做使用者這次交代的事，做完就停，不要自己找事做，也不要把共用資料、分區資料或同事的工作當成你的。使用者說明要你長期負責什麼時，再用📝任務更新記下來。',
+    '- 共用資料、分區資料、網站筆記和同事清單只是背景參考：只用跟你的指定任務或這次指示有關的部分，無關的忽略，回覆裡也不要提。不要在回覆裡引用規則編號或內部說明。',
     ...studioAim()
   ];
   if (job.backup) lines.push('你是在其他 AI 沒有額度時代替它把這件工作做完。該查的頁面要查，該建的例行任務要寫成⏰那一行，該抄的名單只能抄畫面。不要因為自己是備援就少做。');
@@ -273,8 +272,8 @@ export function buildPrompt(job, here) {
     '- 登入頁只要點選已經記住的帳號（例如顯示帳號名稱和「登入」按鈕、「以 XX 身分繼續」），不必輸入密碼或驗證碼時，把「點已記住的帳號繼續」寫進【派瀏覽】。',
     '- 需要輸入帳號密碼、驗證碼或手機確認時，派瀏覽停在那一頁。報告會寫「需要使用者在電腦上登入」。你的回覆照抄這幾個字和要登入的網站。使用者會在旁邊的畫面幫你登入，再叫你繼續。密碼不要進對話。',
     '- 發訊息給任何人、付款、刪除資料、更改帳號設定：除非使用者在對話中明確下令，否則只準備好內容並請使用者確認，不要執行。同意只涵蓋那一次動作。',
-    '- 這些「只看不改」的事不用問、也不要叫使用者幫你，寫進【派瀏覽】讓那一輪去做：打開或切換網站、切換後台裡要看的帳號／館別、捲動清單、搜尋、篩選、點開聊天室或頁面看內容、到其他網站（例如 eroom、試算表）查資料核對。任務規則說的「只讀」「不改」是指不能修改或發送，讀任何網站查資料都可以。公開網頁用 WebFetch。',
-    '- 使用者要一份資料（例如今日入住、續住、應掃房）時，用【派瀏覽】到所有相關的地方找齊：先想清楚資料在哪裡、要用什麼條件找（例如在 LINE 聊天列表搜尋今天的日期「10/23」、往下捲到載入完整清單、兩館都要切換過去看），把這些寫進要做的事，整理好再回覆；不要回「請你打開某頁」或「請你提供名單」。真的找不到才說找過哪些地方。',
+    '- 這些「只看不改」的事不用問、也不要叫使用者幫你，寫進【派瀏覽】讓那一輪去做：打開或切換網站、切換後台裡要看的帳號或分頁、捲動清單、搜尋、篩選、點開聊天室或頁面看內容、到其他網站或試算表查資料核對。任務規則說的「只讀」「不改」是指不能修改或發送，讀任何網站查資料都可以。公開網頁用 WebFetch。',
+    '- 使用者要一份資料（例如名單、報表、統計）時，用【派瀏覽】到所有相關的地方找齊：先想清楚資料在哪裡、要用什麼條件找（例如在列表搜尋日期或關鍵字、往下捲到載入完整、每個相關帳號都切換過去看），把這些寫進要做的事，整理好再回覆；不要回「請你打開某頁」或「請你提供名單」。真的找不到才說找過哪些地方。',
     '- 需要使用者核准才能做的事，在回覆最後單獨一行寫「✅待確認：要做的事（一句話）」（「✅待確認：」這幾個字照抄，不要翻譯），然後停下。使用者回「核准：…」後才執行。',
     ...(job.allowed?.length ? ['- 使用者已經「一律允許」你做下面這些事：遇到同一類的事直接做，不用再寫 ✅待確認，做完在回覆裡清楚列出做了什麼（對象、數量、內容）。只限這些事本身，不要擴大解讀；付款、刪除資料、更改帳號設定仍然每次都要問：', ...job.allowed.map(t => '  · ' + t)] : []),
     '- 只回報實際完成的事，做不到就直說。',
@@ -315,7 +314,7 @@ export function buildLocalPrompt(job, here) {
     job.backup ? '你是在其他 AI 沒有額度時代替它把這件工作做完。該查的頁面要查，該記的要記。不要因為自己是備援就少做。' : '',
     `現在要做：${instruction}`,
     task ? `指定任務：${task}` : '',
-    '規則：先看完再下結論。館別、房號、姓名只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。',
+    '規則：先看完再下結論。名字、編號、數字只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。',
     job.group ? `群組「${job.group.name}」依序做。你只做自己的部分，做完就停。` : '',
     hist.length ? '最近的對話：\n' + hist.join('\n') : '',
     notes ? '工作筆記節錄：\n' + notes : '',
@@ -396,7 +395,7 @@ function seeNow(job) {
   const pics = picturePaths(job);
   const lines = ['看畫面要用眼睛。回答畫面上的數字或「你看到什麼」之前，先把圖整張讀完。圖裡沒有的數字寫「這次畫面沒有這個數字」。讀不到圖就老實說，不要編。遊戲、畫布、分數、電池、機架若這張圖是空的，就寫【派瀏覽】請那一輪看圖，不要自己編。'];
   lines.push('時間、金額、房號、按鈕上的字，畫面上看得到的全部照抄，不要只抄最上面幾筆。鍵盤或邊緣切掉的，只指出被切掉的那一列；還看得到的數字要寫出來，不能說「下面的都被擋住」。按鈕還在畫面上，只代表這一頁開著，不要說使用者沒有按。');
-  lines.push('館別、房號範圍、客人姓名不准編。畫面沒有的空著。');
+  lines.push('名字、編號、數字不准編。畫面沒有的空著。');
   lines.push('轉述畫面時，要做什麼、步驟、條件整段照抄，這條比講得口語優先。不要改寫、不要漏半句。誰做、要不要略過，都照畫面的字；不要把「自己點登入」說成「讓使用者登入」，也不要把寫了的條件說成沒有。');
   if (pics.length) lines.push(`這一輪要讀的圖，用 Read 讀它：${pics.join('、')}`);
   else lines.push('這輪還沒有現成的圖。要看已登入的頁面就寫【派瀏覽】，不要自己截圖。使用者傳了圖片就讀那個附件，不要用猜的。');
@@ -428,19 +427,19 @@ export function keepBrowserTask(text) {
   if (task && !takeBrowserTask(out)) out = `【派瀏覽】\n網址：${task.url || '目前頁面'}\n要做的事：${task.prompt}\n【派完】\n${out}`.trim();
   return out;
 }
-const PAGE_RE = /入住|退房|續住|掃房|房號|訂房|eroom|後台|訂單/i;
-// A lodging or order job still has to open the page. A short greeting does not.
+const PAGE_RE = /後台|訂單|名單|報表|帳號裡|網站上|頁面上/i;
+// A job about data on a signed-in site still has to open the page. A short greeting does not.
 export function needsPage(job) {
   const prompt = String(job?.prompt || ''), task = String(job?.bot?.task || '');
   if (PAGE_RE.test(prompt)) return true;
-  return PAGE_RE.test(task) && /查|看|名單|整理|對照|掃|訂單|入住|房號|後台|eroom/i.test(prompt);
+  return PAGE_RE.test(task) && /查|看|名單|整理|對照|核對|列出|統計/i.test(prompt);
 }
 export function forcedBrowseTask(job) {
   if (!job || job.didBrowse || job.handed) return null;
   if ((job.bot?.engine || 'claude') === 'grokbot') return null;
   if (browserWindowAsk(job.prompt) === 'close') return null;
   if (!needsPage(job)) return null;
-  return '到已登入的頁面把名單抄下來。房號、館別、姓名只能抄畫面上的字。沒看到的空著，不准編。';
+  return '到已登入的頁面把需要的資料抄下來。名字、編號、數字只能抄畫面上的字。沒看到的空著，不准編。';
 }
 export function planBrowserRound(text, { engine, port, mine, depth } = {}) {
   if (engine === 'grokbot') return { action: 'keep' };
@@ -1437,12 +1436,22 @@ async function openBrowser(bot, opts = {}) {
   return port;
 }
 async function pushLive(port, job) {
+  // nobody has this bot's browser open: don't upload frames, just check every 6 s whether someone started watching or took over
+  if (!job.liveWatch) {
+    if (Date.now() - (job.livePeek || 0) < 6000) return;
+    job.livePeek = Date.now();
+    const p = await api('runner/live', { bot: job.bot.id, peek: 1 });
+    if (p.hand) { job.handed = true; job.stopForHand?.(); }
+    if (!p.watch) return;
+    job.liveWatch = true;
+  }
   const shot = await browserSnapshot(port, 0, 40);
   if (!shot?.jpeg || shot.jpeg.length > 350000) return;
   let title = '';
   try { title = (pickLivePage(await cdp(port, send => pagesOf(send)))?.title || '').slice(0, 80); } catch { }
   const r = await api('runner/live', { bot: job.bot.id, url: realPage(shot.url) || '', title, data: shot.jpeg.toString('base64') });
   if (r.hand) { job.handed = true; job.stopForHand?.(); }
+  if (r.watch === false) job.liveWatch = false;
 }
 async function captureEyes(port, dir) {
   try {

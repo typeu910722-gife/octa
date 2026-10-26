@@ -356,12 +356,16 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS code_task_user ON code_tasks(user_id, created)',
   'CREATE TABLE IF NOT EXISTS code_events (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, user_id TEXT NOT NULL, ts INTEGER NOT NULL, role TEXT, kind TEXT NOT NULL, text TEXT, data TEXT)',
   'CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id)',
-  'CREATE TABLE IF NOT EXISTS live (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT, title TEXT, mime TEXT, data TEXT, ts INTEGER, handed INTEGER NOT NULL DEFAULT 0)'
+  'CREATE TABLE IF NOT EXISTS live (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT, title TEXT, mime TEXT, data TEXT, ts INTEGER, handed INTEGER NOT NULL DEFAULT 0)',
+  // 3.1: progress has its own counter (no full reload), live frames only while someone watches
+  'ALTER TABLE users ADD COLUMN prog INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE live ADD COLUMN watch INTEGER'
 ];
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
-  try { await db.prepare('SELECT want FROM files LIMIT 0').all(); await db.prepare('SELECT k FROM logins LIMIT 0').all(); await db.prepare('SELECT progress, tokens FROM jobs LIMIT 0').all(); await db.prepare('SELECT hook, watch, wstate FROM routines LIMIT 0').all(); await db.prepare('SELECT pc FROM files LIMIT 0').all(); await db.prepare('SELECT bpc FROM bots LIMIT 0').all(); await db.prepare('SELECT pc, eng, tries FROM jobs LIMIT 0').all(); await db.prepare('SELECT fb FROM bots LIMIT 0').all(); await db.prepare('SELECT id, fb FROM code_tasks LIMIT 0').all(); await db.prepare('SELECT reply FROM messages LIMIT 0').all(); await db.prepare('SELECT handed FROM live LIMIT 0').all(); schemaReady.add(db); return; } catch { }
+  try {
+    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users'].map(q => db.prepare(q + ' LIMIT 0')));
+    schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
 }
@@ -516,7 +520,8 @@ async function cleanup(db) {
     db.prepare("UPDATE files SET want=NULL WHERE loc='pc' AND want IS NOT NULL AND id NOT IN (SELECT file_id FROM chunks)"),
     db.prepare("DELETE FROM chunks WHERE file_id IN (SELECT id FROM files WHERE loc='cloud' AND conv IS NULL AND ts<?)").bind(t - 2 * DAY),
     db.prepare("DELETE FROM files WHERE loc='cloud' AND conv IS NULL AND ts<?").bind(t - 2 * DAY),
-    db.prepare("DELETE FROM jobs WHERE status IN ('done','error') AND created<?").bind(t - 30 * DAY),
+    db.prepare("DELETE FROM jobs WHERE status IN ('done','error') AND created<?").bind(t - 14 * DAY),
+    db.prepare("UPDATE live SET data='' WHERE ts<? AND data<>''").bind(t - 6 * 3600000),   // old browser frames take space and time
     db.prepare("DELETE FROM sessions WHERE kind='web' AND IFNULL(seen,created)<?").bind(t - SESSION_IDLE),
     db.prepare('DELETE FROM logins WHERE until<?').bind(t - DAY)
   ]);
@@ -594,6 +599,7 @@ const TEMPLATES_I18N = {
   },
   "lodging": {
    "folder": "民宿",
+   "notes": "住宿日期規則：暱稱或訂單的日期換成「住哪幾晚」再分類（「10/21-23」＝住 10/21、10/22、10/23 三晚，10/24 退房）。第一晚是今天＝今日入住；昨天和今天都住＝今日續住（最後一晚是今天的人明天才退房）；最後一晚是昨天＝今天退房。應掃房＝昨晚有住、今晚沒有同一組客人續住的房間。名單照館別、房號由小到大排，每行「館別 房號 姓名」；一人多房、同房多組、延期、取消另外列出來給我決定。",
    "bots": [
     [
      "l1",
@@ -694,6 +700,7 @@ const TEMPLATES_I18N = {
   },
   "lodging": {
    "folder": "Guesthouse",
+   "notes": "Stay rules: turn each booking's dates into the nights stayed (\"10/21-23\" = nights of 10/21, 10/22, 10/23, checkout 10/24). First night today = check-in today; stayed last night and tonight = continuing; last night was yesterday = checking out today. Rooms to clean = rooms occupied last night with no continuing stay tonight. Sort lists by property and room number; list unclear cases separately for me to decide.",
    "bots": [
     [
      "l1",
@@ -794,6 +801,7 @@ const TEMPLATES_I18N = {
   },
   "lodging": {
    "folder": "民宿",
+   "notes": "宿泊日のルール：予約の日付を「泊まる夜」に直して分類する（「10/21-23」＝10/21・10/22・10/23 の3泊、10/24 チェックアウト）。初日が今日＝本日チェックイン；昨夜も今夜も泊まる＝連泊；最終泊が昨夜＝本日チェックアウト。清掃する部屋＝昨夜使われ、今夜は同じ客が連泊しない部屋。施設・部屋番号順に並べ、不明な件は別にまとめて私に確認する。",
    "bots": [
     [
      "l1",
@@ -894,6 +902,7 @@ const TEMPLATES_I18N = {
   },
   "lodging": {
    "folder": "民宿",
+   "notes": "住宿日期规则：昵称或订单的日期换成「住哪几晚」再分类（「10/21-23」＝住 10/21、10/22、10/23 三晚，10/24 退房）。第一晚是今天＝今日入住；昨天和今天都住＝今日续住（最后一晚是今天的人明天才退房）；最后一晚是昨天＝今天退房。应扫房＝昨晚有住、今晚没有同一组客人续住的房间。名单照馆别、房号由小到大排，每行「馆别 房号 姓名」；一人多房、同房多组、延期、取消另外列出来给我决定。",
    "bots": [
     [
      "l1",
@@ -1162,7 +1171,7 @@ async function route({ request: req, env, params }) {
             if (out) return J(out);
           }
           if (!body.wait || now() - t0 > WAIT_MS) return J({ job: null });
-          await sleep(1000);
+          await sleep(1500);
         }
       }
       if (path === 'runner/watches' && m === 'POST') {   // pages the host should check for changes
@@ -1183,29 +1192,32 @@ async function route({ request: req, env, params }) {
         return J({ ok: true, changed: true, result: res });
       }
       if (path === 'runner/progress' && m === 'POST') {   // what the bot is doing now; also tells the computer if 停止 was pressed
-        const r = await db.prepare("UPDATE jobs SET progress=? WHERE id=? AND user_id=? AND status='running'").bind(clean(body.text, 120), +body.id, U).run();
-        if (!r.meta.changes) return J({ stop: true });
+        const txt = clean(body.text, 120);
+        const jr = await db.prepare("SELECT progress FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
+        if (!jr) return J({ stop: true });
+        if (jr.progress !== txt) {   // a heartbeat with the same text changes nothing for the screens
+          await db.batch([db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(txt, +body.id), db.prepare('UPDATE users SET prog=prog+1 WHERE id=?').bind(U)]);
+        }
         const jobRow = await db.prepare('SELECT bot_id FROM jobs WHERE id=? AND user_id=?').bind(+body.id, U).first();
         const handed = jobRow && await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(jobRow.bot_id, U).first();
-        await bump(db, U);
         return J({ ok: true, hand: !!handed?.handed });
       }
       if (path === 'runner/live' && m === 'POST') {
         const bot = clean(body.bot, 64);
         const owns = await db.prepare('SELECT id FROM bots WHERE id=? AND user_id=?').bind(bot, U).first();
         if (!owns) return err('找不到', 404);
+        const watching = r => !!r && +r.watch > now() - 15000;   // a screen opened this bot's browser in the last 15 s
         if (body.peek) {
-          const row = await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
-          return J({ hand: !!row?.handed });
+          const row = await db.prepare('SELECT handed, watch FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
+          return J({ hand: !!row?.handed, watch: watching(row) });
         }
         const data = String(body.data || '');
         if (data.length > 500000) return J({ ok: true, skipped: true });
         const url = clean(body.url, 300), title = clean(body.title, 80);
-        const cur = await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
+        const cur = await db.prepare('SELECT handed, watch FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
         if (cur) await db.prepare('UPDATE live SET url=?, title=?, mime=?, data=?, ts=? WHERE bot_id=? AND user_id=?').bind(url, title, 'image/jpeg', data, now(), bot, U).run();
         else await db.prepare('INSERT INTO live (bot_id,user_id,url,title,mime,data,ts,handed) VALUES (?,?,?,?,?,?,?,0)').bind(bot, U, url, title, 'image/jpeg', data, now()).run();
-        const handed = await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(bot, U).first();
-        return J({ ok: true, hand: !!handed?.handed });
+        return J({ ok: true, hand: !!cur?.handed, watch: watching(cur) });
       }
       if (path === 'runner/stored' && m === 'POST') {   // the host saved an uploaded file into its OCTA folder
         const p = safePath(body.path);
@@ -1534,11 +1546,17 @@ async function route({ request: req, env, params }) {
       const have = +url.searchParams.get('rev');
       try { await fireRoutines(env, db, U, false); } catch { }
       const t0 = now();
+      const haveP = url.searchParams.has('prog') ? +url.searchParams.get('prog') : null;
       for (; ;) {
-        const rev = (await db.prepare('SELECT rev FROM users WHERE id=?').bind(U).first())?.rev ?? 0;
-        if (rev !== have || now() - t0 > WAIT_MS) return J({ rev });
-        await sleep(1000);
+        const u = await db.prepare('SELECT rev, prog FROM users WHERE id=?').bind(U).first(), rev = u?.rev ?? 0, prog = u?.prog ?? 0;
+        if (rev !== have || (haveP !== null && prog !== haveP) || now() - t0 > WAIT_MS) return J({ rev, prog });
+        await sleep(1500);
       }
+    }
+    if (path === 'busy' && m === 'GET') {   // just what is running now (progress lines), without reloading everything
+      const busy = (await db.prepare("SELECT conv,bot_id,status,kind,started,progress,eng FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')").bind(U).all()).results;
+      const u = await db.prepare('SELECT prog FROM users WHERE id=?').bind(U).first();
+      return J({ busy, prog: u?.prog ?? 0 });
     }
     if (path === 'state' && m === 'GET') {
       const all = await loadAll(db, U);
@@ -1547,7 +1565,7 @@ async function route({ request: req, env, params }) {
         // recent bot replies, for unread counts and notifications
         db.prepare("SELECT conv,id FROM messages WHERE user_id=? AND by_ NOT IN ('me','sys') ORDER BY id DESC LIMIT 300").bind(U),
         db.prepare("SELECT conv,bot_id,status,kind,started,progress,eng FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')").bind(U),
-        db.prepare('SELECT rev FROM users WHERE id=?').bind(U),
+        db.prepare('SELECT rev, prog FROM users WHERE id=?').bind(U),
         // newest non-system message of each conversation (list previews); one indexed lookup each
         ...convIds.map(c => db.prepare("SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1").bind(U, c))
       ]);
@@ -1561,7 +1579,7 @@ async function route({ request: req, env, params }) {
         codeTasks = (await db.prepare('SELECT id,title,status,phase,engine,model FROM code_tasks WHERE user_id=? ORDER BY created DESC LIMIT 8').bind(U).all()).results;
       } catch { codeTasks = []; }
       return J({ tokens: Object.fromEntries(tok.map(r => [r.bot_id, { t: r.t, n: r.n }])), codeTasks,
-        me: me.name, local: me.kind === 'local', rev: rev.results[0]?.rev ?? 0,
+        me: me.name, local: me.kind === 'local', rev: rev.results[0]?.rev ?? 0, prog: rev.results[0]?.prog ?? 0,
         engines: h ? h.engines : JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || 'null'),
         runnerOnline: env.runnerOnline ? env.runnerOnline() : (h ? h.online : true),
         host: h ? h.hostLabel : 'local', computers: h ? h.runners.length : 1, shareBrowser: st.shareBrowser !== false, nick: st.nick || '', sched: st.sched === 'cloud' ? 'cloud' : 'pc', quick: st.quick || {}, allow: st.allow || {}, pins: st.pins || [], mute: st.mute || {}, memory: st.memory || {}, skills: st.skills || {}, nsk: Object.fromEntries(Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])), warm: WARM.includes(+st.warm) ? +st.warm : 120, models: h ? h.models : st._models || null,
@@ -1582,11 +1600,11 @@ async function route({ request: req, env, params }) {
       const lang = TEMPLATES_I18N[body.lang] ? body.lang : ((await getSettings(db, U)).lang || 'zh-TW');
       const raw = (TEMPLATES_I18N[lang] || TEMPLATES_I18N['zh-TW'])[body.name];
       if (!raw) return err('沒有這個範本');
-      const t = { folder: raw.folder, bots: raw.bots.map(([k, name, task]) => ({ k, name, task })), groups: raw.groups.map(([name, task, members]) => ({ name, task, members })) };
+      const t = { folder: raw.folder, notes: raw.notes || '', bots: raw.bots.map(([k, name, task]) => ({ k, name, task })), groups: raw.groups.map(([name, task, members]) => ({ name, task, members })) };
       let folder = null;
       if (t.folder) {
         folder = (await db.prepare('SELECT id FROM folders WHERE user_id=? AND name=?').bind(U, t.folder).first())?.id;
-        if (!folder) { folder = 'f-' + uid(); await db.prepare('INSERT INTO folders (id,user_id,name,created) VALUES (?,?,?,?)').bind(folder, U, t.folder, now()).run(); }
+        if (!folder) { folder = 'f-' + uid(); await db.prepare('INSERT INTO folders (id,user_id,name,notes,created) VALUES (?,?,?,?,?)').bind(folder, U, t.folder, t.notes || null, now()).run(); }
       }
       const map = {};
       for (const b of t.bots) {
@@ -1963,7 +1981,12 @@ async function route({ request: req, env, params }) {
     }
     if (path.startsWith('live/') && m === 'GET') {
       const id = path.slice(5);
-      const row = await db.prepare('SELECT url,title,data,ts,handed FROM live WHERE bot_id=? AND user_id=?').bind(id, U).first();
+      const since = +url.searchParams.get('since') || 0;
+      const head = await db.prepare('SELECT ts,handed FROM live WHERE bot_id=? AND user_id=?').bind(id, U).first();
+      if (head && since && +head.ts === since) { await db.prepare('UPDATE live SET watch=? WHERE bot_id=? AND user_id=?').bind(now(), id, U).run(); return J({ same: true, ts: head.ts, handed: !!head.handed }); }   // same frame: don't send the picture again
+      const row = head && await db.prepare('SELECT url,title,data,ts,handed FROM live WHERE bot_id=? AND user_id=?').bind(id, U).first();
+      if (row) await db.prepare('UPDATE live SET watch=? WHERE bot_id=? AND user_id=?').bind(now(), id, U).run();   // tells the host to keep sending frames
+      else await db.prepare('INSERT INTO live (bot_id,user_id,url,title,mime,data,ts,handed,watch) VALUES (?,?,?,?,?,?,?,0,?)').bind(id, U, '', '', 'image/jpeg', '', 0, now()).run();
       return J(row ? { url: row.url || '', title: row.title || '', data: row.data || '', ts: row.ts || 0, handed: !!row.handed } : {});
     }
     if (path === 'focus' && m === 'PUT') {

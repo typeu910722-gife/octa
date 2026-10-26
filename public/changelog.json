@@ -1,5 +1,19 @@
 [
  {
+  "v": "3.0.35",
+  "date": "2026-10-26",
+  "notes": [
+   "大幅減少伺服器用量：機器人瀏覽器的即時畫面只在有人看時才上傳；工作進度更新不再讓每個畫面整頁重新載入",
+   "手機和網頁版只在機器人工作中、且畫面在前景時才更新即時畫面，畫面沒變就不重傳",
+   "機器人新建時是空白的，只做你交代的事；共用和分區資料只在相關時才參考，不再綁住住宿相關的判斷"
+  ],
+  "notes_en": [
+   "Much lower server usage: live browser frames upload only while someone watches; progress updates no longer reload every screen",
+   "Web and phone refresh the live view only while a bot works and the page is in front, skipping unchanged frames",
+   "New bots start blank and only do what you ask; shared and section notes are used only when relevant"
+  ]
+ },
+ {
   "v": "3.0.34",
   "date": "2026-10-25",
   "notes": [

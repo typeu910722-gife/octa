@@ -74,3 +74,7 @@
 - 2.9.0：tagScript 加即時游標（mousemove/mousedown/keydown/focusin）；playwright-mcp 加 --caps vision（browser_mouse_click_xy）；網站操作步驟提示；🗺️網站筆記 → st.sites 共用注入 prompt。
 - 2.9.3：dayInfo（今天/昨天/明天＋住宿分類規則、搜尋前幾天）、workNotes（bots/<id>/工作筆記.md 自動注入 prompt，機器人自行維護）。待查：Grok Bot 對同問題的回答（使用者中止電腦操作）。
 - 2.9.5/2.9.6：無年份日期當今年、疑點另列不整份拒給；自動接續（（自動接續 n）最多 2 次）；codex model_reasoning_effort=high。貳宿首席已設任務並移入兩館每日作業。比對結論：Grok 有記憶/新鮮度判斷/eroom 對照/做幾分鐘；OCTA 目前只剩 ChatGPT Free 可用（Antigravity、Claude 額度皆用完）。
+
+## 2026-10-26 3.0.35
+- Cloudflare 警告原因：runner 每 1.5s 上傳 ≤500KB 即時畫面到 D1（CPU 超限）、網頁每 1.2s 拉 live/<bot>、進度每 4s bump rev 讓所有畫面重抓 /api/state（D1 讀取超量）。修正：live.watch（有人看才傳；沒看每 6s peek）、live?since 不重傳、users.prog 進度計數 + /api/busy、wait 1.5s、jobs 保留 14 天、ensureSchema 一次 batch。
+- 公版通用：runner 移除住宿寫死規則，改放「民宿」範本分區資料；空任務機器人只做交代的事。

@@ -898,7 +898,7 @@ function logout(silent,keep){ if(!silent&&TOKEN)api('logout','POST').catch(()=>{
 async function refresh(){
   try{const d=await api('state');if(!S.loaded)boot.set(85,'整理畫面…');
     const prevTop=S.loaded?topBotId():null,prevEng=JSON.stringify(S.engines||null);
-    Object.assign(S,{me:d.me,bots:d.bots,groups:d.groups,folders:d.folders,routines:d.routines,busy:d.busy,runnerOnline:d.runnerOnline,engines:d.engines,
+    Object.assign(S,{me:d.me,prog:d.prog||0,bots:d.bots,groups:d.groups,folders:d.folders,routines:d.routines,busy:d.busy,runnerOnline:d.runnerOnline,engines:d.engines,
       last:d.last,ur:d.ur,rev:d.rev,host:d.host,computers:d.computers,sched:d.sched,quick:d.quick||{},allow:d.allow||{},warm:d.warm??120,tokens:d.tokens||{},models:d.models||{},pins:d.pins||[],mute:d.mute||{},memory:d.memory||{},skills:d.skills||{},nsk:d.nsk||{},shareBrowser:d.shareBrowser!==false,nick:d.nick||""});
     if(cur&&!conv(cur))cur=null;
     if(d.focus?.conv&&d.focus.dev&&d.focus.dev!==myDev&&conv(d.focus.conv))followRemote(d.focus);
@@ -915,7 +915,9 @@ async function refresh(){
 async function live(){
   if(liveOn)return;liveOn=true;let fails=0;
   while(liveOn&&TOKEN||liveOn&&CFG.local){
-    try{const d=await Promise.race([api('wait?rev='+S.rev),new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),45000))]);fails=0;if(!liveOn)break;if(d.rev!==S.rev)await refresh()}
+    try{const d=await Promise.race([api('wait?rev='+S.rev+'&prog='+(S.prog||0)),new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),45000))]);fails=0;if(!liveOn)break;
+      if(d.rev!==S.rev)await refresh();
+      else if(d.prog!=null&&d.prog!==S.prog){const b=await api('busy');S.busy=b.busy||S.busy;S.prog=b.prog;render(false)}}   // only a progress line changed: no full reload
     catch(e){fails++;await new Promise(r=>setTimeout(r,Math.min(30000,1000*2**fails)))}
   }
   liveOn=false}
@@ -1643,15 +1645,23 @@ $('stGo').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on
 async function pollLive(){
   const box=$('stage');if(!box)return;
   if(window.octaDesktop||!cur||isG(cur)||$('app').hidden){box.hidden=true;return}
-  let d={};try{d=await api('live/'+encodeURIComponent(cur))}catch(e){return}
+  // only while the bot is working (or you took over) and this page is in front: an idle browser doesn't change
+  const working=busyIn(cur).some(x=>x.status==='running'),key=cur;
+  if(document.hidden||(!working&&!pollLive.hand&&pollLive.seen===key&&Date.now()-(pollLive.at||0)<60000))return;
+  pollLive.at=Date.now();pollLive.seen=key;
+  let d={};try{d=await api('live/'+encodeURIComponent(cur)+(pollLive.ts&&pollLive.tsFor===key?'?since='+pollLive.ts:''))}catch(e){return}
+  if(cur!==key)return;
+  pollLive.hand=!!d.handed;
+  if(d.same){box.hidden=false;$('stHold').hidden=!d.handed;return}
   if(!d.ts){box.hidden=true;return}
+  pollLive.ts=d.ts;pollLive.tsFor=key;
   box.hidden=false;
   $('stTitle').textContent=d.title||'瀏覽器';
   $('stUrl').textContent=d.url||'';
   if(d.data)$('stPic').src='data:image/jpeg;base64,'+d.data;
   $('stHold').hidden=!d.handed;
 }
-setInterval(()=>{if((TOKEN||CFG.local)&&!$('app').hidden)pollLive()},1200);
+setInterval(()=>{if((TOKEN||CFG.local)&&!$('app').hidden)pollLive()},1500);
 window.octaDesktop?.onStage?.(d=>{
   if(!d?.bot)return;
   if(d.act==='hand')api('handoff','POST',{bot:d.bot,on:true}).then(()=>toast('已接手，機器人停止點擊')).catch(e=>toast(e.message));
