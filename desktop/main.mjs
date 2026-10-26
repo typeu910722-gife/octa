@@ -357,13 +357,25 @@ async function notePage(wc, bucket) {
   }
   sendFrame(bucket, {});
 }
+// Google blocks sign-in in embedded browsers. Hand this bot to a real Chrome window (its own profile) for good.
+function googleBlocked(bucket, url) {
+  let u; try { u = new URL(url); } catch { return; }
+  if (u.hostname !== 'accounts.google.com' || !/signin|ServiceLogin|AddSession|rejected/i.test(u.pathname)) return;
+  if (!bucket.botId || bucket.toChrome || typeof embedApi.onGoogle !== 'function') return;
+  bucket.toChrome = true;
+  cfg = { ...cfg, realChrome: { ...(cfg.realChrome || {}), [bucket.botId]: true } };
+  writeCfg(cfg);
+  bucket.engineError = 'Google 不讓內嵌瀏覽器登入，正在改用 Chrome 視窗…';
+  sendFrame(bucket, {});
+  setTimeout(() => Promise.resolve(embedApi.onGoogle(bucket.botId, url)).catch(e => logError('google-chrome', e)), 300);
+}
 async function hookPage(wc, id, bucket) {
   try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) logError('debugger', e); }
   await applyIdentity(wc, bucket.engine || 'chrome');
   wc.debugger.on('message', (_e, method, params) => bucket.onEvent?.(id, method, params));
   bucket.pages.set(id, { wc });
   const ping = () => { if (bucket.active?.webContents === wc) sendFrame(bucket, {}); };
-  wc.on('did-navigate', ping);
+  wc.on('did-navigate', (_e, url) => { ping(); googleBlocked(bucket, url); });
   wc.on('did-navigate-in-page', ping);
   wc.on('did-finish-load', () => { ping(); void notePage(wc, bucket); });
   return id;
@@ -540,12 +552,13 @@ async function embedStart(bot, port) {
 }
 
 // ---------- runner ----------
+const embedApi = { start: embedStart, show: embedShow, stop: embedStop, external: id => !!cfg.realChrome?.[String(id)], onGoogle: null };
 async function bundledRunnerOpts() {
   const pwCli = unpacked(join(dirname(require.resolve('@playwright/mcp/package.json')), 'cli.js'));
   return {
     home: dataDir, pwCli, nodeBin: process.execPath, nodeEnv: { ELECTRON_RUN_AS_NODE: '1' }, getExtToken: () => cfg.extToken || '',
     getStore: () => server.getStore(), appVersion: app.getVersion(),
-    embed: { start: embedStart, show: embedShow },
+    embed: embedApi,
     log: (...a) => console.log(new Date().toLocaleTimeString(), ...a),
     onFatal: m => { logError('runner', m); stopRunner(); cfg.runnerToken = ''; writeCfg(cfg); }
     // notifications are shown by the page itself (same as on phones and other computers)

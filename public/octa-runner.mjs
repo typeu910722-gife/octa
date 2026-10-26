@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.19';
+export const VERSION = '17.20';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -1388,8 +1388,32 @@ function markProfile(profile, name) {
   } catch (e) { log('瀏覽器標記失敗：' + e.message); }
 }
 const onDesk = new Set();
+const knownBots = new Map();
+// Google refuses sign-in inside the embedded browser ("這個瀏覽器或應用程式可能有安全疑慮").
+// From then on this bot uses a real Chrome window with its own profile, opened at the sign-in page.
+export function googleSignInUrl(url) {
+  let u; try { u = new URL(url); } catch { return ''; }
+  if (u.hostname !== 'accounts.google.com' || !/signin|ServiceLogin|AddSession|rejected/i.test(u.pathname)) return '';
+  const cont = u.searchParams.get('continue') || 'https://www.google.com/';
+  return 'https://accounts.google.com/ServiceLogin?continue=' + encodeURIComponent(cont);
+}
+async function switchToChrome(botId, url) {
+  const bot = knownBots.get(botId);
+  const dest = googleSignInUrl(url);
+  if (!bot || !dest || !cfg.embed) return false;
+  if (browsers.get(botId)?.embed) browsers.delete(botId);
+  try { await cfg.embed.stop?.(embedPortOf(botId)); } catch { }
+  try {
+    const port = await openBrowser(bot);
+    await showBrowser(port, dest, false, true);
+    log(`🌐 ${bot.name}：Google 不讓內嵌瀏覽器登入，已改用 Chrome 視窗`);
+    return true;
+  } catch (e) { log('改用 Chrome 失敗：' + e.message); return false; }
+}
 async function openBrowser(bot, opts = {}) {
-  if (cfg.embed && bot.browser !== 'mine') {
+  if (bot?.id && bot.name !== '監看') knownBots.set(bot.id, bot);
+  if (cfg.embed && !cfg.embed.onGoogle) cfg.embed.onGoogle = switchToChrome;
+  if (cfg.embed && bot.browser !== 'mine' && !cfg.embed.external?.(bot.id)) {
     const port = embedPortOf(bot.id);
     try {
       if (!(await cdpInfo(port))) await cfg.embed.start(bot, port);
@@ -1559,7 +1583,7 @@ async function openJob(job) {
   const expand = String(job.url || '').startsWith('octa:open');
   const page = expand ? String(job.url).slice('octa:open'.length).trim() : (hide ? '' : (job.url || ''));
   try {
-    const ports = [...new Set([browsers.get(job.bot.id)?.port, cfg.embed && job.bot.browser !== 'mine' ? embedPortOf(job.bot.id) : 0, portOf(job.bot.id)].filter(Boolean))];
+    const ports = [...new Set([browsers.get(job.bot.id)?.port, cfg.embed && job.bot.browser !== 'mine' && !cfg.embed.external?.(job.bot.id) ? embedPortOf(job.bot.id) : 0, portOf(job.bot.id)].filter(Boolean))];
     if (hide && (await Promise.all(ports.map(p => cdpInfo(p)))).every(v => !v)) return done(true, '我的瀏覽器已經收起來了。');
     const port = await ensureBrowser(job.bot, { show: !hide, expand });
     const landed = realPage(await showBrowser(port, page, hide, expand));
