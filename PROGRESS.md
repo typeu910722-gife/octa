@@ -86,3 +86,4 @@
 - 3.0.40（10/27）：登出原因：內嵌 Storage.setCookies 直接把 CDP 格式丟給 Electron（缺 url、expires 欄名不同→網域 cookie 設定失敗、其他變成工作階段 cookie）、sameSite 名稱互不相容、syncIn 用舊 jar 蓋掉自己的新登入、session cookie 重開即消失。修：electronCookie 轉換＋session cookie 存 30 天（keepLogins）、flushStore（設定後/停止/關閉）、syncIn 先 syncOut 自己、cookieParams 正規化 sameSite。Electron 實測重開後保留。runner v17.22
 - 3.0.41（10/27）：登入卡片的「繼續」改 data-resume（關接手＋送短句），不再 data-retry 重送上一則指示。
 - 3.0.42（10/27）：對照 Grok（分工/存檔/記憶）：browseRounds 報告存 bots/<id>/紀錄/<日期時間> <事>.txt（30 天），prompt 加 records()：用程式算、比對前幾天、有今天紀錄就不重捲、糾正即 📌記住。runner v17.23。待做：工作中仍可回聊天（背景讀取）。
+- 3.0.43（10/27）：檔案儲存「套用」id stGo 與登入列「繼續」重複→改 stApply（原本點套用無反應，且開過儲存頁後登入列繼續會被蓋成套用）。

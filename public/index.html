@@ -2152,12 +2152,13 @@ async function openStore(){
    <label class="bc"><input type="radio" name="stw" value="google" ${st?.onGoogle?'checked':''} ${st?.google?'':'disabled'}><span><b>Google 雲端硬碟</b><small>${st?.google?'存到 <span data-u>'+esc(st.google)+'</span>，會自動同步到你的 Google 雲端硬碟，手機也能直接看。':'需要先安裝「Google 雲端硬碟電腦版」並登入，裝好後重新打開這頁。'}</small></span></label>
    <label class="bc"><input type="radio" name="stw" value="pick" ${!st?.isDefault&&!st?.onGoogle?'checked':''}><span><b>自己選資料夾…</b><small>例如 OneDrive、Dropbox 或外接硬碟。</small></span></label></div>
   <label class="toggle">把現有檔案一起搬過去<button type="button" class="sw on" id="stMove"></button></label>
-  <div class="row2"><button class="btn" id="stGo">套用</button><span id="stMsg" style="font-size:12px;color:var(--mute)"></span></div>
+  <div class="row2"><button class="btn" id="stApply">套用</button><span id="stMsg" style="font-size:12px;color:var(--mute)"></span></div>
   ${st?.google?'':'<p><a href="https://www.google.com/drive/download/" target="_blank" rel="noopener">下載 Google 雲端硬碟電腦版</a></p>'}`);
   $('stOpen').onclick=()=>api('desktop/open-store','POST').catch(()=>{});
   $('stMove').onclick=()=>$('stMove').classList.toggle('on');
-  $('stGo').onclick=async()=>{const v=$('veil').querySelector('input[name=stw]:checked')?.value;if(!v)return;
-    try{await api('desktop/store','POST',{set:v,move:$('stMove').classList.contains('on')});toast(I18N.t('已儲存 ✓'));openStore()}catch(e){$('stMsg').textContent=e.message}}}
+  $('stApply').onclick=async()=>{const v=$('veil').querySelector('input[name=stw]:checked')?.value;if(!v)return;
+    const b=$('stApply');b.disabled=true;$('stMsg').textContent=I18N.t('套用中，搬移檔案可能要一點時間…');
+    try{await api('desktop/store','POST',{set:v,move:$('stMove')?.classList.contains('on')});toast(I18N.t('已儲存 ✓'));openStore()}catch(e){b.disabled=false;$('stMsg').textContent=e.message}}}
 async function openNotes(){
   let st={notes:''};try{st=await api('settings')}catch(e){}
   subSheet('共用資料',`<label class="field">所有機器人都會讀的固定資訊<textarea id="gNotes" maxlength="20000" style="min-height:220px" placeholder="例如：公司名稱、常用網站、聯絡方式、做事原則">${esc(st.notes)}</textarea></label>
