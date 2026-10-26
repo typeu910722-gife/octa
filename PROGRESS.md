@@ -78,3 +78,4 @@
 ## 2026-10-26 3.0.35
 - Cloudflare 警告原因：runner 每 1.5s 上傳 ≤500KB 即時畫面到 D1（CPU 超限）、網頁每 1.2s 拉 live/<bot>、進度每 4s bump rev 讓所有畫面重抓 /api/state（D1 讀取超量）。修正：live.watch（有人看才傳；沒看每 6s peek）、live?since 不重傳、users.prog 進度計數 + /api/busy、wait 1.5s、jobs 保留 14 天、ensureSchema 一次 batch。
 - 公版通用：runner 移除住宿寫死規則，改放「民宿」範本分區資料；空任務機器人只做交代的事。
+- 3.0.36：Grok 風格：rail 改 搜尋/＋ 選單，quickBot 直接建立（📛名稱 自動命名＋emoji）；輸入列整條圓角；我方實心泡泡；A/B 卡片（optText 去重）；小八 SVG 章魚（moods idle/hi/listen/work/done/ask/err/sleep、眼睛追游標、選單：工作中/待回覆/未讀/快速動作）。

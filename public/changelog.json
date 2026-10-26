@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.0.36",
+  "date": "2026-10-26",
+  "notes": [
+   "介面更直接：左上角改成搜尋和＋，按＋→新機器人就馬上建好並打開對話，跟它說要做什麼，它會自己記住工作、幫自己取名字和頭像",
+   "輸入框改成一整條圓角輸入列；你的訊息改成實心泡泡；機器人給的 A／B 選項改成卡片，點一下就回覆",
+   "新的小幫手「小八」：小小一隻章魚待在輸入框旁，會眨眼、眼睛跟著游標、工作時跟著忙、做好會跳一下、有人等你回覆會舉手",
+   "點小八：看誰正在工作、誰在等你回覆、哪裡有新訊息，一鍵跳過去；也能叫目前的機器人整理重點、建議下一步、建立新機器人"
+  ],
+  "notes_en": [
+   "More direct: search and + at top left; + → New bot creates and opens it right away, and the bot names itself from what you ask",
+   "One rounded input bar, solid bubbles for your messages, and A/B choices as a tappable card",
+   "Meet 小八, a tiny octopus by the input bar who blinks, follows your pointer, works along, hops when a bot finishes and raises a hand when one waits for you",
+   "Tap 小八 to see who is working or waiting, jump to new messages, or ask the current bot for a summary or next steps"
+  ]
+ },
+ {
   "v": "3.0.35",
   "date": "2026-10-26",
   "notes": [

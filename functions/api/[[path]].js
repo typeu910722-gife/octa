@@ -1337,6 +1337,22 @@ async function route({ request: req, env, params }) {
         let text = clean(body.text, 20000) || (good ? '（完成，無回覆內容）' : '⚠ 執行失敗');
         if (good && job.kind === 'chat' && text.includes('【回覆】')) text = text.slice(text.lastIndexOf('【回覆】') + 4).trim() || '（完成）';   // drop the running commentary before the reply
         if (good && job.kind === 'chat') text = calmReply(text) || '（完成）';
+        // 📛名稱：🎮 遊戲員 — a new bot names itself after it learns its job
+        if (good && job.kind === 'chat' && /📛/.test(text)) {
+          let nm = null;
+          text = text.replace(/^\s*📛\s*名稱[:：]\s*(.+)$/gm, (_, v) => { nm = nm || v; return ''; }).trim() || '（好的）';
+          const self = await db.prepare('SELECT name, avatar FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first();
+          if (nm && self && /^新機器人\d*$/.test(self.name)) {
+            const mm = nm.trim().match(/^(\p{Extended_Pictographic}[\uFE0F\u200D\p{Extended_Pictographic}]*)?\s*(.+)$/u);
+            let name = clean((mm?.[2] || '').replace(/[「」"']/g, ''), 20);
+            if (name) {
+              const taken = await db.prepare('SELECT 1 FROM bots WHERE user_id=? AND name=? AND id<>?').bind(U, name, job.bot_id).first();
+              if (taken) name = clean(name + '2', 20);
+              await db.prepare('UPDATE bots SET name=?, avatar=? WHERE id=? AND user_id=?').bind(name, mm?.[1] ? avatarOk(mm[1]) : self.avatar, job.bot_id, U).run();
+              await addMsg(db, U, job.conv, 'sys', `它幫自己取名叫「${name}」，可在任務設定修改`);
+            }
+          }
+        }
         // 📝任務更新：… 📝結束 — the bot learned what its standing job is; save it as its 指定任務
         let learned = null;
         const tm = good && job.kind === 'chat' ? text.match(/📝\s*任務更新[:：]\s*([\s\S]*?)(?:📝\s*結束|$)/) : null;
