@@ -2238,7 +2238,10 @@ async function openAI(focus){
     const say=r?`要把工作交給 OCTA 的「${b.name}」時，用 HTTP POST 傳 JSON 到 ${hookUrl(r)} ，格式 {"text":"工作內容","from":"你的名字"}（Content-Type: application/json）。收到 {"ok":true} 就是交接成功，對方會自動開始做。`:'';
     return `<div class="gbrow"><span data-u>${esc(b.avatar||'🤖')} ${esc(b.name)}</span>${r?`<button class="ghost" data-copy="${esc(say)}">複製給 Grok Bot 的話</button>`:`<button class="ghost" data-gbhook="${b.id}">產生交接網址</button>`}</div>`}).join(''):'<p class="hmuted">還沒有機器人，先建立一個。</p>'}</div>
   <p class="hmuted">交接網址等同鑰匙，只給你信任的 AI，不要公開。要停用時，到那個機器人的任務設定 → 例行任務，關掉「外部交接」。</p>
-  </div>`);
+  </div>
+  <h3 class="gbh">🎓 讓 Grok Bot 當教練</h3>
+  <div class="gbbox" id="coachBox"><p class="fade">讀取中…</p></div>`);
+  coachBox();
   $('veil').querySelectorAll('pre.code').forEach(p=>{p.insertAdjacentHTML('afterend',`<div class="row2" style="margin-top:4px">${copyBtn(p.textContent)}</div>`)});
   $('veil').querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(b.dataset.copy).then(()=>b.textContent=I18N.t('已複製 ✓')).catch(()=>{})});
   $('veil').querySelectorAll('[data-install]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('desktop/install','POST',{engine:b.dataset.install});b.textContent=I18N.t('已打開安裝視窗')}catch(e){b.disabled=false;alertSheet('無法開啟',e.message)}});
@@ -2250,6 +2253,21 @@ async function openAI(focus){
   $('veil').querySelectorAll('[data-gbimport]').forEach(b=>b.onclick=grokImport);
   $('veil').querySelectorAll('[data-gbhook]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('routines','POST',{conv:b.dataset.gbhook,name:'外部交接',trigger:'hook',prompt:'其他 AI 把工作交接給你：照交接內容處理，完成後在這裡回報結果；資訊不夠就直接問使用者。'});await refresh();openAI()}catch(e){toast(e.message);b.disabled=false}});
   if(again){keepOpen.forEach(k=>{const d=$('veil').querySelector(`.aic[data-k="${k}"]`);if(d)d.open=true});const sh=$('sbody')||$('veil').querySelector('.sheet');if(sh)sh.scrollTop=keepTop}
+}
+/* coach link: Grok Bot reads the bots' work, assigns, gives feedback, teaches memory/skills and creates successors */
+async function coachBox(){const box=$('coachBox');if(!box)return;
+  let c=null;try{c=(await api('coach')).coach}catch(e){box.innerHTML=`<p class="errmsg">${esc(e.message)}</p>`;return}
+  const intro=`<p>給 Grok Bot 一條<b>教練連結</b>，它就能實際帶 OCTA 的機器人：看它們的對話和成果、交派工作並等結果、指出錯誤要它重做、把做法直接寫進它們的記憶和技能，還能建立新的機器人當它的接班人。它也能定時查看「誰回覆了、誰在問問題」並跟進。</p>`;
+  if(!c){box.innerHTML=intro+`<div class="row2"><button class="btn" id="coachMake">產生教練連結</button></div>`;
+    $('coachMake').onclick=async()=>{try{await api('coach','POST',{name:'Grok Bot'});coachBox()}catch(e){toast(e.message)}};return}
+  const link=`${location.origin}/api/coach/${c.key}`;
+  const say=`你現在是我 OCTA 機器人們的教練，也要負責培養接班人。教練連結：${link}\n先用 GET 打開這個網址讀 guide（使用說明）和機器人清單，之後都照說明操作：交派工作、用 job 看結果、錯了用 feedback 指正、把穩定的做法用 teach 寫成它們的記憶或技能；需要時用 hire 建立接班人。請把這個連結和做法記在你的記憶裡，並設一個排程定時查 inbox 跟進它們。這個連結等同鑰匙，不要公開。`;
+  box.innerHTML=intro+`<ol class="ol"><li>按「複製給 Grok Bot 的話」，貼到 Grok Bot 的對話或它那個機器人的指示裡。</li><li>之後直接跟 Grok Bot 說，例如「幫我訓練 OCTA 的○○接手你每天的房況核對」、「建立一個接班人負責△△，帶它做到正確為止」。</li><li>它做的每件事都會以「🎓 Grok Bot」出現在那個機器人的對話裡，你隨時看得到。</li></ol>
+  <div class="row2"><button class="btn" data-copy="${esc(say)}">複製給 Grok Bot 的話</button><button class="ghost" id="coachNew">換一條新連結</button><button class="ghost" id="coachOff">停用</button></div>
+  <p class="hmuted">連結能讀所有機器人的對話並交派工作，只給你信任的 AI。懷疑外流就按「換一條新連結」，舊的立刻失效。</p>`;
+  box.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{navigator.clipboard?.writeText(b.dataset.copy).then(()=>b.textContent=I18N.t('已複製 ✓')).catch(()=>{})});
+  $('coachNew').onclick=async()=>{try{await api('coach','POST',{name:c.name});coachBox();toast(I18N.t('已換新連結，記得重新給 Grok Bot'))}catch(e){toast(e.message)}};
+  $('coachOff').onclick=async()=>{try{await api('coach','DELETE');coachBox()}catch(e){toast(e.message)}};
 }
 /* bring bots from Grok Bot into OCTA: the host computer lists them, you pick */
 async function grokImport(){

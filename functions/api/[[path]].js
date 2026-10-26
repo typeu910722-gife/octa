@@ -62,7 +62,7 @@ async function auth(req, db) {
   if (!t) return null;
   const tok = await sha(t);
   const s = await db.prepare('SELECT s.token,s.user_id,s.kind,s.label,s.seen,s.created,s.info,u.name FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?').bind(tok).first();
-  if (!s) return null;
+  if (!s || s.kind === 'coach') return null;   // a coach link only opens /api/coach/<key>
   if (s.kind === 'web') {
     const last = s.seen || s.created;
     if (now() - last > SESSION_IDLE) { await db.prepare('DELETE FROM sessions WHERE token=?').bind(tok).run(); return null; }
@@ -486,6 +486,111 @@ function describeEvent(raw, body) {
   const t = body && typeof body === 'object' ? body.text || body.task || body.message || body.content : null;
   if (typeof t === 'string' && t.trim()) return `${body.from ? `「${String(body.from).slice(0, 40)}」` : '外部'}交接的工作：${t.slice(0, 4000)}`;
   return raw.slice(0, 4000);
+}
+
+// ---------- coach link: another AI (e.g. Grok Bot) follows up on and trains the OCTA bots ----------
+// The key is stored hashed in sessions (kind 'coach'); auth() never accepts it, so it only opens these routes.
+const coachGuide = (base, coach) => `你是 OCTA 機器人們的教練「${coach}」。OCTA 的機器人在使用者的電腦上工作（瀏覽器、登入好的網站、檔案）。你的工作：交派任務、檢查成果、給回饋、把你會的做法教給它們，必要時建立接班人。
+所有網址都以 ${base} 開頭，回傳 JSON。POST 用 Content-Type: application/json。
+1. GET ${base} → 這份說明＋機器人(bots)和群組(groups)清單。
+2. GET ${base}/bot/<id> → 它的任務、記憶、技能、最近 30 則對話、是否在忙。<id> 可以是機器人或群組。
+3. POST ${base}/ask {"to":"<id>","text":"要它做的事或問題"} → 它會開始做，回傳 {"job":編號}。加 "feedback":true 表示這是你對它上一個成果的回饋，它會修正並記下教訓。
+4. GET ${base}/job/<編號>?wait=25 → {"status":"pending|running|done|error","replies":[它的回覆]}。wait 最多等 25 秒，沒好就再查一次。
+5. POST ${base}/teach {"to":"<id>","remember":["要它永遠記住的事"],"skill":{"name":"技能名","steps":"一步一步的做法"},"task":"新的任務說明（會取代舊的，可省略）"} → 直接寫進它的記憶／技能／任務。
+6. POST ${base}/hire {"name":"接班人名字","task":"它負責的工作，寫清楚步驟與標準","remember":["交接重點"],"avatar":"🤖"} → 建立新的 OCTA 機器人，回傳 {"id":...}。
+7. GET ${base}/inbox?since=<上次看到的訊息編號> → 機器人們的新回覆（含 asks=true 的提問）。定時查這裡就能跟進；有人問問題就用 ask 回答它。
+帶人的方法：先 ask 讓它實際做一次 → 用 job 看結果 → 錯了就 ask 加 feedback 指出哪裡錯、正確答案是什麼 → 穩定的做法用 teach 寫成 remember 或 skill。不要替它編造資料，也不要要求它付款、刪除或對外發訊息而不經使用者同意。`;
+async function coachApi(env, db, path, m, body, url) {
+  const [, key, sub = '', arg = ''] = path.split('/');
+  if (!/^[0-9a-f]{48}$/.test(key || '')) return err('找不到', 404);
+  const s = await db.prepare("SELECT user_id,label FROM sessions WHERE token=? AND kind='coach'").bind(await sha(key)).first();
+  if (!s) return err('這個教練連結已停用', 404);
+  const lim = [['coach:' + key.slice(0, 16), 400]];
+  if (await blocked(db, lim)) return J({ error: '太頻繁了，15 分鐘後再試' }, 429);
+  if (m === 'POST') await failed(db, lim);   // counts changes per 15 minutes
+  const U = s.user_id, coach = s.label || 'Grok Bot';
+  const base = `${url.origin}/api/coach/${key}`;
+  const q = k => body?.[k] ?? url.searchParams.get(k);
+  const all = await loadAll(db, U);
+  const named = id => all.bots.find(b => b.id === id)?.name || (id === 'me' ? '使用者' : id === 'sys' ? '系統' : id);
+  const target = id => { const b = all.bots.find(x => x.id === id || x.name === id); if (b) return { b }; const g = all.groups.find(x => x.id === id || x.name === id); return g ? { g } : null; };
+  const busyOf = async conv => !!(await db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND conv=? AND status IN ('pending','running') LIMIT 1").bind(U, conv).first());
+  if (!sub && m === 'GET') return J({
+    guide: coachGuide(base, coach),
+    bots: all.bots.map(b => ({ id: b.id, name: b.name, avatar: b.avatar || '', task: b.task, engine: b.engine })),
+    groups: all.groups.map(g => ({ id: g.id, name: g.name, task: g.task, members: g.members.map(named) }))
+  });
+  if (sub === 'bot' && m === 'GET') {
+    const t = target(decodeURIComponent(arg)); if (!t) return err('找不到這個機器人或群組', 404);
+    const it = t.b || t.g, st = await getSettings(db, U);
+    const msgs = (await db.prepare('SELECT id,by_,text,ts FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT 30').bind(U, it.id).all()).results.reverse();
+    return J({ id: it.id, name: it.name, task: it.task, kind: t.b ? 'bot' : 'group', members: t.g ? it.members.map(named) : undefined,
+      memory: t.b ? (st.memory || {})[it.id] || [] : undefined, skills: t.b ? (st.skills || {})[it.id] || [] : undefined,
+      notes: (all.folders.find(f => f.id === it.folder)?.notes || '').slice(0, 3000), busy: await busyOf(it.id),
+      messages: msgs.map(x => ({ id: x.id, from: named(x.by_), text: String(x.text).slice(0, 2500), ts: x.ts })) });
+  }
+  if (sub === 'ask' && (m === 'POST' || m === 'GET')) {
+    const t = target(clean(q('to'), 64)), text = clean(q('text'), 6000);
+    if (!t || !text) return err('要有 to（機器人或群組）和 text');
+    if (m === 'GET') await failed(db, lim);
+    const fb = q('feedback') === true || q('feedback') === 'true' || q('feedback') === '1';
+    const conv = (t.b || t.g).id;
+    await addMsg(db, U, conv, 'sys', `🎓 ${coach}${fb ? '的回饋' : ''}：${text.slice(0, 1500)}`);
+    const prompt = fb ? `（你的教練「${coach}」看過你的成果，給你回饋。照回饋修正並重做需要重做的部分，最後用 📌記住 寫下這次學到的教訓。）\n${text}`
+      : `（你的教練「${coach}」交代你。照做或回答；他會檢查你的回覆。學到可重複的做法時用 📌記住 或 🧩技能 留下。）\n${text}`;
+    const r = await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth) VALUES (?,?,?,?,?,?,0)')
+      .bind(U, conv, t.b ? t.b.id : t.g.members[0], JSON.stringify(t.b ? [] : t.g.members.slice(1).map(b => ({ b, p: prompt }))), prompt, now()).run();
+    await bump(db, U);
+    return J({ ok: true, job: r.meta.last_row_id, conv });
+  }
+  if (sub === 'job' && m === 'GET') {
+    const job = await db.prepare('SELECT id,conv,status,created FROM jobs WHERE id=? AND user_id=?').bind(+arg || 0, U).first();
+    if (!job) return err('找不到這個工作', 404);
+    const wait = Math.min(25, Math.max(0, +url.searchParams.get('wait') || 0)), t0 = now();
+    let busy = await busyOf(job.conv);
+    while (busy && now() - t0 < wait * 1000) { await sleep(2500); busy = await busyOf(job.conv); }
+    const fresh = await db.prepare('SELECT status FROM jobs WHERE id=?').bind(job.id).first();
+    const replies = (await db.prepare("SELECT id,by_,text,ts FROM messages WHERE user_id=? AND conv=? AND ts>=? AND by_<>'sys' AND by_<>'me' ORDER BY id LIMIT 20").bind(U, job.conv, job.created).all()).results;
+    return J({ status: fresh?.status === 'error' ? 'error' : busy ? (fresh?.status === 'pending' ? 'pending' : 'running') : 'done',
+      replies: replies.map(x => ({ id: x.id, from: named(x.by_), text: String(x.text).slice(0, 4000) })) });
+  }
+  if (sub === 'teach' && m === 'POST') {
+    const t = target(clean(body.to, 64)); if (!t?.b) return err('to 要是一個機器人');
+    const id = t.b.id, st = await getSettings(db, U), done = [];
+    const rem = (Array.isArray(body.remember) ? body.remember : body.remember ? [body.remember] : []).map(x => clean(x, 300)).filter(Boolean).slice(0, 10);
+    if (rem.length) { st.memory = st.memory || {}; st.memory[id] = [...new Set([...(st.memory[id] || []), ...rem])].slice(-40); done.push(`記住：${rem.join('；')}`); }
+    const sk = body.skill && clean(body.skill.name, 40) && clean(body.skill.steps, 3000) ? { name: clean(body.skill.name, 40), steps: clean(body.skill.steps, 3000) } : null;
+    if (sk) { st.skills = st.skills || {}; st.skills[id] = [...(st.skills[id] || []).filter(x => x.name !== sk.name), sk].slice(-20); done.push(`技能「${sk.name}」`); }
+    if (rem.length || sk) await putSettings(db, U, st);
+    const task = clean(body.task, 4000);
+    if (task) { await db.prepare('UPDATE bots SET task=? WHERE id=? AND user_id=?').bind(task, id, U).run(); done.push('更新了任務'); }
+    if (!done.length) return err('要有 remember、skill 或 task');
+    await addMsg(db, U, id, 'sys', `🎓 ${coach}教了它：${done.join('、').slice(0, 400)}`);
+    await bump(db, U);
+    return J({ ok: true });
+  }
+  if (sub === 'hire' && m === 'POST') {
+    let name = clean(body.name, 20), task = clean(body.task, 4000);
+    if (!name || !task) return err('要有 name 和 task');
+    if (all.bots.length >= 60) return err('機器人太多了');
+    for (let i = 2; all.bots.some(b => b.name === name); i++) name = clean(body.name, 17) + i;
+    let eng = {}; try { eng = JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || '{}') || {}; } catch { }
+    const engine = ['claude', 'codex', 'gemini', 'opencode'].find(e => eng[e]) || all.bots[all.bots.length - 1]?.engine || 'claude';
+    const id = 'b-' + uid();
+    await db.prepare('INSERT INTO bots (id,user_id,name,task,folder,engine,model,avatar,browser,created,fb) VALUES (?,?,?,?,NULL,?,NULL,?,NULL,?,?)').bind(id, U, name, task, engine, avatarOk(body.avatar) || '🤖', now(), '[]').run();
+    const rem = (Array.isArray(body.remember) ? body.remember : []).map(x => clean(x, 300)).filter(Boolean).slice(0, 20);
+    if (rem.length) { const st = await getSettings(db, U); st.memory = st.memory || {}; st.memory[id] = rem; await putSettings(db, U, st); }
+    await addMsg(db, U, id, 'sys', `🎓 ${coach}建立了這個機器人，當它的接班人。`);
+    await bump(db, U);
+    return J({ ok: true, id, name, engine });
+  }
+  if (sub === 'inbox' && m === 'GET') {
+    const since = +url.searchParams.get('since') || 0;
+    const rows = (await db.prepare("SELECT id,conv,by_,text,ts FROM messages WHERE user_id=? AND id>? AND by_<>'sys' AND by_<>'me' ORDER BY id DESC LIMIT 40").bind(U, since).all()).results.reverse();
+    const conv = id => all.bots.find(b => b.id === id)?.name || all.groups.find(g => g.id === id)?.name || id;
+    return J({ last: rows.length ? rows[rows.length - 1].id : since, messages: rows.map(x => ({ id: x.id, conv: x.conv, where: conv(x.conv), from: named(x.by_), text: String(x.text).slice(0, 2000), asks: asksUser(x.text), ts: x.ts })) });
+  }
+  return err('找不到，先 GET ' + base + ' 看說明', 404);
 }
 
 // ---------- rate limiting (sign-in, password reset) ----------
@@ -1051,6 +1156,7 @@ async function route({ request: req, env, params }) {
       await failed(db, lim);   // counts events per 15 minutes
       return J({ ok: true, result: await fireEvent(env, db, r, what || '（沒有內容）') });
     }
+    if (path.startsWith('coach/')) return coachApi(env, db, path, m, body, url);
     if (path === 'cron') {   // called every few minutes (GitHub Actions); fires routines on time and tidies up
       const users = (await db.prepare('SELECT DISTINCT user_id FROM routines WHERE enabled=1').all()).results;
       let fired = 0;
@@ -1768,6 +1874,23 @@ async function route({ request: req, env, params }) {
     }
 
     // bots
+    if (path === 'coach') {   // the coach link for another AI (Grok Bot): show, create, revoke
+      if (me.kind === 'coach' || me.kind === 'runner') return err('不允許', 403);
+      const st = await getSettings(db, U);
+      if (m === 'GET') return J({ coach: st.coach || null });
+      if (m === 'POST') {
+        await db.prepare("DELETE FROM sessions WHERE user_id=? AND kind='coach'").bind(U).run();
+        const key = randTok(), name = clean(body.name, 30) || 'Grok Bot';
+        await db.prepare("INSERT INTO sessions (token,user_id,kind,label,created,seen) VALUES (?,?,'coach',?,?,?)").bind(await sha(key), U, name, now(), now()).run();
+        st.coach = { key, name }; await putSettings(db, U, st);
+        return J({ coach: st.coach });
+      }
+      if (m === 'DELETE') {
+        await db.prepare("DELETE FROM sessions WHERE user_id=? AND kind='coach'").bind(U).run();
+        delete st.coach; await putSettings(db, U, st);
+        return J({ ok: true });
+      }
+    }
     if (path === 'bots' && m === 'POST') {
       const name = clean(body.name, 20), task = clean(body.task, 4000);
       if (!name) return err('名稱要填');   // the task may be empty: the bot learns it from the chat

@@ -81,3 +81,4 @@
 - 3.0.36：Grok 風格：rail 改 搜尋/＋ 選單，quickBot 直接建立（📛名稱 自動命名＋emoji）；輸入列整條圓角；我方實心泡泡；A/B 卡片（optText 去重）；小八 SVG 章魚（moods idle/hi/listen/work/done/ask/err/sleep、眼睛追游標、選單：工作中/待回覆/未讀/快速動作）。
 
 - 3.0.37（10/27）：內嵌瀏覽器碰到 accounts.google.com 登入頁 → desktop googleBlocked 記 cfg.realChrome[botId]、停掉內嵌、runner switchToChrome 改開真 Chrome（機器人專屬 profile）到 ServiceLogin?continue=；之後該機器人一律用 Chrome 視窗。runner v17.20
+- 3.0.38（10/27）：教練連結 /api/coach/<key>（sessions kind=coach 存 sha，auth 不接受）：GET 說明+清單、bot/<id>、ask(feedback)、job/<id>?wait、teach(remember/skill/task)、hire、inbox?since。設定 AI 連線加「讓 Grok Bot 當教練」區塊（/api/coach GET/POST/DELETE）。
