@@ -311,6 +311,28 @@ async function applyIdentity(wc, engine) {
     ]);
   } catch (e) { logError('ua', e); }
 }
+// CDP cookies (what the runner keeps) ↔ Electron cookies. Electron needs a url and calls the expiry expirationDate.
+const SAME_TO_CDP = { lax: 'Lax', strict: 'Strict', no_restriction: 'None' };
+const SAME_TO_EL = { Lax: 'lax', Strict: 'strict', None: 'no_restriction', lax: 'lax', strict: 'strict', no_restriction: 'no_restriction' };
+const KEEP_DAYS = 30;
+function electronCookie(c) {
+  const host = String(c.domain || '').replace(/^\./, '') || (() => { try { return new URL(c.url).hostname; } catch { return ''; } })();
+  const out = { url: c.url || `${c.secure ? 'https' : 'http'}://${host}${c.path || '/'}`, name: c.name, value: c.value, path: c.path || '/', secure: !!c.secure, httpOnly: !!c.httpOnly };
+  if (String(c.domain || '').startsWith('.')) out.domain = c.domain;
+  if (SAME_TO_EL[c.sameSite]) out.sameSite = SAME_TO_EL[c.sameSite];
+  // a sign-in kept only "for this session" would be gone after OCTA restarts: bots keep it like a remembered login
+  out.expirationDate = +c.expires > 0 ? +c.expires : Date.now() / 1000 + KEEP_DAYS * 86400;
+  return out;
+}
+// sites often keep the login in a session cookie; keep those across restarts so the bot stays signed in
+function keepLogins(ses) {
+  if (!ses || ses.__octaKeep) return;
+  ses.__octaKeep = true;
+  ses.cookies.on('changed', (_e, c, _cause, removed) => {
+    if (removed || !c.session || !c.name) return;
+    ses.cookies.set(electronCookie({ ...c, expires: 0 })).catch(() => { });
+  });
+}
 function dressSession(ses, bucket) {
   if (!ses || ses.__octaEngine) return;
   ses.__octaEngine = true;
@@ -450,6 +472,7 @@ async function embedShow(port, show) {
 async function embedStop(port) {
   const bucket = embeds.get(port);
   if (!bucket) return;
+  try { await bucket.active?.webContents?.session?.cookies.flushStore(); } catch { }
   embeds.delete(port);
   detachChrome(bucket);
   try { if (bucket.chrome && !bucket.chrome.webContents.isDestroyed()) bucket.chrome.webContents.close(); } catch { }
@@ -475,6 +498,7 @@ async function embedStart(bot, port) {
   const engine = ENGINE_IDS.includes(cfg.botEngine?.[String(bot.id || '')]) ? cfg.botEngine[String(bot.id || '')] : 'chrome';
   const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null, engine, blocked: false, downloading: '', percent: 0, engineError: '', handed: false, engineJob: null };
   dressSession(view.webContents.session, bucket);
+  keepLogins(view.webContents.session);
   roundChrome(chrome, THUMB_RADIUS);
   await hookPage(view.webContents, 'p' + (++embedSeq), bucket);
   bindOpen(bucket, view);
@@ -500,10 +524,11 @@ async function embedStart(bot, port) {
       if (!page || page.wc.isDestroyed()) throw new Error('找不到分頁');
       if (method === 'Storage.getCookies') {
         const cookies = await page.wc.session.cookies.get({});
-        return { cookies: cookies.map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expires: c.expirationDate || 0, sameSite: c.sameSite })) };
+        return { cookies: cookies.map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expires: c.expirationDate || 0, ...(SAME_TO_CDP[c.sameSite] ? { sameSite: SAME_TO_CDP[c.sameSite] } : {}) })) };
       }
       if (method === 'Storage.setCookies') {
-        for (const c of params.cookies || []) { try { await page.wc.session.cookies.set(c); } catch { } }
+        for (const c of params.cookies || []) { try { await page.wc.session.cookies.set(electronCookie(c)); } catch { } }
+        try { await page.wc.session.cookies.flushStore(); } catch { }
         return {};
       }
       return await page.wc.debugger.sendCommand(method, params || {});
@@ -919,8 +944,13 @@ app.on('second-instance', () => {
 app.on('before-quit', e => {
   quitting = true;
   if (browsersClosed || !runnerMod?.closeAllBrowsers) return;
-  e.preventDefault(); closeBrowsers().finally(() => app.quit());
+  e.preventDefault(); Promise.all([closeBrowsers(), flushLogins()]).finally(() => app.quit());
 });
+// write every bot's sign-ins to disk now (an update or shutdown right after logging in must not lose them)
+async function flushLogins() {
+  const seen = new Set();
+  for (const b of embeds.values()) { const ses = b.active?.webContents?.session; if (ses && !seen.has(ses)) { seen.add(ses); try { await ses.cookies.flushStore(); } catch { } } }
+}
 app.on('window-all-closed', e => e.preventDefault());   // keep running in the tray
 
 app.whenReady().then(start).catch(e => {

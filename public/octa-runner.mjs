@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.21';
+export const VERSION = '17.22';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -1008,10 +1008,11 @@ function restoreSkills(dir, sk) {   // e.g. on a new host computer
 }
 
 // ---------- handing a bot's website logins to another computer (cookies of its own browser) ----------
+const SAME_CDP = { Lax: 'Lax', Strict: 'Strict', None: 'None', lax: 'Lax', strict: 'Strict', no_restriction: 'None' };   // the embedded browser used to save Electron's names
 const cookieParams = list => list.filter(c => c.name && c.domain)
   .map(c => ({ name: c.name, value: c.value, path: c.path || '/', secure: !!c.secure, httpOnly: !!c.httpOnly,
     ...(c.domain.startsWith('.') && !c.name.startsWith('__Host-') ? { domain: c.domain } : { url: `${c.secure ? 'https' : 'http'}://${c.domain.replace(/^\./, '')}${c.path || '/'}` }),
-    ...(c.sameSite ? { sameSite: c.sameSite } : {}), ...(c.expires > 0 ? { expires: c.expires } : {}), ...(c.partitionKey ? { partitionKey: c.partitionKey } : {}), ...(c.sourceScheme ? { sourceScheme: c.sourceScheme } : {}) }));
+    ...(SAME_CDP[c.sameSite] ? { sameSite: SAME_CDP[c.sameSite] } : {}), ...(c.expires > 0 ? { expires: c.expires } : {}), ...(c.partitionKey ? { partitionKey: c.partitionKey } : {}), ...(c.sourceScheme ? { sourceScheme: c.sourceScheme } : {}) }));
 // switching to the shared browser: bring the sign-ins from every bot's old browser into it, once
 async function mergeOldProfiles() {   // once: the sign-ins in every bot's browser (and the 2.4.x shared one) go into the shared store
   const mark = join(workDir, '.octa-logins-merged');
@@ -1269,6 +1270,7 @@ function addToJar(list) {   // newest values win; expired ones drop out
 async function syncIn(port) {   // also take sign-ins from other bots' browsers that are open right now (they only save theirs when their job ends)
   let m = {}; try { m = JSON.parse(readFileSync(join(workDir, 'ports.json'), 'utf8')); } catch { }
   await Promise.all(Object.values(m).filter(p => p !== port).map(async p => { if (await cdpInfo(p)) await syncOut(p); }));
+  await syncOut(port);   // its own newest sign-ins last, so an older copy in the shared store never logs it out
   const jar = readJar(); if (jar.length) await cdp(port, send => send('Storage.setCookies', { cookies: cookieParams(jar) })).catch(e => log('帶入共用登入失敗：' + e.message)); }
 async function syncOut(port) { try { const { cookies = [] } = await cdp(port, send => send('Storage.getCookies')); addToJar(cookies); } catch (e) { log('儲存共用登入失敗：' + e.message); } }
 const busyBots = new Set();
