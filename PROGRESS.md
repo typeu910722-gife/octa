@@ -82,3 +82,4 @@
 
 - 3.0.37（10/27）：內嵌瀏覽器碰到 accounts.google.com 登入頁 → desktop googleBlocked 記 cfg.realChrome[botId]、停掉內嵌、runner switchToChrome 改開真 Chrome（機器人專屬 profile）到 ServiceLogin?continue=；之後該機器人一律用 Chrome 視窗。runner v17.20
 - 3.0.38（10/27）：教練連結 /api/coach/<key>（sessions kind=coach 存 sha，auth 不接受）：GET 說明+清單、bot/<id>、ask(feedback)、job/<id>?wait、teach(remember/skill/task)、hire、inbox?since。設定 AI 連線加「讓 Grok Bot 當教練」區塊（/api/coach GET/POST/DELETE）。
+- 3.0.39（10/27）：⏰刪除／停用／啟用：名稱（runner/done 處理，conv 或 bot 的例行任務，模糊比對單一命中）；runner/next 對提到例行/刪/停用的 chat 工作附 ROUTINE_SELF 說明（舊執行器也有效）；runner v17.21 prompt；coach routine 端點。

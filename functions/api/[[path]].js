@@ -488,6 +488,8 @@ function describeEvent(raw, body) {
   return raw.slice(0, 4000);
 }
 
+// works with runners that don't know the marker yet: the note travels with the prompt
+const ROUTINE_SELF = '\n\n（系統說明：你可以自己管理例行任務。要刪除、暫停或恢復時，在回覆最後寫一行「⏰刪除：名稱」「⏰停用：名稱」或「⏰啟用：名稱」，多個用、分開，名稱照你現有的例行任務抄，系統會直接處理。不要叫使用者去任務設定手動處理，也不要說自己刪不掉。）';
 // ---------- coach link: another AI (e.g. Grok Bot) follows up on and trains the OCTA bots ----------
 // The key is stored hashed in sessions (kind 'coach'); auth() never accepts it, so it only opens these routes.
 const coachGuide = (base, coach) => `你是 OCTA 機器人們的教練「${coach}」。OCTA 的機器人在使用者的電腦上工作（瀏覽器、登入好的網站、檔案）。你的工作：交派任務、檢查成果、給回饋、把你會的做法教給它們，必要時建立接班人。
@@ -497,6 +499,7 @@ const coachGuide = (base, coach) => `你是 OCTA 機器人們的教練「${coach
 3. POST ${base}/ask {"to":"<id>","text":"要它做的事或問題"} → 它會開始做，回傳 {"job":編號}。加 "feedback":true 表示這是你對它上一個成果的回饋，它會修正並記下教訓。
 4. GET ${base}/job/<編號>?wait=25 → {"status":"pending|running|done|error","replies":[它的回覆]}。wait 最多等 25 秒，沒好就再查一次。
 5. POST ${base}/teach {"to":"<id>","remember":["要它永遠記住的事"],"skill":{"name":"技能名","steps":"一步一步的做法"},"task":"新的任務說明（會取代舊的，可省略）"} → 直接寫進它的記憶／技能／任務。
+5b. POST ${base}/routine {"to":"<id>","name":"例行任務名","op":"add|delete|disable|enable","times":["07:55","*/30"],"prompt":"每次要做的事"} → 幫它新增、修改、刪除或暫停例行任務（GET bot/<id> 的 routines 看現有的）。
 6. POST ${base}/hire {"name":"接班人名字","task":"它負責的工作，寫清楚步驟與標準","remember":["交接重點"],"avatar":"🤖"} → 建立新的 OCTA 機器人，回傳 {"id":...}。
 7. GET ${base}/inbox?since=<上次看到的訊息編號> → 機器人們的新回覆（含 asks=true 的提問）。定時查這裡就能跟進；有人問問題就用 ask 回答它。
 帶人的方法：先 ask 讓它實際做一次 → 用 job 看結果 → 錯了就 ask 加 feedback 指出哪裡錯、正確答案是什麼 → 穩定的做法用 teach 寫成 remember 或 skill。不要替它編造資料，也不要要求它付款、刪除或對外發訊息而不經使用者同意。`;
@@ -527,6 +530,7 @@ async function coachApi(env, db, path, m, body, url) {
     return J({ id: it.id, name: it.name, task: it.task, kind: t.b ? 'bot' : 'group', members: t.g ? it.members.map(named) : undefined,
       memory: t.b ? (st.memory || {})[it.id] || [] : undefined, skills: t.b ? (st.skills || {})[it.id] || [] : undefined,
       notes: (all.folders.find(f => f.id === it.folder)?.notes || '').slice(0, 3000), busy: await busyOf(it.id),
+      routines: all.routines.filter(r => r.conv === it.id).map(r => ({ name: r.name, times: r.times, enabled: r.enabled, prompt: r.prompt })),
       messages: msgs.map(x => ({ id: x.id, from: named(x.by_), text: String(x.text).slice(0, 2500), ts: x.ts })) });
   }
   if (sub === 'ask' && (m === 'POST' || m === 'GET')) {
@@ -566,6 +570,28 @@ async function coachApi(env, db, path, m, body, url) {
     if (task) { await db.prepare('UPDATE bots SET task=? WHERE id=? AND user_id=?').bind(task, id, U).run(); done.push('更新了任務'); }
     if (!done.length) return err('要有 remember、skill 或 task');
     await addMsg(db, U, id, 'sys', `🎓 ${coach}教了它：${done.join('、').slice(0, 400)}`);
+    await bump(db, U);
+    return J({ ok: true });
+  }
+  if (sub === 'routine' && m === 'POST') {   // {to, name, op: add|delete|disable|enable, times:["08:00","*/30"], prompt}
+    const t = target(clean(body.to, 64)), name = clean(body.name, 40), op = clean(body.op, 10) || 'add';
+    if (!t || !name) return err('要有 to 和 name');
+    const conv = (t.b || t.g).id, old = all.routines.find(r => r.conv === conv && r.name === name);
+    if (op === 'add') {
+      const times = cleanTimes((Array.isArray(body.times) ? body.times : String(body.times || '').split(/[,，、\s]+/)).map(x => String(x).trim()));
+      if (!times.length) return err('times 要有時間，例如 ["08:00","*/30"]');
+      const prompt = clean(body.prompt, 2000), { date, hm } = localNow(env);
+      const fired = JSON.stringify(Object.fromEntries(times.filter(x => !isEvery(x) && x <= hm).map(x => [x, date])));
+      if (old) await db.prepare('UPDATE routines SET times=?,prompt=?,enabled=1,fired=? WHERE id=?').bind(JSON.stringify(times), prompt || old.prompt, fired, old.id).run();
+      else await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)').bind('r-' + uid(), U, conv, name, prompt, JSON.stringify(times), fired, now()).run();
+    } else {
+      if (!old) return err('找不到這個例行任務', 404);
+      if (op === 'delete') await db.prepare('DELETE FROM routines WHERE id=?').bind(old.id).run();
+      else if (op === 'disable' || op === 'enable') await db.prepare('UPDATE routines SET enabled=? WHERE id=?').bind(op === 'enable' ? 1 : 0, old.id).run();
+      else return err('op 只能是 add、delete、disable、enable');
+    }
+    const word = { add: old ? '更新' : '新增', delete: '刪除', disable: '停用', enable: '啟用' }[op];
+    await addMsg(db, U, conv, 'sys', `🎓 ${coach}${word}了例行任務「${name}」`);
     await bump(db, U);
     return J({ ok: true });
   }
@@ -1479,6 +1505,14 @@ async function route({ request: req, env, params }) {
         }
         // ⏰例行任務：名稱｜08:00,13:30｜要做的事 — the bot sets up a daily routine the user asked for
         const plans = [];
+        // ⏰刪除／停用／啟用：名稱、名稱 — the bot manages its own routines instead of asking the user to do it by hand
+        const routineOps = [];
+        if (good && job.kind === 'chat' && /⏰\s*(刪除|停用|啟用)/.test(text)) {
+          text = text.replace(/^\s*⏰\s*(刪除|停用|啟用)(?:例行任務)?[:：]\s*(.+)$/gm, (_, op, list) => {
+            for (const n of String(list).split(/[、，,；;]+/).map(x => clean(x.replace(/^[「『"]|[」』"]$/g, ''), 40)).filter(Boolean)) routineOps.push([op, n]);
+            return '';
+          }).trim() || '（好的）';
+        }
         if (good && job.kind === 'chat') {
           text = text.replace(/^\s*⏰\s*例行任務[:：]\s*(.+?)\s*[｜|]\s*(.+?)\s*[｜|]\s*(.+)$/gm, (_, n, t, p) => {
             const wm = String(t).match(/監看\s*(https?:\/\/\S+)/), every = (String(t).match(/每\s*(\d+)\s*分/) || [])[1];
@@ -1533,6 +1567,22 @@ async function route({ request: req, env, params }) {
           if (old) await db.prepare('UPDATE routines SET times=?,prompt=?,enabled=1,fired=? WHERE id=?').bind(JSON.stringify(r.times), r.prompt, fired, old.id).run();
           else await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)').bind('r-' + uid(), U, job.conv, r.name, r.prompt, JSON.stringify(r.times), fired, now()).run();
           await addMsg(db, U, job.conv, 'sys', `已${old ? '更新' : '新增'}例行任務「${r.name}」：${r.times.map(t => isEvery(t) ? `每 ${t.slice(2)} 分鐘` : '每天 ' + t).join('、')}`);
+        }
+        if (routineOps.length) {
+          const mine = (await db.prepare('SELECT id,name,enabled FROM routines WHERE user_id=? AND conv IN (?,?)').bind(U, job.conv, job.bot_id).all()).results;
+          const done = [], miss = [];
+          for (const [op, n] of routineOps.slice(0, 30)) {
+            const hits = mine.filter(r => r.name === n);
+            const hit = hits.length ? hits : mine.filter(r => r.name.includes(n) || n.includes(r.name));
+            if (!hit.length || (hits.length === 0 && hit.length > 1)) { miss.push(n); continue; }
+            for (const r of hit) {
+              if (op === '刪除') await db.prepare('DELETE FROM routines WHERE id=? AND user_id=?').bind(r.id, U).run();
+              else await db.prepare('UPDATE routines SET enabled=? WHERE id=? AND user_id=?').bind(op === '啟用' ? 1 : 0, r.id, U).run();
+              done.push(`${op}「${r.name}」`);
+            }
+          }
+          if (done.length) await addMsg(db, U, job.conv, 'sys', `例行任務已${done.join('、')}`);
+          if (miss.length) await addMsg(db, U, job.conv, 'sys', `找不到這些例行任務，沒有變更：${miss.join('、')}`);
         }
         if (claimedBuilt && !plans.length) await addMsg(db, U, job.conv, 'sys', '這次回覆說排程已建好，但沒有寫出可以建立的時間，所以沒有新增例行任務。');
         if (learned && learned.length >= 4) {
@@ -2426,7 +2476,7 @@ async function jobPayload(env, db, U, job) {
   const dayStart = Date.parse(date + 'T00:00:00Z') - (+env.TZ_OFFSET_MIN || 0) * 60000;
   const usageToday = (await db.prepare("SELECT COUNT(*) AS n FROM jobs j JOIN bots b ON b.id=j.bot_id WHERE j.user_id=? AND j.kind='chat' AND j.created>=? AND IFNULL(b.engine,'claude')=?").bind(U, dayStart, bot.engine || 'claude').first())?.n ?? null;
   return {
-    id: job.id, kind: job.kind, url: job.url, prompt: job.prompt, usageToday, warm: WARM.includes(+st.warm) ? +st.warm : 120, allowed: (st.allow || {})[bot.id] || [], memory: (st.memory || {})[bot.id] || [], skills: (st.skills || {})[bot.id] || [],
+    id: job.id, kind: job.kind, url: job.url, prompt: job.kind === 'chat' && /例行|排程|定時|刪|停用|暫停|取消/.test(job.prompt || '') ? job.prompt + ROUTINE_SELF : job.prompt, usageToday, warm: WARM.includes(+st.warm) ? +st.warm : 120, allowed: (st.allow || {})[bot.id] || [], memory: (st.memory || {})[bot.id] || [], skills: (st.skills || {})[bot.id] || [],
     nskills: (st.nskills || {})[bot.id] || null,
     routines: (await db.prepare('SELECT name,times,enabled FROM routines WHERE user_id=? AND conv IN (?,?)').bind(U, job.conv, bot.id).all()).results.map(r => ({ name: r.name, times: JSON.parse(r.times), enabled: !!r.enabled })),
     routeTries: +job.tries || 0,
