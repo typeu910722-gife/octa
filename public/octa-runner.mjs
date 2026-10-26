@@ -14,7 +14,7 @@
 // Requires: Node 18+, at least one AI CLI (Claude Code, Codex, Gemini…), Google Chrome.
 
 import { spawn, spawnSync, execFile } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, renameSync, copyFileSync, openSync, closeSync, lstatSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, renameSync, copyFileSync, openSync, closeSync, lstatSync, unlinkSync } from 'node:fs';
 import { dirname, join, extname, basename, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import os from 'node:os';
@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.22';
+export const VERSION = '17.23';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -206,6 +206,28 @@ function workNotes(job) {
   return [`你的工作筆記（檔案 ${notesFile(job)}，由你自己維護）：查到值得留下的資料就更新這個檔案，例如查到的名單和數字、網站上東西在哪、做到哪一步，每段寫上查到的時間；舊日期、用不到的就刪掉。只能寫這一次畫面上看得到的字。畫面上沒有的編號、名字、數字不要寫，OCTA 會把那些列拿掉。檔案寫不進去（例如顯示唯讀）時，改在回覆最後寫「📒工作筆記：」換行接完整的新筆記，最後一行寫「📒結束」，OCTA 會幫你存，不用跟使用者提這件事。下次先看筆記，只補查可能變動的部分，不用每次從頭查。使用者再問一樣的事、而筆記裡已經有今天整理好的結果時，先告訴他「上次幾點查的、結果是什麼」，再用 ❓ 問他要不要重新查（A. 現在重新查 B. 用剛才那份就好）。`,
     t ? '目前筆記內容：\n' + t : '（目前筆記是空的）'];
 }
+// 紀錄: every browse report is kept as a dated text file, so lists are computed from files and compared with earlier days
+const recDir = job => join(workDir, 'bots', String(job.bot.id).replace(/[^\w-]/g, ''), '紀錄');
+const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}`; };
+function saveRecord(job, task, report) {
+  try {
+    const dir = recDir(job); mkdirSync(dir, { recursive: true });
+    const what = String(task?.prompt || '').replace(/[\\/:*?"<>|\s]+/g, ' ').trim().slice(0, 24) || '讀取';
+    const f = join(dir, `${stamp()} ${what}.txt`);
+    writeFileSync(f, `時間：${new Date().toLocaleString('zh-TW')}\n網址：${task?.url || ''}\n要做的事：${task?.prompt || ''}\n\n${report}\n`);
+    const old = Date.now() - 30 * 86400000;
+    for (const n of readdirSync(dir)) { try { const p = join(dir, n); if (statSync(p).mtimeMs < old) unlinkSync(p); } catch { } }
+    return f;
+  } catch (e) { log('紀錄存檔失敗：' + e.message); return ''; }
+}
+function records(job) {
+  let fs = []; try { fs = readdirSync(recDir(job)).filter(n => n.endsWith('.txt')).sort().slice(-12); } catch { }
+  return [`你的讀取紀錄資料夾：${recDir(job)}。每次【派瀏覽】讀回來的內容都會自動存成一個有日期時間的檔案。`,
+    '- 要整理名單、算數量、分類時，用程式（python、node 或 PowerShell，有哪個用哪個）讀紀錄檔來算，不要用心算或憑印象；算完把結果也存成檔案（例如「2026-10-27 名單.txt」放在同一個資料夾）。',
+    '- 和前幾天的紀錄比對，找出新增、消失、改變的項目；今天已經有涵蓋需要範圍的紀錄、而且使用者沒有要最新的，就直接用紀錄算，不用重新捲一次。',
+    '- 使用者糾正你、或你發現一個例外（打錯字的名字、某種情況怎麼算、哪些已經確認過），立刻用 📌記住 寫成一條規則，下次照做。',
+    fs.length ? '最近的紀錄：\n' + fs.map(n => '· ' + n).join('\n') : '（還沒有紀錄）'];
+}
 export function buildPrompt(job, here) {
   const lines = [
     `你是 OCTA（奧克塔）裡的機器人「${job.bot.name}」，在使用者自己的電腦上執行。`,
@@ -291,7 +313,7 @@ export function buildPrompt(job, here) {
     const quote = h.replyText ? `（回覆${h.replyWho ? '「' + h.replyWho + '」' : ''}：${h.replyText}）\n` : '';
     lines.push(`【${h.who}】${quote}${t}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : ''));
   });
-  lines.push('', ...dayInfo(job), '', ...workNotes(job));
+  lines.push('', ...dayInfo(job), '', ...workNotes(job), '', ...records(job));
   lines.push('', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop(), '', turnGuide(), '', whoAmI(job), '現在請處理這則指示：', job.prompt);
   return lines.filter(l => l !== '').join('\n');
 }
@@ -961,6 +983,7 @@ async function browseRounds(job, b, here, engine, res, live) {
       const site = (report.match(/https?:\/\/[^\s）)]+/) || [])[0] || '';
       return { ok: true, text: `需要使用者在電腦上登入${site ? '（' + site + '）' : ''}。登入好之後跟我說一聲。`, tokens: addTokens(res.tokens, worker?.tokens) };
     }
+    if (worker?.ok) { const rec = saveRecord(job, plan.task, report); if (rec) report += `\n（這份報告已存成紀錄檔：${rec}）`; }
     if (port) {
       const eyes = await captureEyes(port, b.dir);
       if (eyes) { job.eyes = eyes; report += `\n確認停在哪，用 Read 讀這個檔：${eyes}`; }
@@ -1213,7 +1236,7 @@ async function warmClaude(job, b, here, live) {
     // only what happened since the last turn, then the new instruction
     const fresh = job.history.filter(h => (h.id || 0) > s.lastId && !(h.who === '使用者' && h.text === job.prompt));
     text = [fresh.length ? '（上次之後的新對話）\n' + fresh.map(h => `【${h.who}】${h.text}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : '')).join('\n') : '',
-      dayInfo(job).join('\n'), workNotes(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'), workLoop().join('\n'), studioAim().join('\n'), turnGuide(), whoAmI(job), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
+      dayInfo(job).join('\n'), workNotes(job).join('\n'), records(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'), workLoop().join('\n'), studioAim().join('\n'), turnGuide(), whoAmI(job), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
     log(`⚡ ${job.bot.name}：AI 待機中，直接接續`);
   } else {
     if (s) closeSession(job.bot.id);

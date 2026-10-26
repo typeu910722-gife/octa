@@ -85,3 +85,4 @@
 - 3.0.39（10/27）：⏰刪除／停用／啟用：名稱（runner/done 處理，conv 或 bot 的例行任務，模糊比對單一命中）；runner/next 對提到例行/刪/停用的 chat 工作附 ROUTINE_SELF 說明（舊執行器也有效）；runner v17.21 prompt；coach routine 端點。
 - 3.0.40（10/27）：登出原因：內嵌 Storage.setCookies 直接把 CDP 格式丟給 Electron（缺 url、expires 欄名不同→網域 cookie 設定失敗、其他變成工作階段 cookie）、sameSite 名稱互不相容、syncIn 用舊 jar 蓋掉自己的新登入、session cookie 重開即消失。修：electronCookie 轉換＋session cookie 存 30 天（keepLogins）、flushStore（設定後/停止/關閉）、syncIn 先 syncOut 自己、cookieParams 正規化 sameSite。Electron 實測重開後保留。runner v17.22
 - 3.0.41（10/27）：登入卡片的「繼續」改 data-resume（關接手＋送短句），不再 data-retry 重送上一則指示。
+- 3.0.42（10/27）：對照 Grok（分工/存檔/記憶）：browseRounds 報告存 bots/<id>/紀錄/<日期時間> <事>.txt（30 天），prompt 加 records()：用程式算、比對前幾天、有今天紀錄就不重捲、糾正即 📌記住。runner v17.23。待做：工作中仍可回聊天（背景讀取）。
