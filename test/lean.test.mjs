@@ -23,3 +23,22 @@ test('a group prompt keeps only the latest messages, shortened', () => {
   assert.ok(p.includes('第0則'), 'a private chat keeps its history');
   assert.ok(g.length < p.length * 0.6, `group ${g.length} vs private ${p.length}`);
 });
+
+// a run whose tool never answers: stopped after the quiet time, even when something it started keeps the output pipe open
+test('a silent AI run is stopped and its slot is freed', { skip: process.platform === 'win32' }, async () => {
+  const { spawnCli } = await import('../public/octa-runner.mjs');
+  const { mkdtempSync, writeFileSync, chmodSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'octa-quiet-'));
+  const bin = join(dir, 'fakeai');
+  writeFileSync(bin, '#!/bin/sh\necho started\n(sleep 60) &\nsleep 60\n');
+  chmodSync(bin, 0o755);
+  process.env.PATH = dir + ':' + process.env.PATH;
+  const t0 = Date.now();
+  const r = await spawnCli('fakeai', [], dir, '', { quietMs: 1500 });
+  assert.ok(Date.now() - t0 < 20000, 'did not wait for the stuck run');
+  assert.notEqual(r.code, 0);
+  assert.match(r.err, /很久沒有回應/);
+  assert.match(r.out, /started/);
+});

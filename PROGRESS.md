@@ -113,3 +113,7 @@
 ## 2026-10-27 3.1.2（只更新網站）
 - 手機版（≤760px）獨立版面，Grok Bot 風格：清單分區標題＋圓頭貼＋預覽、全螢幕對話頁、⋯詳細資料頁、底部圓角輸入列（＋選單、打@才跳成員）、核准按鈕 2×2、小八移到頁首、設定/任務設定全螢幕頁、pushState 返回。桌面版不變（只修 .tw 動畫誤套到表格）。截圖 /home/claude/octa-ref/mobile-after/。
 - 未在真手機測 iOS/Android 鍵盤與滑回。
+
+## 2026-10-27 3.1.3
+- 實機：12:00 後多個機器人「執行逾時」、之後全部「排隊中」。原因：spawnCli 逾時用 child.kill()，Windows shell:true 只殺到 cmd，claude.exe＋Playwright MCP 成為孤兒、握著 stdout，close 不觸發 → 3 個 slot 永遠被占（實機看到 11:56、12:26、13:12 三個 claude -p 仍在跑）。修：taskkill /t /f 整組、exit 後 5 秒/kill 後 10 秒保底 resolve、QUIET_MS=8 分鐘無輸出即中止（訊息含「很久沒有回應」→ timeout 自動重試）。
+- 根因未明：瀏覽器那一輪的 browser_snapshot（讀取網頁內容）為何卡住（推測 LINE 頁面有彈窗/凍結）。

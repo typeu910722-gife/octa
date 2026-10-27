@@ -23,12 +23,13 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '18.1';
+export const VERSION = '18.2';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+const QUIET_MS = 8 * 60 * 1000;   // Claude streams an event at least every step; 8 silent minutes means a tool is stuck
 const CHUNK = 900_000;
 
 let cfg = {}, workDir = '', MAX = 3, log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
@@ -724,23 +725,34 @@ async function usageReport() {   // every 10 minutes
 }
 
 // opts.onLine: called with each stdout line (live progress); opts.ctl.kill() stops the run
-async function spawnCli(bin, args, dir, input, opts = {}) {
+export async function spawnCli(bin, args, dir, input, opts = {}) {
   if (!(await has(bin))) return { code: -1, out: '', err: '', missing: true };
   return new Promise(resolve => {
     const child = spawn(bin, WIN ? args.map(q) : args, { cwd: dir, shell: WIN, windowsHide: true });
     const out = [], err = [];
-    let killed = false, part = '';
-    if (opts.ctl) opts.ctl.kill = () => { try { WIN ? spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true }) : child.kill(); } catch { } };
-    const timer = setTimeout(() => { killed = true; child.kill(); }, JOB_TIMEOUT_MS);
+    let killed = '', part = '', done = false, quietTimer = null, fallback = null;
+    // On Windows the CLI runs under a shell: child.kill() ended only the shell, the AI (and its browser tool) kept running,
+    // held the output pipe open so 'close' never came, and the job's slot stayed taken forever. Kill the whole tree.
+    const killTree = () => { try { WIN ? spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true }) : child.kill(); } catch { } };
+    const finish = r => { if (done) return; done = true; clearTimeout(timer); clearTimeout(quietTimer); clearTimeout(fallback); resolve(r); };
+    const stop = why => { killed = why; killTree(); fallback = setTimeout(() => finish({ code: 1, out: decode(out), err: decode(err) + '\n' + why }), 10000); };
+    if (opts.ctl) opts.ctl.kill = killTree;
+    const timer = setTimeout(() => stop('執行超過 15 分鐘，已中止。'), JOB_TIMEOUT_MS);
+    // a tool that never answers (e.g. a browser page frozen by a dialog): nothing comes out for minutes
+    const quiet = () => { if (!opts.quietMs) return; clearTimeout(quietTimer); quietTimer = setTimeout(() => stop(`AI 超過 ${Math.round(opts.quietMs / 60000)} 分鐘沒有任何動靜，很久沒有回應，已中止。`), opts.quietMs); };
+    quiet();
     child.stdout.on('data', d => {
+      quiet();
       out.push(d);
       if (!opts.onLine) return;
       part += d.toString('utf8');
       let i; while ((i = part.indexOf('\n')) >= 0) { const l = part.slice(0, i); part = part.slice(i + 1); try { opts.onLine(l); } catch { } }
     });
     child.stderr.on('data', d => err.push(d));
-    child.on('error', e => { clearTimeout(timer); resolve({ code: -1, out: decode(out), err: e.message, missing: e.code === 'ENOENT' }); });
-    child.on('close', code => { clearTimeout(timer); resolve({ code, out: decode(out), err: decode(err) + (killed ? '\n執行超過 15 分鐘，已中止。' : '') }); });
+    child.on('error', e => finish({ code: -1, out: decode(out), err: e.message, missing: e.code === 'ENOENT' }));
+    child.on('close', code => finish({ code: killed ? (code || 1) : code, out: decode(out), err: decode(err) + (killed ? '\n' + killed : '') }));
+    // the shell ended but something it started still holds the pipe: don't wait on it
+    child.on('exit', code => setTimeout(() => finish({ code: killed ? (code || 1) : code, out: decode(out), err: decode(err) + (killed ? '\n' + killed : '') }), 5000));
     child.stdin.on('error', () => { });
     child.stdin.end(input);
   });
@@ -838,7 +850,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       let result = null;
       r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
         '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_TOOLS, ...(await claudeLean(useBrowser))], dir, prompt, {
-        ctl: live.ctl,
+        ctl: live.ctl, quietMs: QUIET_MS,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
           if (e.type === 'result') { result = e; return; }
