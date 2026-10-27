@@ -167,7 +167,6 @@ select{background:var(--bg);border:1px solid var(--line);border-radius:10px;padd
 .iw.dragging{opacity:.4}
 .iw.over{background:var(--panel);outline:1px dashed var(--gold);border-radius:12px}
 .iw.over[data-hint]::after{content:attr(data-hint);position:absolute;right:36px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--gold2);background:var(--bg);padding:2px 8px;border-radius:8px;pointer-events:none;z-index:2}
-.bub[draggable=true]{cursor:grab}
 .pane{display:flex;flex-direction:column;min-height:0;min-width:0}
 .ph{display:flex;align-items:center;gap:8px 12px;flex:none;flex-wrap:wrap;border-bottom:1px solid var(--line2);padding-block:14px;padding-left:20px;padding-right:max(20px,env(safe-area-inset-right,0px))}
 .back{display:none;border:0;background:none;font-size:24px;color:var(--gold);padding:0 6px 0 0}
@@ -183,7 +182,7 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}   /* desktop: 
 .m{display:flex;gap:10px;align-items:flex-start;max-width:680px}
 .m .who{font-size:12px;color:var(--gold);margin-bottom:4px;font-family:var(--tc)}
 .m .bx{min-width:0}
-.bub{background:var(--panel);border:1px solid var(--line2);border-radius:4px var(--r) var(--r) var(--r);padding:10px 14px;line-height:1.65;overflow-wrap:anywhere;white-space:pre-wrap}
+.bub{-webkit-user-select:text;user-select:text;cursor:text;background:var(--panel);border:1px solid var(--line2);border-radius:4px var(--r) var(--r) var(--r);padding:10px 14px;line-height:1.65;overflow-wrap:anywhere;white-space:pre-wrap}
 .m.me{align-self:flex-end;flex-direction:row-reverse}
 .m.me .bub{background:var(--panel2);border-color:var(--line);border-radius:var(--r) 4px var(--r) var(--r)}
 .bub .at{color:var(--gold2)}
@@ -1220,9 +1219,9 @@ function render(scroll){
   let prevDay='';
   const row=m=>{
     if(m.by==='sys')return `<div class="sys">${esc(m.text)}<span class="ts">${hm(m.ts)}</span></div>`;
-    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' draggable="true" data-dragmsg="1" title="拖到別的機器人就能複製"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
+    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
-    return `<div class="m" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}<div class="bub md${long&&!open?' long':''}" draggable="true" data-dragmsg="1" title="拖到別的機器人就能複製" data-u>${md(optText(m))}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
+    return `<div class="m" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(optText(m))}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
   // a date line whenever the day changes, like a phone's message app
   const bs=backFor(cur,mc);   // 幕後: bot-to-bot requests, folded where they happened
   mh+=convMsgs(cur).map(m=>{if(bs.hide(m))return '';const pre=bs.before(m);const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day">${esc(dayLabel(m.ts))}</div>`}return pre+sep+row(m)}).join('')+bs.rest();

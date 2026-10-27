@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '18.0';
+export const VERSION = '18.1';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -264,6 +264,7 @@ export function memoryHowTo() {
     '- 成功做完一件多步驟的工作（例如用瀏覽器操作，步驟有 3 步以上）而且以後還會再做時，在回覆最後單獨一行寫「📘手冊：名稱｜步驟1 → 步驟2 → 步驟3」（名稱用看得出是什麼工作的幾個字，例如「下載訂房報表」；步驟寫去哪裡、點什麼、怎麼判斷），下次做類似的事會提供給你。沒做完、失敗或只做一兩步的不要寫。'
   ];
 }
+export const GROUP_HISTORY = 14;
 export function buildPrompt(job, here) {
   const lines = [
     `你是 OCTA（奧克塔）裡的機器人「${job.bot.name}」，在使用者自己的電腦上執行。`,
@@ -345,9 +346,10 @@ export function buildPrompt(job, here) {
     '對話紀錄（舊到新）：'
   );
   // older messages are shortened; the last few stay whole. A backup does the same job, so it gets the same history.
-  const hist = job.history || [], cut = 600;
+  // a group sends this to every member each turn: fewer and shorter old messages (省 token)
+  const all = job.history || [], hist = job.group ? all.slice(-GROUP_HISTORY) : all, cut = job.group ? 300 : 600, keep = job.group ? 1500 : Infinity;
   hist.forEach((h, i) => {
-    const recent = i >= hist.length - 4, t = recent || h.text.length <= cut ? h.text : h.text.slice(0, cut) + '…（較早的訊息，已截短）';
+    const recent = i >= hist.length - 4, t = recent ? (h.text.length <= keep ? h.text : h.text.slice(0, keep) + '…（已截短，全文在對話裡）') : h.text.length <= cut ? h.text : h.text.slice(0, cut) + '…（較早的訊息，已截短）';
     const quote = h.replyText ? `（回覆${h.replyWho ? '「' + h.replyWho + '」' : ''}：${h.replyText}）\n` : '';
     lines.push(`【${h.who}】${quote}${t}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : ''));
   });
@@ -748,6 +750,23 @@ const claudeTokens = u => (u ? (u.input_tokens || 0) + (u.output_tokens || 0) + 
 const toml = v => (Array.isArray(v) ? '[' + v.map(x => JSON.stringify(String(x))).join(',') + ']' : JSON.stringify(String(v)));
 const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep';
 const WORKER_TOOLS = 'mcp__browser,Read';
+// 省 token: --allowedTools only pre-approves; every built-in tool (Agent, TodoWrite, NotebookEdit…) and every installed
+// skill / slash command is still described to the model on each request. When this Claude Code supports them, load only
+// the tools a bot can use (Bash stays: bots compute lists from their record files) and skip skills and slash commands.
+let claudeFlags = null;
+export function leanFlags(help, worker) {
+  const out = [];
+  if (/--tools\b/.test(help)) out.push('--tools', worker ? 'Read' : PARENT_TOOLS + ',Bash');
+  if (/--disable-slash-commands/.test(help)) out.push('--disable-slash-commands');
+  return out;
+}
+async function claudeLean(worker) {
+  if (claudeFlags === null) {
+    claudeFlags = await new Promise(res => execFile('claude', ['--help'], { shell: WIN, windowsHide: true, timeout: 20000, maxBuffer: 1 << 20 }, (e, out) => res(String(out || ''))));
+    if (!claudeFlags) setTimeout(() => { claudeFlags = null; }, 600000);   // try again later rather than never
+  }
+  return leanFlags(claudeFlags, worker);
+}
 // the model Ollama should use: the bot's, or the first one downloaded on this computer
 function ollamaModel(model) {
   if (model) return model.replace(/^ollama\//, '');
@@ -818,7 +837,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       // stream-json: lets OCTA show what the bot is doing while it works
       let result = null;
       r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
-        '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_TOOLS], dir, prompt, {
+        '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_TOOLS, ...(await claudeLean(useBrowser))], dir, prompt, {
         ctl: live.ctl,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
@@ -1234,7 +1253,8 @@ function startSession(job, b) {
   const { dir } = b, m = job.bot.model ? ['--model', job.bot.model] : [];
   const child = spawn('claude', (WIN ? a => a.map(q) : a => a)(['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
     '--mcp-config', join(dir, 'mcp.json'), '--strict-mcp-config', '--add-dir', storeDir(), ...m,
-    '--allowedTools', PARENT_TOOLS]), { cwd: dir, shell: WIN, windowsHide: true });
+    '--allowedTools', PARENT_TOOLS, ...leanFlags(claudeFlags || '', false)]), { cwd: dir, shell: WIN, windowsHide: true });
+  if (claudeFlags === null) claudeLean(false);   // known from the next session on
   const s = { child, turn: null, err: [] };
   let part = '';
   child.stdout.on('data', d => {

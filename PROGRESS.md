@@ -102,3 +102,9 @@
 - 3.1.0 已發布：網站（main）＋桌面版 Release（workflow_dispatch desktop.yml；git proxy 擋 tag push，改用 gh workflow run）。使用者電腦已自動更新到 3.1.0。
 - 升級後實測（群組 123456）：接力＋@交接 只跑一次、幕後 N 則顯示、私下互問只回一句話、不再互相道謝來回、新執行器回報做事權限「做完告知」、瀏覽器小卡可縮成 🌐 圓點且開對話框時讓開。
 - 待辦：群組 token 偏高（今天約 1.1M），評估精簡群組 prompt（歷史 30 則、規則全塞）；小圓點仍會略蓋到訊息右緣。
+
+## 2026-10-27 3.1.1
+- 省 token：claude 加 --tools（只載入 WebFetch,WebSearch,Read,Write,Edit,Glob,Grep,Bash；瀏覽器輪只 Read）＋ --disable-slash-commands，依 `claude --help` 偵測支援才加（leanFlags）。沙盒實測「只回一個字」：原本 ~46.9K（cache 建立 15.5K＋讀 31.4K）→ 20.7K。
+- 群組 prompt：歷史只取最近 GROUP_HISTORY=14 則，舊訊息截 300 字、最近 4 則上限 1500 字（範例 16.5K→11.4K 字元）。
+- 注意：OCTA 顯示的 tokens = input+output+cache 建立+cache 讀取（cache 讀取實際成本約一成），數字看起來偏大。
+- 對話泡泡移除 draggable（拖到別的機器人複製的功能拿掉），桌面可直接選取文字；觸控裝置維持長按選單。
