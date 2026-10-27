@@ -273,7 +273,7 @@ test('background ask between private chats: logged in 幕後; a failure is repor
   assert.equal(jobs.length, 1);
   assert.equal(jobs[0].conv, b);
   const bj = await t.next();
-  await t.done(bj.id, '⚠ 執行失敗', false);
+  await t.done(bj.id, '⚠ TypeError: 執行失敗', false);   // a fixed-code error: final, not retried automatically
   assert.ok((await t.msgs(a)).some(m => m.by === 'sys' && /🔁 「乙」沒能完成回覆/.test(m.text)));
   const back = (await call(t.db, 'GET', 'backstage', { token: t.token, query: { conv: a } })).data.items;
   assert.equal(back.length, 1);
