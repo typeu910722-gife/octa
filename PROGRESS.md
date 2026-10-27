@@ -1,6 +1,6 @@
 # OCTA 進度
 
-> 部署規則：使用者 2026-10-22 指示「以後自動推上線」— 每次改完測試通過就直接合併 main、推送並跑 desktop.yml 發布。
+> 部署規則：使用者 2026-10-22 指示「以後自動推上線」；2026-10-27 再指示「以後一律發布桌面版」— 每次改完測試通過就直接合併 main、推送並跑 desktop.yml 發布（git proxy 擋 tag，用 gh workflow run desktop.yml）。
 
 ## 雲端版（octa.yzprojecttw.com）
 - [x] 前端（E·ROOM 金黑風格）、多帳號、Pages Functions + D1
