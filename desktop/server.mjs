@@ -473,7 +473,7 @@ export async function startServer(opts = {}) {
   const runner = opts.runner === false ? { stop() { } } : startRunner({ url: `http://127.0.0.1:${localPort}`, token: '', home: dataDir, getExtToken: () => hooks.getExtToken(), getStore: () => hooks.getStore(), openInstall: k => hooks.installEngine(k), ...bundled, ...opts.runnerOpts });
 
   return {
-    url: `http://127.0.0.1:${localPort}`, dataDir, webDir: WEB, desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
+    url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
     hostStart, hostStop, hostImport, hostCatchUp,
     async close() { runner.stop(); link?.stop(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
   };

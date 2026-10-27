@@ -1686,7 +1686,7 @@ async function route({ request: req, env, params }) {
       return J({ ok: true, fired });
     }
 
-    const me = env.isLocal ? { user_id: 'local', kind: 'local', name: '本機', label: 'local' } : await auth(req, db);
+    const me = env.isLocal ? { user_id: 'local', kind: 'local', name: (typeof env.hostMode === 'function' && env.hostMode()?.name) || '本機', label: 'local' } : await auth(req, db);
     if (!me) return err('請先登入', 401);
     const U = me.user_id;
     const ok = (data = { ok: true }) => { const r = J(data); r._u = U; return r; };   // a change other devices should see
