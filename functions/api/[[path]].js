@@ -56,12 +56,15 @@ async function newSession(db, userId, kind, label = null, meta = {}) {
     .bind(await sha(t), userId, kind, label, now(), now(), meta.ua || null, meta.ip || null, meta.place || null).run();
   return t;
 }
+// the sign-in lookup also brings the account's 主機模式 fields, so the forwarding check and auth() share one read
+const SES_SQL = 'SELECT s.token,s.user_id,s.kind,s.label,s.seen,s.created,s.info,u.name,u.hmode,u.hurl,u.hkey FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?';
+const preAuth = new WeakMap();   // request → session row already read for it by viaHost()
 async function auth(req, db) {
   const h = req.headers.get('authorization') || '';
   const t = h.startsWith('Bearer ') ? h.slice(7) : '';
   if (!t) return null;
   const tok = await sha(t);
-  const s = await db.prepare('SELECT s.token,s.user_id,s.kind,s.label,s.seen,s.created,s.info,u.name FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?').bind(tok).first();
+  const s = preAuth.has(req) ? preAuth.get(req) : await db.prepare(SES_SQL).bind(tok).first();
   if (!s || s.kind === 'coach') return null;   // a coach link only opens /api/coach/<key>
   if (s.kind === 'web') {
     const last = s.seen || s.created;
@@ -451,13 +454,16 @@ const MIGRATIONS = [
   // 主動性: how freely a bot acts, default standby once, who asked for a job (幕後)
   'ALTER TABLE bots ADD COLUMN autonomy TEXT', 'ALTER TABLE bots ADD COLUMN stood INTEGER', 'ALTER TABLE jobs ADD COLUMN via TEXT',
   // D1 讀取量: today's / last-14-days job queries (token counts, 幕後, weekly review) read only their own days
-  'CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created)'
+  'CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created)',
+  // 主機模式: the account's data lives on its host computer; the cloud keeps the account and forwards
+  'ALTER TABLE users ADD COLUMN hmode INTEGER', 'ALTER TABLE users ADD COLUMN hurl TEXT', 'ALTER TABLE users ADD COLUMN hkey TEXT', 'ALTER TABLE users ADD COLUMN hseen INTEGER',
+  'CREATE TABLE IF NOT EXISTS host_hooks (k TEXT PRIMARY KEY, user_id TEXT NOT NULL)'
 ];
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
   try {
-    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs', "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0"].map(q => db.prepare(q + ' LIMIT 0')));
+    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs', "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0", 'SELECT hmode, hurl, hkey, hseen FROM users', 'SELECT k, user_id FROM host_hooks'].map(q => db.prepare(q + ' LIMIT 0')));
     schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
@@ -473,17 +479,111 @@ const safePath = p => { const v = clean(p, 400).replace(/\\/g, '/'); return v &&
 
 // ---------- host computer ----------
 async function hostInfo(db, userId) {
-  const u = await db.prepare('SELECT host, engines FROM users WHERE id=?').bind(userId).first();
+  const u = await db.prepare('SELECT host, engines, hmode, hseen FROM users WHERE id=?').bind(userId).first();
   const runners = (await db.prepare("SELECT token,label,seen,info,created FROM sessions WHERE user_id=? AND kind='runner' ORDER BY created").bind(userId).all()).results;
   const host = runners.find(r => (r.label || 'runner') === (u?.host || '')) || null;
   const info = host?.info ? JSON.parse(host.info) : null;
   return {
     hostLabel: host ? (host.label || 'runner') : null,
-    online: !!host && now() - (host.seen || 0) < HOST_ONLINE_MS,
+    // 主機模式: the host works from its own data and only checks in with the cloud every 10 minutes
+    online: !!host && (+u?.hmode === 1 ? now() - (u.hseen || 0) < HOST_SEEN_MS : now() - (host.seen || 0) < HOST_ONLINE_MS),
+    hmode: +u?.hmode === 1,
     engines: info?.engines || (u?.engines ? JSON.parse(u.engines) : null),
     models: info?.models || null,
     runners
   };
+}
+
+// ---------- 主機模式: the account's data lives on the host computer ----------
+// The cloud keeps accounts and sign-ins, and forwards everything else through the host's tunnel, signed with
+// HMAC-SHA256(hkey, user \n ts \n method \n path?query \n sha256(body)). The host checks the signature and answers
+// from its own database. A host that is off answers nothing: the cloud says so (503 hostOffline).
+// Paths the cloud always answers itself, even when the data is on the host computer:
+const CLOUD_ONLY = /^(signup|login|logout|password|reset|reset\/send|reset-code|pair|config|cron|me|devices|devices\/remove|host|host\/[a-z]+|runner-token|runner\/hello|runner\/bye|coach)$/;
+// hook/<key> and coach/<key> are looked up in the cloud, then forwarded (see route()).
+const HOST_SEEN_MS = 15 * MIN;
+const HOST_TABLES = ['bots', 'groups_', 'folders', 'routines', 'messages', 'jobs', 'files', 'stats', 'code_repos', 'code_tasks'];   // + settings, chunks   // the host registers every 10 minutes
+const HOST_TIMEOUT = 40000;      // longer than a long-poll (25 s) or a file read (20 s) on the host
+const CACHE_MS = 60000;          // D1 讀取量: sign-ins and 主機模式 fields are kept in this isolate's memory for a minute
+const sesCache = new Map(), userCache = new Map();
+const cacheGet = (map, k) => { const c = map.get(k); return c && c.exp > now() ? c.v : undefined; };
+const cacheSet = (map, k, v) => { if (map.size > 5000) map.clear(); map.set(k, { v, exp: now() + CACHE_MS }); };
+function forgetUser(userId) { userCache.delete(userId); for (const [k, c] of sesCache) if (c.v?.user_id === userId) sesCache.delete(k); }
+const hostFields = r => ({ hmode: +r?.hmode === 1 ? 1 : 0, hurl: r?.hurl || null, hkey: r?.hkey || null });
+async function hostOf(db, userId) {
+  let h = cacheGet(userCache, userId);
+  if (!h) { h = hostFields(await db.prepare('SELECT hmode, hurl, hkey FROM users WHERE id=?').bind(userId).first()); cacheSet(userCache, userId, h); }
+  return h;
+}
+// a session lookup that is free for a minute when the account is in 主機模式 (at most one D1 read otherwise)
+async function sessionLookup(db, tok) {
+  const c = cacheGet(sesCache, tok), h = c && cacheGet(userCache, c.user_id);
+  if (c && h?.hmode === 1) return { s: { ...c, ...h }, fresh: false };
+  const s = await db.prepare(SES_SQL).bind(tok).first();
+  if (s) {
+    cacheSet(sesCache, tok, { token: s.token, user_id: s.user_id, kind: s.kind, label: s.label, seen: s.seen, created: s.created, name: s.name });
+    cacheSet(userCache, s.user_id, hostFields(s));
+  }
+  return { s, fresh: true };
+}
+export const hostSignText = (user, ts, method, pathQuery, bodyHash) => `${user}\n${ts}\n${method}\n${pathQuery}\n${bodyHash}`;
+export async function hostSign(key, user, ts, method, pathQuery, body) {
+  const bytes = body == null ? new Uint8Array() : typeof body === 'string' ? enc.encode(body) : new Uint8Array(body);
+  const bh = hex(await crypto.subtle.digest('SHA-256', bytes));
+  const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return { sig: hex(await crypto.subtle.sign('HMAC', k, enc.encode(hostSignText(user, ts, method, pathQuery, bh)))), bodyHash: bh, bytes };
+}
+const hostOffline = () => J({ error: '主機電腦目前沒有連線，開機並打開 OCTA 後會自動恢復', hostOffline: true }, 503);
+// send one request to the host computer. null: the computer says it no longer keeps this account's data.
+async function toHost(h, userId, method, pathQuery, body, extra = {}) {
+  if (!h?.hurl || !h?.hkey) return hostOffline();
+  const ts = String(now());
+  const { sig, bytes } = await hostSign(h.hkey, userId, ts, method, pathQuery, ['GET', 'HEAD'].includes(method) ? null : body);
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), HOST_TIMEOUT);
+  let r;
+  try {
+    r = await fetch(h.hurl.replace(/\/+$/, '') + '/api/' + pathQuery, {
+      method, signal: ctl.signal, body: ['GET', 'HEAD'].includes(method) ? undefined : bytes,
+      headers: { 'content-type': extra['content-type'] || 'application/json', 'x-octa-user': userId, 'x-octa-ts': ts, 'x-octa-sig': sig, ...extra }
+    });
+  } catch { clearTimeout(timer); return hostOffline(); }
+  clearTimeout(timer);
+  const said = r.headers.get('x-octa-host');
+  if (said === 'off') return null;
+  if (said === 'bad') return J({ error: '主機電腦的連線金鑰不符，請在主機電腦重新打開 OCTA', hostOffline: true }, 503);
+  if (said !== 'on') return hostOffline();   // the tunnel answered (computer off or OCTA closed), not OCTA
+  return new Response(r.body, { status: r.status, headers: { 'content-type': r.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+}
+// signed-in request for an account in 主機模式: forward it (web) or tell other computers to stand by (runner)
+async function viaHost(req, env, path) {
+  const a = req.headers.get('authorization') || '';
+  const t = a.startsWith('Bearer ') ? a.slice(7) : '';
+  if (!t) return null;
+  const db = env.DB, tok = await sha(t);
+  const { s, fresh } = await sessionLookup(db, tok);
+  if (fresh) preAuth.set(req, s);
+  if (!s || +s.hmode !== 1 || (s.kind !== 'web' && s.kind !== 'runner')) return null;
+  if (s.kind === 'runner' && path.startsWith('runner/')) {   // the host computer works from its own data; others wait
+    let wait = false;
+    try { wait = !!(await req.clone().json()).wait; } catch { }
+    if (path === 'runner/next' && wait) await sleep(WAIT_MS);
+    return J({ job: null, standby: true, hostMode: true });
+  }
+  if (s.kind === 'web') {
+    const last = s.seen || s.created;
+    if (now() - last > SESSION_IDLE) return null;   // auth() signs it out
+    if (now() - last > 6 * 3600000) {
+      await db.prepare('UPDATE sessions SET seen=? WHERE token=?').bind(now(), tok).run();
+      const c = cacheGet(sesCache, tok); if (c) c.seen = now();
+    }
+  }
+  const url = new URL(req.url);
+  const body = ['GET', 'HEAD'].includes(req.method) ? null : await req.clone().arrayBuffer();
+  const r = await toHost(s, s.user_id, req.method, url.pathname.replace(/^\/api\/?/, '') + url.search, body,
+    { 'content-type': req.headers.get('content-type') || 'application/json', 'x-octa-origin': url.origin });
+  if (r) return r;
+  forgetUser(s.user_id); preAuth.delete(req);   // the computer stopped keeping the data: answer from the cloud
+  return null;
 }
 
 // ---------- 例行任務 ----------
@@ -596,11 +696,19 @@ const coachGuide = (base, coach) => `你是 OCTA 機器人們的教練「${coach
 6. POST ${base}/hire {"name":"接班人名字","task":"它負責的工作，寫清楚步驟與標準","remember":["交接重點"],"avatar":"🤖"} → 建立新的 OCTA 機器人，回傳 {"id":...}。
 7. GET ${base}/inbox?since=<上次看到的訊息編號> → 機器人們的新回覆（含 asks=true 的提問）。定時查這裡就能跟進；有人問問題就用 ask 回答它。
 帶人的方法：先 ask 讓它實際做一次 → 用 job 看結果 → 錯了就 ask 加 feedback 指出哪裡錯、正確答案是什麼 → 穩定的做法用 teach 寫成 remember 或 skill。不要替它編造資料，也不要要求它付款、刪除或對外發訊息而不經使用者同意。`;
-async function coachApi(env, db, path, m, body, url) {
+async function coachApi(env, db, path, m, body, url, pathQuery, rawBody) {
   const [, key, sub = '', arg = ''] = path.split('/');
   if (!/^[0-9a-f]{48}$/.test(key || '')) return err('找不到', 404);
-  const s = await db.prepare("SELECT user_id,label FROM sessions WHERE token=? AND kind='coach'").bind(await sha(key)).first();
+  // on a host computer the cloud already checked the link (the forwarded request is signed)
+  const s = env.coachAs || await db.prepare("SELECT user_id,label FROM sessions WHERE token=? AND kind='coach'").bind(await sha(key)).first();
   if (!s) return err('這個教練連結已停用', 404);
+  if (!env.isLocal) {   // 主機模式: the bots' data is on the host computer
+    const h = await hostOf(db, s.user_id);
+    if (h.hmode === 1) {
+      const fr = await toHost(h, s.user_id, m, pathQuery, rawBody, { 'x-octa-coach': encodeURIComponent(s.label || 'Grok Bot'), 'x-octa-origin': url.origin });
+      if (fr) return fr;
+    }
+  }
   const lim = [['coach:' + key.slice(0, 16), 400]];
   if (await blocked(db, lim)) return J({ error: '太頻繁了，15 分鐘後再試' }, 429);
   if (m === 'POST') await failed(db, lim);   // counts changes per 15 minutes
@@ -1460,6 +1568,10 @@ export async function onRequest(ctx) {
   const { request: req, env, params } = ctx;
   const path = (params.path || []).join('/');
   await ensureSchema(ctx.env.DB);
+  if (!env.isLocal && !CLOUD_ONLY.test(path) && !/^(hook|coach)\//.test(path)) {   // 主機模式: the host computer answers
+    const fw = await viaHost(req, env, path);
+    if (fw) return fw;
+  }
   const res = await route(ctx);
   if (req.method !== 'GET' && res.status < 300 && res._u && !NO_BUMP.test(path)) { try { await bump(env.DB, res._u); } catch { } }
   return res;
@@ -1470,6 +1582,7 @@ async function route({ request: req, env, params }) {
   const path = (params.path || []).join('/');
   const m = req.method;
   const url = new URL(req.url);
+  const pathQuery = url.pathname.replace(/^\/api\/?/, '') + url.search;   // as forwarded to a host computer
   let body = {}, rawBody = '';
   if (m !== 'GET') { rawBody = await req.text().catch(() => ''); try { body = rawBody ? JSON.parse(rawBody) : {}; } catch { body = {}; } }
 
@@ -1541,6 +1654,16 @@ async function route({ request: req, env, params }) {
       const key = path.slice(5);
       if (!/^[0-9a-f]{48}$/.test(key)) return err('找不到', 404);
       const r = await db.prepare('SELECT * FROM routines WHERE hook=?').bind(key).first();
+      if (!env.isLocal) {   // 主機模式: the routine lives on the host computer
+        const owner = r?.user_id || (await db.prepare('SELECT user_id FROM host_hooks WHERE k=?').bind(key).first())?.user_id;
+        const h = owner ? await hostOf(db, owner) : null;
+        if (h?.hmode === 1) {
+          const extra = { 'content-type': req.headers.get('content-type') || 'application/json', 'x-octa-origin': url.origin };
+          if (req.headers.get('x-line-signature')) extra['x-line-signature'] = req.headers.get('x-line-signature');
+          const fr = await toHost(h, owner, m, pathQuery, rawBody, extra);
+          if (fr) return fr;
+        }
+      }
       if (!r) return err('找不到', 404);
       if (m === 'GET') return J({ ok: true, routine: r.name });   // lets services check the address
       if (!r.enabled) return J({ ok: true, skipped: 'disabled' });
@@ -1552,9 +1675,10 @@ async function route({ request: req, env, params }) {
       await failed(db, lim);   // counts events per 15 minutes
       return J({ ok: true, result: await fireEvent(env, db, r, what || '（沒有內容）') });
     }
-    if (path.startsWith('coach/')) return coachApi(env, db, path, m, body, url);
+    if (path.startsWith('coach/')) return coachApi(env, db, path, m, body, url, pathQuery, rawBody);
     if (path === 'cron') {   // called every few minutes (GitHub Actions); fires routines on time and tidies up
-      const users = (await db.prepare('SELECT DISTINCT user_id FROM routines WHERE enabled=1').all()).results;
+      // 主機模式 accounts are skipped: their host computer keeps the clock
+      const users = (await db.prepare('SELECT DISTINCT r.user_id FROM routines r JOIN users u ON u.id=r.user_id WHERE r.enabled=1 AND IFNULL(u.hmode,0)<>1').all()).results;
       let fired = 0;
       for (const u of users) { try { fired += await fireRoutines(env, db, u.user_id, false); } catch { } }
       if (new Date().getUTCMinutes() < 5 || url.searchParams.has('clean')) await cleanup(db);
@@ -1565,6 +1689,66 @@ async function route({ request: req, env, params }) {
     if (!me) return err('請先登入', 401);
     const U = me.user_id;
     const ok = (data = { ok: true }) => { const r = J(data); r._u = U; return r; };   // a change other devices should see
+
+    // ---------- 主機模式: this account's data on its host computer ----------
+    if (path.startsWith('host/') && !env.isLocal && m === 'POST') {
+      const u = await db.prepare('SELECT host, hmode, hurl, hkey, settings, engines FROM users WHERE id=?').bind(U).first();
+      const isHostPc = me.kind === 'runner' && (me.label || 'runner') === (u?.host || '');
+      if (path === 'host/deactivate') {   // back to the cloud: the host computer itself, or a signed-in device with the password
+        if (!isHostPc) {
+          if (me.kind !== 'web') return err('只有主機電腦可以使用', 403);
+          const pw = await db.prepare('SELECT pw FROM users WHERE id=?').bind(U).first();
+          const lim = [['n:' + me.name.toLowerCase(), 5]];
+          if (await blocked(db, lim)) return err('密碼錯太多次，請稍後再試', 429);
+          if (!(await checkPw(String(body.pw || ''), pw?.pw))) { await failed(db, lim); return err('密碼錯誤', 403); }
+        }
+        await db.prepare('UPDATE users SET hmode=0 WHERE id=?').bind(U).run();
+        forgetUser(U); await bump(db, U);
+        return J({ ok: true, hmode: 0 });
+      }
+      if (!isHostPc) return err('只有主機電腦可以使用', 403);
+      if (path === 'host/register') {   // the host's tunnel address (sent when it changes and every 10 minutes)
+        const addr = clean(body.url, 300).replace(/\/+$/, '');
+        if (!/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/i.test(addr) || /^https:\/\/(localhost|\d+\.\d+\.\d+\.\d+)/i.test(addr)) return err('主機網址不正確');
+        const hkey = u.hkey || hex(crypto.getRandomValues(new Uint8Array(32)));
+        const stmts = [db.prepare('UPDATE users SET hurl=?, hkey=?, hseen=? WHERE id=?').bind(addr, hkey, now(), U),
+          db.prepare('UPDATE sessions SET seen=? WHERE token=?').bind(now(), me.token)];
+        if (Array.isArray(body.hooks)) {   // external-event keys of the routines on the host (sent only when they change)
+          stmts.push(db.prepare('DELETE FROM host_hooks WHERE user_id=?').bind(U));
+          for (const k of [...new Set(body.hooks.map(String).filter(k => /^[0-9a-f]{48}$/.test(k)))].slice(0, 500))
+            stmts.push(db.prepare('INSERT OR IGNORE INTO host_hooks (k,user_id) VALUES (?,?)').bind(k, U));
+        }
+        await db.batch(stmts);
+        forgetUser(U);
+        return J({ hkey, hmode: +u.hmode === 1 ? 1 : 0 });
+      }
+      if (path === 'host/export') {   // the account's data, one table page at a time, for moving it to the host
+        const table = String(body.table || ''), after = Math.max(0, +body.after || 0);
+        if (table === 'settings') return J({ table, rows: [{ name: me.name, settings: u.settings || null, engines: u.engines || null }], next: null, count: 1 });
+        const lim = { files: 25, chunks: 2 }[table] || 500;
+        const since = now() - 14 * DAY;   // jobs are kept 14 days
+        let q, c;
+        if (table === 'chunks') {   // uploads the host had not saved yet
+          q = db.prepare('SELECT c.rowid AS _r, c.* FROM chunks c JOIN files f ON f.id=c.file_id WHERE f.user_id=? AND c.rowid>? ORDER BY c.rowid LIMIT ?').bind(U, after, lim);
+          c = db.prepare('SELECT COUNT(*) AS n FROM chunks c JOIN files f ON f.id=c.file_id WHERE f.user_id=?').bind(U);
+        } else if (HOST_TABLES.includes(table)) {
+          const extra = table === 'jobs' ? ' AND created>?' : '';
+          q = db.prepare(`SELECT rowid AS _r, * FROM ${table} WHERE user_id=? AND rowid>?${extra} ORDER BY rowid LIMIT ?`).bind(...(extra ? [U, after, since, lim] : [U, after, lim]));
+          c = db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id=?${extra}`).bind(...(extra ? [U, since] : [U]));
+        } else return err('沒有這個資料表');
+        const rows = (await q.all()).results;
+        const count = after ? undefined : (await c.first())?.n || 0;
+        const next = rows.length === lim ? rows[rows.length - 1]._r : null;
+        return J({ table, rows: rows.map(({ _r, ...r }) => r), next, count });
+      }
+      if (path === 'host/activate') {
+        if (!u.hurl || !u.hkey) return err('主機電腦還沒連上雲端，請稍候再試');
+        await db.prepare('UPDATE users SET hmode=1 WHERE id=?').bind(U).run();
+        forgetUser(U); await bump(db, U);
+        return J({ ok: true, hmode: 1 });
+      }
+      return err('找不到這個 API', 404);
+    }
 
     // ---------- files ----------
     if (path.startsWith('file/') && m === 'GET') {
@@ -2150,7 +2334,7 @@ async function route({ request: req, env, params }) {
 
     // ---------- web app ----------
     if (path === 'logout' && m === 'POST') {
-      if (me.token) await db.prepare('DELETE FROM sessions WHERE token=?').bind(me.token).run();
+      if (me.token) { await db.prepare('DELETE FROM sessions WHERE token=?').bind(me.token).run(); sesCache.delete(me.token); }
       return J({ ok: true });
     }
     if (path === 'wait' && m === 'GET') {   // long-poll: returns as soon as anything changes (or after 25 s)
@@ -2833,6 +3017,7 @@ async function route({ request: req, env, params }) {
       const rows = (await db.prepare('SELECT token,kind,label,created,seen,ua,ip,place,info FROM sessions WHERE user_id=? ORDER BY IFNULL(seen,created) DESC').bind(U).all()).results;
       const h = env.isLocal ? null : await hostInfo(db, U);
       return J({
+        hmode: !!h?.hmode,   // 主機模式: the data is on the host computer
         devices: rows.filter(r => r.kind === 'web').map(r => ({ id: r.token.slice(0, 16), name: r.ua || '裝置', place: r.place || '', created: r.created, seen: r.seen || r.created, current: r.token === me.token })),
         computers: rows.filter(r => r.kind === 'runner').map(r => {
           const info = r.info ? JSON.parse(r.info) : {};
@@ -2848,12 +3033,13 @@ async function route({ request: req, env, params }) {
       const ids = (Array.isArray(body.ids) ? body.ids : []).map(x => clean(x, 16)).filter(x => /^[0-9a-f]{16}$/.test(x));
       if (!ids.length) return err('請選擇裝置');
       for (const id of ids) await db.prepare("DELETE FROM sessions WHERE user_id=? AND substr(token,1,16)=?").bind(U, id).run();
-      await bump(db, U);
+      forgetUser(U); await bump(db, U);
       return J({ ok: true, removed: ids.length });
     }
     if (path === 'host' && m === 'POST') {   // choose which computer runs the bots
       const r = await db.prepare("SELECT label FROM sessions WHERE user_id=? AND kind='runner' AND substr(token,1,16)=?").bind(U, clean(body.id, 16)).first();
       if (!r) return err('找不到這台電腦', 404);
+      if (!env.isLocal && (await hostOf(db, U)).hmode === 1) return err('資料存在主機電腦時不能換主機，請先在主機電腦改回存在雲端');
       await db.prepare('UPDATE users SET host=? WHERE id=?').bind(r.label || 'runner', U).run();
       return ok();
     }
@@ -2868,6 +3054,7 @@ async function route({ request: req, env, params }) {
         db.prepare('UPDATE users SET pw=? WHERE id=?').bind(await hashPw(pw), U),
         db.prepare("DELETE FROM sessions WHERE user_id=? AND kind='web' AND token<>?").bind(U, me.token || '')   // other devices sign in again
       ]);
+      forgetUser(U);
       return J({ ok: true });
     }
     if (path === 'me' && m === 'GET') return J({ id: U, name: me.name });

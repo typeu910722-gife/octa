@@ -9,7 +9,15 @@ CREATE TABLE IF NOT EXISTS users (
   engines TEXT,                  -- JSON: which AI CLIs the host computer found installed
   host TEXT,                     -- label of the runner session that does the work (主機)
   rev INTEGER NOT NULL DEFAULT 0,-- bumped on every change; clients long-poll it (/api/wait)
-  reset TEXT                     -- JSON {h: sha256(code), exp} password reset code
+  reset TEXT,                    -- JSON {h: sha256(code), exp} password reset code
+  hmode INTEGER,                 -- 1: 主機模式 — the account's data lives on the host computer; the cloud signs in and forwards
+  hurl TEXT,                     -- the host computer's tunnel address (https://…)
+  hkey TEXT,                     -- shared secret (64 hex) the cloud signs forwarded requests with
+  hseen INTEGER                  -- the host computer's last /api/host/register
+);
+CREATE TABLE IF NOT EXISTS host_hooks (   -- 主機模式: external-event keys of routines kept on the host computer
+  k TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,        -- sha256 of token
