@@ -648,7 +648,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
 @keyframes octz{0%{opacity:0;transform:translateY(3px)}40%{opacity:1}100%{opacity:0;transform:translateY(-5px)}}
 .oct[data-mood=done] .oct-svg,.oct[data-mood=hi] .oct-svg{animation:octjump .55s cubic-bezier(.3,1.5,.5,1) 2}
 @keyframes octjump{0%,100%{transform:translateY(0) scale(1)}40%{transform:translateY(-9px) scale(1.05,.96)}70%{transform:translateY(0) scale(.96,1.05)}}
-.tw{transform-box:fill-box;transform-origin:center;animation:octtw 1s ease-in-out infinite}.t2{animation-delay:-.5s}
+.oct .tw{transform-box:fill-box;transform-origin:center;animation:octtw 1s ease-in-out infinite}.oct .t2{animation-delay:-.5s}   /* only 小八's sparkles: .tw is also the table wrapper in replies */
 @keyframes octtw{0%,100%{transform:scale(.6) rotate(0);opacity:.5}50%{transform:scale(1.15) rotate(20deg);opacity:1}}
 .oct[data-mood=ask] .fx-ask{animation:octask 1.2s ease-in-out infinite;transform-box:fill-box;transform-origin:center bottom}
 @keyframes octask{0%,100%{transform:translateY(0)}50%{transform:translateY(-2.5px)}}
@@ -762,6 +762,208 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .opts button{display:flex;align-items:center;gap:10px;text-align:left;border:0;background:none;color:var(--ink);font:inherit;font-size:14px;padding:9px 10px;border-radius:12px;cursor:pointer}
   .opts button:hover{background:var(--panel2)}
   .opts .optk{flex:none;width:24px;height:24px;border-radius:8px;border:1px solid var(--line);display:grid;place-items:center;font-size:12px;color:var(--gold2)}
+/* ---------- phone (≤760px): its own plain layout, like Grok — list → full-screen chat → details page. Desktop never sees any of this. ---------- */
+.mhead,.item .tm,.av .gst{display:none}
+@media (max-width:760px){
+  :root{--pb:var(--bg);--pg:color-mix(in srgb,var(--ink) 7%,var(--pb));--pg2:color-mix(in srgb,var(--ink) 12%,var(--pb));--pl:color-mix(in srgb,var(--ink) 10%,transparent)}
+  html[data-theme="light"]{--pb:var(--panel2)}
+  body,html[data-theme="light"] body{background:var(--pb)}
+  /* list */
+  .rail{padding:0;background:var(--pb)}
+  .rail>header,.rtools{display:none}
+  .mhead{display:flex;align-items:center;gap:6px;flex:none;padding:8px max(10px,env(safe-area-inset-right,0px)) 4px max(12px,env(safe-area-inset-left,0px))}
+  .mhead h1{flex:1;min-width:0;margin:0 0 0 6px;font-family:var(--sans);font-size:calc(22px * var(--fz));font-weight:700;letter-spacing:.01em}
+  .mme{position:relative;flex:none;width:44px;height:44px;padding:0;border:0;background:none;display:grid;place-items:center}
+  .mme>span{width:34px;height:34px;border-radius:50%;background:var(--pg);color:var(--ink);display:grid;place-items:center;font-weight:600;font-size:15px}
+  .mme .mon{position:absolute;right:4px;bottom:5px;width:11px;height:11px;border-radius:50%;background:var(--faint);border:2px solid var(--pb)}
+  .mme .mon.on{background:var(--done)}
+  .mhead .ico{width:44px;height:44px;border:0;background:none;color:var(--ink)}
+  .mhead .ico:active{background:var(--pg)}
+  .search{padding:2px 16px 8px}
+  .search input{background:var(--pg);border:0;border-radius:12px;padding:10px 14px;font-size:16px}
+  .upd{margin:4px 16px 8px;border:0;background:var(--pg)}
+  .list{padding:0 0 calc(16px + env(safe-area-inset-bottom,0px))}
+  .sec{font-family:var(--sans);letter-spacing:.02em;color:var(--mute);font-weight:500;padding:18px 18px 4px}
+  :root .sec{font-size:calc(13px * var(--fz))}
+  .sec .more{width:44px;height:30px;margin-right:-10px;opacity:.55}
+  .fold{margin:0;padding:0;border-radius:0}
+  .iw>.more{display:none}
+  .iw .item .need,.iw .item .ub{margin-right:0}
+  .item{display:grid;grid-template-columns:48px minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:12px;row-gap:3px;align-items:center;padding:9px 16px;padding-left:max(16px,env(safe-area-inset-left,0px));border-radius:0;min-height:68px}
+  .item:hover,.item.on{background:none;box-shadow:none}
+  .item:active{background:var(--pg)}
+  .item>.av{grid-row:1/3;grid-column:1}
+  .item>.t{grid-row:1/3;grid-column:2;display:grid;gap:2px}
+  .item>.tm{display:block;grid-column:3;grid-row:1;align-self:end;justify-self:end;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .item>.ub,.item>.need{grid-column:3;grid-row:2;justify-self:end;align-self:start}
+  .item>.tm:empty~.ub,.item>.tm:empty~.need{grid-row:1/3;align-self:center}
+  :root .rail .item b{font-size:calc(16px * var(--fz));font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  :root .rail .item small{font-size:calc(14px * var(--fz));color:var(--mute)}
+  .item:has(.ub) small{color:var(--ink)}
+  .item:hover .av{transform:none}
+  .item .av{width:48px;height:48px;font-size:19px;border:0;background:var(--pg);color:var(--ink)}
+  .item .av .emo{font-size:26px}
+  .item .av .dot{right:0;bottom:0;width:13px;height:13px;border-color:var(--pb);background:var(--done)}
+  .item .av.grp{border-radius:50%;font-size:0;overflow:visible}
+  .item .av.grp .gst{display:block;position:absolute;inset:0}
+  .gsa{position:absolute;width:32px;height:32px;border-radius:50%;background:var(--pg2);border:2px solid var(--pb);display:grid;place-items:center;font-size:14px;font-family:var(--sans);font-weight:600;color:var(--ink)}
+  .item .av .gsa .emo{font-size:17px;animation:none}
+  .gsa:nth-child(1){left:-1px;top:-1px}.gsa:nth-child(2){right:-1px;bottom:-1px}
+  .gsa:only-child{left:8px;top:8px}
+  .ub{min-width:10px;width:10px;height:10px;padding:0;font-size:0;background:var(--in);border-radius:50%}
+  .need{font-size:11px;padding:1px 7px;line-height:1.5}
+  .empty{padding:8px 18px}
+  .item[data-code] .av{font-family:var(--sans)}
+  /* chat: back, face and name; the rest is behind ⋯ */
+  .pane{background:var(--pb)}
+  .ph{gap:4px;padding:4px max(6px,env(safe-area-inset-right,0px)) 4px max(4px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--pl);min-height:56px}
+  .ph #browser,.ph #psub{display:none}
+  .back{min-width:44px;height:44px;padding:0 0 4px;font-size:34px;line-height:1;font-weight:300;color:var(--ink);text-align:center}
+  #pav{width:34px;height:34px;font-size:15px;border:0;background:var(--pg);color:var(--ink);cursor:pointer}
+  #pav .emo{font-size:20px}
+  #pav.grp{border-radius:50%;font-family:var(--sans)}
+  .ph .t{cursor:pointer;padding:6px 4px;margin-left:4px}
+  :root .ph b{font-family:var(--sans);font-weight:600;font-size:calc(16px * var(--fz))}
+  #more2{width:44px;height:44px;padding:0;border:0;background:none;color:var(--ink);font-size:20px;display:grid;place-items:center}
+  #more2 .hi{font-size:22px}
+  .task,.note,.mention,.quick{display:none!important}
+  .offb{margin:8px 12px 0;border:0;background:color-mix(in srgb,var(--prio) 10%,var(--pb));border-radius:12px}
+  .msgs{gap:2px;padding:12px 12px 10px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .msgs>*{margin-top:12px}
+  .msgs>.m.cont{margin-top:0}
+  .msgs>.day+.m,.msgs>.day{margin-top:16px}
+  .m{gap:8px;max-width:100%;align-items:flex-end;animation:none}
+  .m .bx{max-width:min(82%,560px);display:flex;flex-direction:column;align-items:flex-start}
+  .m:not(.me) .bx{max-width:min(86%,560px)}
+  .m.me .bx{align-items:flex-end}
+  .m:not(.me) .av.sm{width:28px;height:28px;font-size:12px;border:0;background:var(--pg);margin-bottom:20px}
+  .m:not(.me):not(.tail) .av.sm{visibility:hidden}
+  .m .who{font-family:var(--sans);font-size:12px;color:var(--mute);margin:0 0 3px 12px}
+  .m.cont .who{display:none}
+  .bub{border:0;border-radius:20px;padding:9px 14px;line-height:1.6}
+  .m:not(.me) .bub{background:var(--pg);color:var(--ink);border-radius:20px}
+  .m.me .bub{background:var(--ink);color:var(--pb);border-radius:22px}
+  .m.me .bub .at{color:inherit;opacity:.75}
+  .m.cont:not(.me) .bub{border-top-left-radius:8px}
+  .m:not(.me):not(.tail) .bub{border-bottom-left-radius:8px}
+  .m.me.cont .bub{border-top-right-radius:8px}
+  .m.me:not(.tail) .bub{border-bottom-right-radius:8px}
+  .meta{margin:3px 12px 0;min-height:0;font-size:11px}
+  .m:not(.tail) .meta{display:none}
+  .cp{display:none}
+  .bub.md code,.cb pre{background:var(--pb)}
+  .bub.md th{background:var(--pg2)}
+  .bub.md th,.bub.md td{border-color:var(--pl)}
+  .qref{border-left-color:var(--pg2);padding:2px 10px;margin:0 0 4px}
+  .qref b{color:var(--mute)}
+  .day{background:none;font-family:var(--sans);letter-spacing:.04em;font-size:12px;padding:0}
+  .sys{font-family:var(--sans);letter-spacing:0;text-align:center;max-width:90%;line-height:1.5}
+  .work{margin-left:36px;font-size:13px}
+  .work button{min-height:32px;padding:4px 12px}
+  .bstage summary{padding:6px 0}
+  .bsi{background:var(--pg);border:0}
+  .more3{padding:8px 12px}
+  .appr{gap:8px;margin-top:8px}
+  .appr .btn{background:var(--ink);color:var(--pb);border-radius:99px;padding:10px 18px;font-size:14px;min-height:44px}
+  .appr .no{border-radius:99px;padding:10px 16px;font-size:14px;min-height:44px;border-color:var(--pl);color:var(--ink);background:var(--pb)}
+  .appr .hint2{margin-top:2px}
+  .opts{background:var(--pb);border:1px solid var(--pl);max-width:100%;align-self:stretch}
+  .opts button{min-height:44px}
+  .opts .optk{border-color:var(--pl);color:var(--ink)}
+  .thumb{max-width:min(240px,100%)}
+  .older{margin:4px auto}
+  .jump{bottom:calc(var(--fh,64px) + 12px);border:0;background:var(--pb);color:var(--ink);box-shadow:0 4px 16px var(--shadow);padding:9px 16px;font-size:13px}
+  /* composer: one rounded box at the bottom; reply, files and the live browser sit just above it */
+  form.in{margin:6px max(10px,env(safe-area-inset-right,0px)) 8px max(10px,env(safe-area-inset-left,0px));border:1px solid var(--pl);background:var(--pb);border-radius:26px;padding:4px;gap:2px;box-shadow:0 1px 6px color-mix(in srgb,var(--shadow) 40%,transparent)}
+  form.in:focus-within{border-color:var(--pg2)}
+  form.in textarea{font-size:16px!important;padding:10px 6px!important;height:44px;min-height:44px!important}
+  form.in .clip{width:44px;height:44px!important;color:var(--ink);font-size:22px}
+  form.in .clip:active{background:var(--pg)}
+  form.in .send{width:40px;height:40px!important;margin:2px;background:var(--ink);color:var(--pb)}
+  form.in.empty .send{opacity:1;background:var(--pg2);color:var(--faint)}
+  #mic{font-size:18px}
+  .replybar{margin:6px max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));border:0;border-radius:14px;background:var(--pg);padding:6px 4px 6px 14px}
+  .replybar b{color:var(--mute)}
+  .replybar button{width:36px;height:36px;font-size:20px;border-radius:50%}
+  .att{padding:6px max(12px,env(safe-area-inset-left,0px)) 0}
+  .followbar{margin:6px 12px 0;background:var(--pg)}
+  .stage{margin:6px 12px 0;border:0;background:var(--pg);border-radius:18px;padding:10px}
+  .stage img{max-height:34vh;background:var(--pb)}
+  .stage .stact button{min-height:40px;padding:8px 16px}
+  .stage .stact .btn{background:var(--ink);color:var(--pb)}
+  .stage .stact button:not(.btn){background:var(--pb);color:var(--ink)}
+  .atpop{left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:70px;min-width:0;max-height:min(300px,45vh);border:0;background:var(--pb);border-radius:16px;box-shadow:0 8px 28px var(--shadow)}
+  .atpop button{min-height:44px;font-size:15px}
+  .atpop button.on,.atpop button:hover{background:var(--pg)}
+  .oct{left:auto;right:10px;bottom:calc(var(--fh,64px) + 8px);flex-direction:row-reverse}
+  .oct-hit{width:40px;height:40px}
+  .oct-say{margin:0 2px 26px 0;border-radius:14px 14px 4px 14px;background:var(--pb);border-color:var(--pl)}
+  .oct-menu{left:auto;right:0}
+  .askp .askt{background:var(--pb);border-color:var(--pl)}
+  .askc{background:var(--pb);border-color:var(--pl)}
+  /* menus: plain action sheets */
+  .menu.asheet{background:var(--pb);border:0;box-shadow:0 -6px 30px var(--shadow);padding:6px}
+  .menu.asheet button{min-height:50px;padding:12px 14px}
+  .menu.asheet button:hover,.menu.asheet button:active{background:var(--pg)}
+  .menu.asheet .ck{width:26px;text-align:center}
+  .menu.asheet .ck .av.sm{width:26px;height:26px;border:0;background:var(--pg);font-size:12px}
+  .menu.asheet hr{border-color:var(--pl)}
+  .menu .mcancel{background:var(--pg);color:var(--ink)}
+  /* sheets: bottom drawers with ✕, and full pages with ‹ for settings, task settings and details */
+  .veil .sheet{background:var(--pb);border:0;padding-top:12px}
+  .veil .sheet::before{background:var(--pg2);opacity:1}
+  .sheet .shx{position:absolute;top:8px;right:8px;width:44px;height:44px;border:0;background:none;color:var(--mute);font-size:18px;z-index:3}
+  .veil .sheet:has(>.shx){position:relative}
+  .veil .sheet:has(>.shx)>h2{padding-right:40px}
+  .sheet .field input,.sheet .field textarea,.sheet select,.sheet .sbody .field input{background:var(--pg);border-color:transparent;font-size:16px}
+  .acts{background:var(--pb)}
+  .veil:has(>.sheet.page){padding:0;background:var(--pb);animation:none}
+  .veil .sheet.page{grid-auto-rows:max-content;width:100%;height:100%;max-height:none;border-radius:0;padding:0 max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));gap:14px;align-content:start;animation:pagein .24s cubic-bezier(.2,.8,.2,1);box-shadow:none}
+  html.kb .veil .sheet.page{max-height:none}
+  .veil .sheet.page::before{display:none}
+  .sheet.page>.shd{position:sticky;top:0;z-index:4;background:var(--pb);margin:0 -16px;padding:calc(6px + env(safe-area-inset-top,0px)) 16px 6px 4px;min-height:56px;border-bottom:1px solid var(--pl);gap:2px}
+  .sheet.page>.shd h2,:root .sheet.page>.shd h2{font-family:var(--sans);font-weight:600;font-size:calc(17px * var(--fz));flex:1;min-width:0}
+  .sheet.page .back2{width:44px;height:44px;padding:0 0 4px;font-size:34px;font-weight:300;color:var(--ink);flex:none}
+  .sheet.page .acts:has(>#sx:only-child){display:none}
+  .sheet.page .acts{margin:0 -16px;padding:10px 16px calc(4px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--pl)}
+  .smenu{gap:0;background:var(--pg);border-radius:16px;overflow:hidden}
+  .smenu button{border:0;border-radius:0;background:none;padding:12px 14px;min-height:56px;box-shadow:inset 0 -1px 0 var(--pl)}
+  .smenu button:last-child{box-shadow:none}
+  .smenu button:hover,.smenu button:active{background:var(--pg2);border:0}
+  .theme-pick button,.look .toggle,.seg button{background:var(--pg);border-color:transparent}
+  .theme-pick button.on,.seg button.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+  .sample{background:var(--pb);border-color:var(--pl)}
+  .sample .bub.me2{background:var(--ink);color:var(--pb)}
+  .aic,.dev,.bc,.tplc,.pick,.rrow,.gbbox{background:var(--pg);border-color:transparent}
+  /* details page */
+  .dhero{display:grid;justify-items:center;gap:6px;text-align:center;padding:10px 0 2px}
+  .dhero .dav{width:76px;height:76px;font-size:30px;border:0;background:var(--pg);color:var(--ink)}
+  .dhero .dav .emo{font-size:42px}
+  .dhero .dav.grp{border-radius:50%;font-family:var(--sans)}
+  .dhero b{font-size:calc(20px * var(--fz));font-weight:700}
+  .dhero small{color:var(--mute);font-size:13px;line-height:1.6}
+  .dtask{background:var(--pg);border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.7;color:var(--ink);white-space:pre-wrap;max-height:40vh;overflow:auto}
+  .dtask em{display:block;font-style:normal;font-size:12px;color:var(--mute);margin-bottom:2px}
+  .dsec{font-size:13px;color:var(--mute);margin:4px 4px -6px}
+  .dmem{display:flex;gap:8px;overflow-x:auto;padding:2px 0}
+  .dm{flex:none;display:flex;align-items:center;gap:8px;border:0;background:var(--pg);border-radius:99px;padding:6px 14px 6px 6px;min-height:44px;font-size:14px}
+  .dm .av.sm{border:0;background:var(--pb)}
+  .dlist{background:var(--pg);border-radius:16px;overflow:hidden;display:grid}
+  .drow{display:flex;align-items:center;gap:12px;border:0;background:none;text-align:left;padding:10px 14px;min-height:54px;box-shadow:inset 0 -1px 0 var(--pl);color:var(--ink)}
+  .drow:last-child{box-shadow:none}
+  .drow:active{background:var(--pg2)}
+  .drow .di{width:24px;text-align:center;font-size:17px;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",var(--sans)}
+  .drow .dt{flex:1;min-width:0;display:grid;gap:1px}
+  .drow b{font-weight:500;font-size:15px}
+  .drow small{color:var(--mute);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .drow.warn,.drow.danger{color:var(--prio)}
+  .toast{background:var(--ink);color:var(--pb);border:0;bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+}
+@keyframes pagein{from{transform:translateX(28px);opacity:.5}}
+@media (max-width:760px) and (hover:none){
+  .item{padding-top:10px;padding-bottom:10px}
+  .ghost{padding:10px 14px}
+}
 </style>
 </head>
 <body>
@@ -844,6 +1046,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
 
 <div class="app" id="app" hidden>
   <aside class="rail">
+    <div class="mhead" id="mhead"><button type="button" class="mme" id="mMe" aria-label="設定"><span id="mMeAv"></span><i class="mon" id="mOn"></i></button><h1>機器人</h1><button type="button" class="ico" id="mQ" aria-label="搜尋"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button><button type="button" class="ico" id="mPlus" aria-label="新增"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
     <header><div class="hl"><img src="/icon.png?v=octopus2" alt="" class="logo"><div><div class="brand">OCTA｜奧克塔</div><h1>機器人</h1></div></div>
       <div class="hr"><span class="pill p-off" id="online">電腦離線</span><button class="gear" id="settings">設定</button></div></header>
     <div class="upd" id="upd" hidden></div>
@@ -935,7 +1138,7 @@ function applyTheme(t,persist){
   if(light)document.documentElement.dataset.theme='light';else delete document.documentElement.dataset.theme;
   if(persist!==false){try{localStorage.setItem('octa_theme',light?'light':'dark')}catch(e){}}
   const meta=document.querySelector('meta[name="theme-color"]');
-  if(meta)meta.setAttribute('content',light?'#FBF6E9':'#12110e');
+  if(meta)meta.setAttribute('content',light?(matchMedia('(max-width:760px)').matches?'#FFFDF6':'#FBF6E9'):'#12110e');   // the phone page is plain paper
   document.querySelectorAll('[data-set-theme]').forEach(x=>x.classList.toggle('on',x.dataset.setTheme===(light?'light':'dark')));
 }
 /* text size for the whole interface (kept on this device, like the theme). 80–200, and 200 is twice the standard size. */
@@ -1078,6 +1281,13 @@ function preview(id){const ms=convMsgs(id).filter(x=>x.by!=='sys'&&!x.tmp),l=las
   if(!m)return conv(id).task;
   const plain=m.by==='me'?m.text:m.text.replace(/```[\s\S]*?```/g,' ').replace(/^#{1,4}\s+|^\s*[-*•>]\s+|\*\*|__|`|~~/gm,'').replace(/\|/g,' ').replace(/\s+/g,' ').trim();
   return (m.by==='me'?I18N.t('你：'):isG(id)?nameOf(m.by)+'：':'')+plain}
+/* phone list: a group shows its first members' faces, and every row the time of its last message */
+const gStack=g=>`<span class="gst" aria-hidden="true">${g.members.filter(bot).slice(0,2).map(id=>`<span class="gsa" data-u>${avOf(id)}</span>`).join('')}</span>`;
+function listTime(id){const l=lastOf(id),ms=convMsgs(id).filter(m=>!m.tmp),m=ms[ms.length-1],ts=Math.max(l?.ts||0,m?.ts||0);if(!ts)return '';
+  const d=new Date(ts),n=new Date(),y=new Date(n);y.setDate(n.getDate()-1);
+  if(d.toDateString()===n.toDateString())return hm(ts);if(d.toDateString()===y.toDateString())return I18N.t('昨天');
+  if(n-d<6*864e5)return d.toLocaleDateString(I18N.lang,{weekday:'short'});
+  return d.toLocaleDateString(I18N.lang,{month:'numeric',day:'numeric',...(d.getFullYear()!==n.getFullYear()?{year:'2-digit'}:{})})}
 /* notifications on this device: new bot replies you're not looking at */
 const NOTI_KEY='octa_notify';
 const notiOn=()=>{try{const v=localStorage.getItem(NOTI_KEY);return v===null?!!window.octaDesktop:v==='1'}catch(e){return false}};
@@ -1167,14 +1377,15 @@ function render(scroll){
   queueMicrotask(renderAsks);
   $('online').className='pill '+(S.runnerOnline?'p-ok':'p-off');$('online').textContent=CFG.local?(S.runnerOnline?'電腦在線':'電腦離線'):S.runnerOnline?'主機在線':'主機離線';
   $('online').title=I18N.t(S.runnerOnline?'機器人在主機電腦上工作中':'主機電腦沒開或沒連上，訊息會先排隊');
+  $('mOn').classList.toggle('on',!!S.runnerOnline);$('mOn').title=$('online').textContent;setHTML($('mMeAv'),S.me&&!CFG.local?`<span data-u>${init(S.nick||S.me)}</span>`:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>');
   let h='';
   if(!S.loaded)h+=`<div class="empty fade">載入中…</div>`;
   else if(!S.bots.length)h+=`<div class="empty">還沒有機器人。按「＋ 機器人」，取個名字，然後直接跟它說要做什麼。</div>`;
   const q=($('q')?.value||'').trim().toLowerCase(),hit=x=>!q||x.name.toLowerCase().includes(q)||(x.task||'').toLowerCase().includes(q);
   const pins=S.pins||[],pinned=id=>pins.includes(id);
   const tag=id=>needsYou(id)?'<i class="need">待你處理</i>':cur!==id&&unread(id)?`<i class="ub">${unread(id)}</i>`:'';
-  const gItem=g=>`<div class="iw" draggable="true" data-drag="${g.id}" data-dragname="${esc(g.name)}" data-dropbot="${g.id}"><button class="item ${cur===g.id?'on':''}" data-id="${g.id}"><span class="av grp">${g.members.length}${busyIn(g.id).length?'<i class="dot"></i>':''}</span><span class="t" data-u><b>${esc(g.name)}</b><small>${esc(preview(g.id))}</small></span>${tag(g.id)}</button><button class="more" data-more="${g.id}" aria-label="更多">⋯</button></div>`;
-  const bItem=b=>`<div class="iw" draggable="true" data-drag="${b.id}" data-dragname="${esc(b.name)}" data-dropbot="${b.id}"><button class="item ${cur===b.id?'on':''}" data-id="${b.id}"><span class="av" data-u>${avOf(b.id)}${S.busy.some(x=>x.bot_id===b.id&&x.status==='running')?'<i class="dot"></i>':''}</span><span class="t" data-u><b>${esc(b.name)}</b><small>${esc(preview(b.id))}</small></span>${tag(b.id)}</button><button class="more" data-more="${b.id}" aria-label="更多">⋯</button></div>`;
+  const gItem=g=>`<div class="iw" draggable="true" data-drag="${g.id}" data-dragname="${esc(g.name)}" data-dropbot="${g.id}"><button class="item ${cur===g.id?'on':''}" data-id="${g.id}"><span class="av grp">${g.members.length}${gStack(g)}${busyIn(g.id).length?'<i class="dot"></i>':''}</span><span class="t" data-u><b>${esc(g.name)}</b><small>${esc(preview(g.id))}</small></span><span class="tm">${listTime(g.id)}</span>${tag(g.id)}</button><button class="more" data-more="${g.id}" aria-label="更多">⋯</button></div>`;
+  const bItem=b=>`<div class="iw" draggable="true" data-drag="${b.id}" data-dragname="${esc(b.name)}" data-dropbot="${b.id}"><button class="item ${cur===b.id?'on':''}" data-id="${b.id}"><span class="av" data-u>${avOf(b.id)}${S.busy.some(x=>x.bot_id===b.id&&x.status==='running')?'<i class="dot"></i>':''}</span><span class="t" data-u><b>${esc(b.name)}</b><small>${esc(preview(b.id))}</small></span><span class="tm">${listTime(b.id)}</span>${tag(b.id)}</button><button class="more" data-more="${b.id}" aria-label="更多">⋯</button></div>`;
   const sect=(f,title)=>{const gs=S.groups.filter(g=>(g.folder||null)===f&&hit(g)&&!pinned(g.id)),bs=S.bots.filter(b=>(b.folder||null)===f&&hit(b)&&!pinned(b.id));
     if((!f||q)&&!gs.length&&!bs.length)return '';
     return `<div class="fold" data-drop="${f||''}"><div class="sec"><span${f?' data-u':''}>${esc(title)}</span>${f?`<button class="more" data-folder="${f}" aria-label="分區選項">⋯</button>`:''}</div>`+
@@ -1217,14 +1428,16 @@ function render(scroll){
   const mc=MSG[cur];
   let mh=!mc?.loaded?'<div class="sys fade">載入中…</div>':mc.more?'<button type="button" class="ghost older" id="older">載入更早的訊息</button>':'';
   let prevDay='';
-  const row=m=>{
+  const row=(m,rk='')=>{
     if(m.by==='sys')return `<div class="sys">${esc(m.text)}<span class="ts">${hm(m.ts)}</span></div>`;
-    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
+    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}${rk}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
-    return `<div class="m" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(optText(m))}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
+    return `<div class="m${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(optText(m))}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
   // a date line whenever the day changes, like a phone's message app
   const bs=backFor(cur,mc);   // 幕後: bot-to-bot requests, folded where they happened
-  mh+=convMsgs(cur).map(m=>{if(bs.hide(m))return '';const pre=bs.before(m);const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day">${esc(dayLabel(m.ts))}</div>`}return pre+sep+row(m)}).join('')+bs.rest();
+  // runs: messages from the same sender a few minutes apart (the phone shows the name once, the time and face at the end)
+  const shown=convMsgs(cur).filter(m=>!bs.hide(m)),same=(a,b)=>!!a&&!!b&&a.by!=='sys'&&a.by===b.by&&Math.abs((b.ts||0)-(a.ts||0))<5*60000&&new Date(a.ts).toDateString()===new Date(b.ts).toDateString();
+  mh+=shown.map((m,i)=>{const pre=bs.before(m);const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day">${esc(dayLabel(m.ts))}</div>`}return pre+sep+row(m,(same(shown[i-1],m)?' cont':'')+(same(m,shown[i+1])?'':' tail'))}).join('')+bs.rest();
   const bz=busyIn(cur);
   if(bz.length){const run=bz.find(b=>b.status==='running');
     mh+=`<div class="work"><span class="fade">${run&&run.kind==='chat'&&run.started?`<span class="el" data-since="${run.started}">${elapsed(run.started)}</span> `:''}${run?(run.kind==='open'?esc(nameOf(run.bot_id))+' 的瀏覽器正在顯示…':esc(nameOf(run.bot_id))+' '+(run.kind==='code'?'程式任務':run.progress&&/搜尋/.test(run.progress)?'搜尋':run.progress&&/測試/.test(run.progress)?'測試':run.progress&&/修復|修改|寫入/.test(run.progress)?'修改':'處理')+'中…'+(run.progress?`<span class="prog" data-u>${esc(run.progress)}</span>`:'')+(run.eng&&run.eng.split('|')[0]!==(c.engine||'claude')?` · 備援 ${esc((ENG[run.eng.split('|')[0]]||{n:run.eng.split('|')[0]}).n)}`:'')):S.runnerOnline?'排隊中…':'等待主機電腦上線…'}</span><button id="stop">停止</button></div>`}
@@ -1409,16 +1622,18 @@ function navPush(k){if(!phoneUI())return;if(navSkip>0){navQueue.push(k);return}N
 function navPop(k){const q=navQueue.lastIndexOf(k);if(q>=0){navQueue.splice(q,1);return}
   if(NAV.length&&NAV[NAV.length-1]===k){NAV.pop();navSkip++;try{history.back()}catch(e){navSkip--}}}
 window.addEventListener('popstate',()=>{if(navSkip>0){navSkip--;if(!navSkip)while(navQueue.length)navPush(navQueue.shift());return}const k=NAV.pop();if(!k)return;
-  if(k==='menu')closeMenu(true);else if(k==='sheet'){if(!$('veil').hidden)closeSheet()}else if(k==='chat'){saveDraft();$('app').classList.remove('chat');focusBrowser()}});
+  if(k==='menu')closeMenu(true);else if(k==='sheet'){if(!$('veil').hidden){const bk=sheetBack();if(bk){bk();if(!$('veil').hidden)navPush('sheet')}else closeSheet()}}else if(k==='chat'){saveDraft();$('app').classList.remove('chat');focusBrowser()}});
 new MutationObserver(()=>{if(!$('veil').hidden){if(NAV[NAV.length-1]!=='sheet')navPush('sheet')}else navPop('sheet')}).observe($('veil'),{attributes:true,attributeFilter:['hidden']});
 $('back').onclick=()=>{saveDraft();$('app').classList.remove('chat');navPop('chat');focusBrowser()};
 // swipe in from the left edge to go back to the list
 (function(){let sx=0,sy=0,on=false;
-document.addEventListener('touchstart',e=>{const t=e.touches[0];on=phoneUI()&&t.clientX<28&&$('app').classList.contains('chat')&&$('veil').hidden&&!document.querySelector('.menu');sx=t.clientX;sy=t.clientY},{passive:true});
-document.addEventListener('touchend',e=>{if(!on)return;on=false;const t=e.changedTouches[0];if(t.clientX-sx>70&&Math.abs(t.clientY-sy)<60)$('back').click()},{passive:true})})();
+document.addEventListener('touchstart',e=>{const t=e.touches[0];on=phoneUI()&&t.clientX<28&&$('app').classList.contains('chat')&&$('veil').hidden&&!document.querySelector('.menu');
+  if(!on&&phoneUI()&&t.clientX<28&&!document.querySelector('.menu')&&$('veil').querySelector('.sheet.page'))on='page';   // a full page slides back the same way
+  sx=t.clientX;sy=t.clientY},{passive:true});
+document.addEventListener('touchend',e=>{if(!on)return;const pg=on==='page';on=false;const t=e.changedTouches[0];if(t.clientX-sx>70&&Math.abs(t.clientY-sy)<60){if(pg){const bk=sheetBack();bk?bk():closeSheet()}else $('back').click()}},{passive:true})})();
 // pull a sheet down to close it
 (function(){let y0=0,sh=null,dy=0;
-$('veil').addEventListener('touchstart',e=>{sh=null;if(!phoneUI())return;const s=e.target.closest('.sheet');if(!s||s.scrollTop>0||e.target.closest('textarea,select'))return;sh=s;y0=e.touches[0].clientY;dy=0},{passive:true});
+$('veil').addEventListener('touchstart',e=>{sh=null;if(!phoneUI())return;const s=e.target.closest('.sheet');if(!s||s.classList.contains('page')||s.scrollTop>0||e.target.closest('textarea,select'))return;sh=s;y0=e.touches[0].clientY;dy=0},{passive:true});
 $('veil').addEventListener('touchmove',e=>{if(!sh)return;dy=e.touches[0].clientY-y0;if(dy<=0||sh.scrollTop>0){sh.style.transform='';return}e.preventDefault();sh.style.transition='none';sh.style.transform=`translateY(${dy}px)`},{passive:false});
 $('veil').addEventListener('touchend',()=>{if(!sh)return;const s=sh;sh=null;s.style.transition='';if(dy>110)closeSheet();else s.style.transform=''})})();
 $('railToggle').onclick=()=>{
@@ -1467,6 +1682,7 @@ function atList(){const i=$('msg'),c=conv(cur);if(!c)return null;const before=i.
   if(!isG(cur))return null;const m=before.match(/@([^\s@]*)$/);if(!m)return null;
   const q=m[1].toLowerCase(),list=c.members.map(bot).filter(b=>b&&b.name.toLowerCase().includes(q));return list.length?{q:m[1],list}:null}
 function atRender(){const a=atList(),p=$('atpop');if(!a){p.hidden=true;return}atSel=Math.min(atSel,a.list.length-1);
+  p.style.bottom=phoneUI()?Math.max(8,Math.round($('pane').getBoundingClientRect().bottom-$('f').getBoundingClientRect().top+6))+'px':'';   // right above the box, whatever is attached to it
   if(a.slash){p.innerHTML=a.list.map((x,i)=>`<button type="button" class="${i===atSel?'on':''}" data-slash="${i}"><b data-u>${esc(x.t)}</b><small data-u>${esc(x.d)}</small></button>`).join('');p.hidden=false;return}
   p.innerHTML=a.list.map((b,i)=>`<button type="button" class="${i===atSel?'on':''}" data-pick="${esc(b.name)}"><span class="av sm" data-u>${avOf(b.id)}</span><span data-u>${esc(b.name)}</span></button>`).join('');p.hidden=false}
 function atPick(name){const i=$('msg'),pos=i.selectionStart,before=i.value.slice(0,pos).replace(/@([^\s@]*)$/,'@'+name+' ');i.value=before+i.value.slice(pos);i.selectionStart=i.selectionEnd=before.length;$('atpop').hidden=true;grow();i.focus()}
@@ -1500,7 +1716,7 @@ function renderAtt(){$('att').innerHTML=pending.map((f,i)=>f.url
   $('f').classList.toggle('empty',!$('msg').value.trim()&&!pending.length)}
 const dropUrl=f=>{if(f&&f.url){try{URL.revokeObjectURL(f.url)}catch(e){}}};
 $('att').onclick=e=>{const b=e.target.closest('[data-rm]');if(b){dropUrl(pending[+b.dataset.rm]);pending.splice(+b.dataset.rm,1);renderAtt()}};
-$('clip').onclick=()=>$('fileIn').click();
+$('clip').onclick=e=>{if(phoneUI()){e.stopPropagation();plusMenu();return}$('fileIn').click()};
 /* voice input (browsers that support speech recognition, e.g. Chrome on phones and computers) */
 (()=>{const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR||window.octaDesktop)return;$('mic').hidden=false;let rec=null;
   $('mic').onclick=()=>{if(rec){rec.stop();return}rec=new SR();rec.lang=I18N.lang==='en'?'en-US':I18N.lang==='ja'?'ja-JP':I18N.lang;rec.interimResults=true;rec.continuous=false;
@@ -1595,7 +1811,7 @@ const TEMPLATES=[{k:'assistant',n:'一般助理',d:'一個機器人，什麼都�
 const tplHtml=()=>`<div class="tpls">${TEMPLATES.map(t=>`<button type="button" class="tplc" data-t="${t.k}"><b>${t.n}</b><small>${t.d}</small></button>`).join('')}</div>`;
 function bindTpl(root,after){root.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{b.disabled=true;
   try{await api('template','POST',{name:b.dataset.t,lang:I18N.lang});b.querySelector('small').textContent='已加入 ✓';await refresh();after&&after()}catch(e){b.disabled=false}})}
-function closeSheet(){if(typeof stopCodePoll==='function')stopCodePoll();$('veil').hidden=true;$('veil').innerHTML='';rtEdit=null}
+function closeSheet(){if(typeof stopCodePoll==='function')stopCodePoll();$('veil').hidden=true;$('veil').innerHTML='';rtEdit=null;pageBack=null}
 $('veil').onclick=e=>{if(e.target.id==='veil')closeSheet()};
 function sheet(kind,edit){
   const g=kind==='g',c=edit?conv(cur):null;
@@ -1992,7 +2208,62 @@ function alwaysSheet(m){const b=bot(m.by);if(!b)return;const act=m.text.match(AP
 function clearConv(id){const c=conv(id);if(!c)return;
   confirmSheet('清空對話紀錄',`<p>清空「<b data-u>${esc(c.name)}</b>」的所有訊息？機器人之後不會再看到這些舊對話。機器人本身、任務設定和例行任務都會保留。</p>`,'清空',true,
     async()=>{await api('clear','POST',{conv:id});delete MSG[id];toast(I18N.t('已清空'));await refresh();if(cur===id){await loadMsgs(id,'first');render(true)}})}
-$('more2').onclick=e=>{e.stopPropagation();if(!cur)return;itemMenu($('more2'),cur)};
+$('more2').onclick=e=>{e.stopPropagation();if(!cur)return;if(phoneUI()){detailSheet();return}itemMenu($('more2'),cur)};
+/* ---------- phone: the chat header is just back, face and name; everything else lives on this page ---------- */
+var pageBack=null;   // a page opened from another page goes back to it (button, Android back, edge swipe)
+function fromDetail(fn){return(...a)=>{const r=fn(...a);pageBack=detailSheet;return r}}
+function detailSheet(){const c=conv(cur);if(!c)return;const g=isG(cur),id=cur;pageBack=null;
+  const fn=S.folders.find(f=>f.id===c.folder)?.name,pinned=(S.pins||[]).includes(id),muted=!!(S.mute||{})[id];
+  const ids=g?c.members.filter(bot):[id],eng=(ENG[c.engine]||ENG.claude||{n:c.engine}).n;
+  const rn=S.routines.filter(r=>r.conv===id&&r.enabled).length;
+  const row=(a,i,t,d,cls='')=>`<button type="button" class="drow${cls}" data-d="${a}"><span class="di">${i}</span><span class="dt"><b>${t}</b>${d?`<small>${d}</small>`:''}</span>${cls?'':'<span class="sa">›</span>'}</button>`;
+  $('veil').innerHTML=`<div class="sheet dsheet"><h2>詳細資料</h2>
+  <div class="dhero"><span class="av dav${g?' grp':''}"${g?'':' data-u'}>${g?c.members.length:avOf(id)}</span><b data-u>${esc(c.name)}</b><small>${$('psub').innerHTML}</small></div>
+  <div class="dtask"><em>${g?'一起做':'它的工作'}</em>${c.task?`<span data-u>${esc(c.task)}</span>`:'<span class="tlearn">還沒交代長期工作。直接跟它說，它會自己記下來。</span>'}</div>
+  ${g?`<div class="dsec">成員</div><div class="dmem">${ids.map(b=>`<button type="button" class="dm" data-open="${b}"><span class="av sm" data-u>${avOf(b)}</span><span data-u>${esc(bot(b).name)}</span></button>`).join('')}</div>`:''}
+  <div class="dlist">${row('ed','⚙','任務設定',(rn?`每輪 ${rn} · `:'')+'名稱、任務、排程、記憶')}${g?'':row('model','✦','模型與備援',esc(eng)+(c.model?' · <span data-u>'+esc(c.model)+'</span>':''))}${row('br','🌐','瀏覽器',phoneRemote()?'電腦上的網址':showBrowserLabel())}${row('shots','🖼','歷史畫面','以前的截圖')}</div>
+  <div class="dlist">${row('pin','📌',pinned?'取消置頂':'置頂','')}${row('mute',muted?'🔔':'🔕',muted?'開啟通知':'關閉通知','')}${row('mv','📁','移到分區',fn?`<span data-u>${esc(fn)}</span>`:'未分區')}${g?'':row('dup','⧉','複製這個機器人','')}</div>
+  <div class="dlist">${row('clr','⌫','清空對話紀錄','',' warn')}${row('del','🗑',g?'刪除群組':'刪除機器人','',' danger')}</div></div>`;
+  $('veil').hidden=false;
+  const act={ed:fromDetail(()=>sheet(g?'g':'b',true)),model:fromDetail(()=>sheet('b',true)),
+    br:()=>{if(phoneRemote())fromDetail(()=>remoteUrl(ids))();else{closeSheet();$('browser').onclick({stopPropagation(){}})}},
+    shots:fromDetail(()=>shotSheet(ids)),
+    pin:async()=>{const p=S.pins||[];await api('settings','PUT',{pins:p.includes(id)?p.filter(x=>x!==id):[id,...p]});await refresh();detailSheet()},
+    mute:async()=>{await api('settings','PUT',{mute:{bot:id,on:!muted}});toast(I18N.t(muted?'已開啟通知':'已關閉通知'));await refresh();detailSheet()},
+    mv:()=>popMenu($('more2'),`<div class="lab">移到分區</div>${S.folders.map(f=>`<button data-a="mv" data-v="${f.id}"><span class="ck">${c.folder===f.id?'✓':''}</span><span data-u>${esc(f.name)}</span></button>`).join('')}<button data-a="mv" data-v=""><span class="ck">${!c.folder?'✓':''}</span>未分區</button><hr><button data-a="nf"><span class="ck">＋</span>建立分區並移入</button>`,
+      {mv:async v=>{await api('move','POST',{id,folder:v||null});await refresh();detailSheet()},nf:fromDetail(()=>folderSheet(null,id))}),
+    dup:()=>{closeSheet();dupBot(id)},clr:fromDetail(()=>clearConv(id)),del:fromDetail(()=>deleteConv(id))};
+  $('veil').querySelectorAll('[data-d]').forEach(b=>b.onclick=e=>{e.stopPropagation();act[b.dataset.d]?.()});
+  $('veil').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{closeSheet();openConv(b.dataset.open)})}
+// a sheet on a phone: settings, task settings and details are full pages with ‹ at the top; the rest rise from the bottom with ✕
+function phoneSheet(){const s=$('veil').querySelector(':scope>.sheet');if(!s||!phoneUI()||s.dataset.ph)return;s.dataset.ph='1';
+  const page=s.classList.contains('dsheet')||!!s.querySelector(':scope>.shd,:scope>.smenu')||['sf','remoteUrl'].includes(s.id);
+  s.classList.toggle('page',page);
+  if(s.querySelector(':scope>.shd .back2'))return;
+  const b=document.createElement('button');b.type='button';b.className=page?'back2 pgx':'shx';b.setAttribute('aria-label',I18N.t(page?'返回':'關閉'));b.textContent=page?'‹':'✕';
+  b.onclick=()=>pageBack?pageBack():closeSheet();
+  const h=s.querySelector(':scope>h2');
+  if(page&&h){const d=document.createElement('div');d.className='shd';h.before(d);d.append(b,h)}else s.prepend(b)}
+new MutationObserver(phoneSheet).observe($('veil'),{childList:true});
+const sheetBack=()=>{const sb=$('veil').querySelector('.sheet.page .shd .back2');return pageBack||(sb?()=>sb.click():null)};
+// the + beside the box: a photo or file, @ a member, a saved instruction, or / for actions
+function plusMenu(){const c=conv(cur);if(!c)return;const g=isG(cur),qk=(S.quick||{})[cur]||[];
+  popMenu($('clip'),`<button data-a="file"><span class="ck">📎</span>照片或檔案</button><button data-a="slash"><span class="ck">/</span>指令（瀏覽器、停止、歷史畫面…）</button>
+    ${g?`<hr><div class="lab">指定成員</div>${c.members.filter(bot).map(id=>`<button data-a="at" data-v="${esc(bot(id).name)}"><span class="ck"><span class="av sm" data-u>${avOf(id)}</span></span><span data-u>@${esc(bot(id).name)}</span></button>`).join('')}`:''}
+    ${qk.length?`<hr><div class="lab">常用指令</div>${qk.map((q,i)=>`<button data-a="q" data-v="${i}"><span class="ck">⚡</span><span data-u>${esc(q.length>40?q.slice(0,40)+'…':q)}</span></button>`).join('')}`:''}`,
+   {file:()=>$('fileIn').click(),
+    slash:()=>{const i=$('msg');if(!i.value.startsWith('/'))i.value='/'+i.value;i.focus();i.selectionStart=i.selectionEnd=1;atSel=0;grow();atRender()},
+    at:v=>{const i=$('msg');i.value=(i.value.trimEnd()+' @'+v+' ').trimStart();grow();i.focus()},
+    q:v=>{const q=qk[+v];if(!q)return;const i=$('msg');if(i.value.trim()){i.value+='\n'+q;grow();i.focus()}else sendMsg(q)}})}
+$('mMe').onclick=()=>openSettings();
+$('mQ').onclick=()=>{const b=$('qbox');b.hidden=!b.hidden;if(!b.hidden)$('q').focus();else{$('q').value='';render(false)}};
+$('mPlus').onclick=e=>{e.stopPropagation();popMenu($('mPlus'),`<button data-a="nb"><span class="ck">🤖</span>新機器人</button><button data-a="ng"><span class="ck">👥</span>新群組</button><button data-a="nf"><span class="ck">📁</span>新分區</button><button data-a="adv"><span class="ck">⚙️</span>進階建立</button>`,
+  {nb:()=>quickBot(),ng:()=>sheet('g'),nf:()=>folderSheet(null),adv:()=>sheet('b')})};
+['pav','pname'].forEach(k=>$(k).addEventListener('click',()=>{if(phoneUI()&&cur)detailSheet()}));
+// keep the newest message in view when the keyboard (or anything else) makes the list shorter
+(()=>{const box=$('msgs');let stick=true;box.addEventListener('scroll',()=>{stick=box.scrollHeight-box.scrollTop-box.clientHeight<80},{passive:true});
+  if(window.ResizeObserver)new ResizeObserver(()=>{if(!phoneUI()||box.hidden)return;if(stick)box.scrollTop=box.scrollHeight;
+    $('pane').style.setProperty('--fh',Math.max(0,Math.round($('pane').getBoundingClientRect().bottom-box.getBoundingClientRect().bottom))+'px')}).observe(box)})();   // ↓ and 小八 float just above the box
 $('nb').onclick=()=>{$('pmenu').hidden=true;quickBot()};$('ng').onclick=()=>{$('pmenu').hidden=true;sheet('g')};$('nbAdv').onclick=()=>{$('pmenu').hidden=true;sheet('b')};
 $('plus').onclick=e=>{e.stopPropagation();$('pmenu').hidden=!$('pmenu').hidden};
 $('qBtn').onclick=()=>{const b=$('qbox');b.hidden=!b.hidden;if(!b.hidden)$('q').focus();else{$('q').value='';render(false)}};
