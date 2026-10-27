@@ -30,6 +30,15 @@ export function thumbBox(w, h, at) {
   };
 }
 
+// The thumbnail shrunk to a small round button. It sits in the corner the card was in,
+// so it does not cover the chat; clicking it brings the card back.
+export const DOT_SIZE = 44;
+export function dotBox(w, h, at) {
+  const card = thumbBox(w, h, at);
+  const size = Math.min(DOT_SIZE, card.width, card.height);
+  return { x: card.x + card.width - size, y: card.y + card.height - size, width: size, height: size };
+}
+
 export function isBlankUrl(url) {
   const u = String(url || '');
   return !u || u === 'about:blank' || u.startsWith('data:');
@@ -136,15 +145,19 @@ export function resizeBox(winW, winH, box, edge, dx, dy) {
   return { x, y, width, height };
 }
 
-// thumb: a corner preview, the chat keeps the whole window.
+// thumb: a corner preview, the chat keeps the whole window. opts.dot shrinks it to a round button.
+// opts.covered: a dialog is open in the chat, so nothing is placed over it.
 // open: a side panel for this bot only. The chat stays full size underneath.
 export function embedFrames(w, h, mode, at, opts) {
   w = Math.max(1, Math.round(w));
   h = Math.max(1, Math.round(h));
   const main = { x: 0, y: 0, width: w, height: h };
   if (mode === 'thumb') {
-    return { mode: 'thumb', main, page: null, chrome: thumbBox(w, h, at) };
+    if (opts?.covered) return { mode: 'hidden', main, page: null, chrome: null };
+    return { mode: 'thumb', main, page: null, dot: !!opts?.dot, chrome: opts?.dot ? dotBox(w, h, at) : thumbBox(w, h, at) };
   }
+  // a dialog in the chat is open: the browser views sit above the page, so they step aside until it closes
+  if (mode === 'open' && opts?.covered) return { mode: 'hidden', main, page: null, chrome: null };
   if (mode === 'open') {
     const box = sidebarBox(w, h, at);
     const edge = PANEL_EDGE;

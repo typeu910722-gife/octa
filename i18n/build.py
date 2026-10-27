@@ -24,14 +24,16 @@ print('keys', len(T), 'patterns', len(P), 'charmap', len(out['zh-CN']['cm']), 'b
 # Template bots per language → embedded in the API
 from templates import TPL
 def conv(x):
-    if isinstance(x, str): return cc.convert(x)
+    # markers the API parses stay in Traditional Chinese (⏰例行任務：…｜每10分鐘監看 url｜…, （略過）)
+    if isinstance(x, str): return re.sub(r'每(\d+)分钟监看', r'每\1分鐘監看', cc.convert(x).replace('暱', '昵').replace('⏰例行任务：', '⏰例行任務：').replace('（略过）', '（略過）'))
     if isinstance(x, list): return [i if isinstance(i, str) and re.match(r'^[a-z]\d?$', i) else conv(i) for i in x]
     if isinstance(x, dict): return {k: conv(v) for k, v in x.items()}
     return x
 TPL['zh-CN'] = conv(TPL['zh-TW'])
 api = os.path.join(os.path.dirname(__file__), '..', 'functions', 'api', '[[path]].js')
 s = open(api, encoding='utf8').read()
-a = s.index('// Templates offered in the app'); b = s.index('export async function onRequest')
-s = s[:a] + '// Templates offered in the app, per interface language (generated from i18n/templates.py)\nconst TEMPLATES_I18N = ' + json.dumps(TPL, ensure_ascii=False, indent=1) + ';\n\n' + s[b:]
+# replace only the TEMPLATES_I18N literal (code after it, before onRequest, must stay)
+a = s.index('// Templates offered in the app'); b = s.index('\n};\n', a) + len('\n};\n')
+s = s[:a] + '// Templates offered in the app, per interface language (generated from i18n/templates.py)\nconst TEMPLATES_I18N = ' + json.dumps(TPL, ensure_ascii=False, indent=1) + ';\n' + s[b:]
 open(api, 'w', encoding='utf8').write(s)
 print('templates embedded')
