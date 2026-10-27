@@ -285,6 +285,19 @@ function mentionLine(line, bots) {
 }
 const PRIVATE = /私下|私底下|偷偷|背景(問|找|去)|不要在群組(問|說)/;   // the person wants the colleague asked out of the group's sight
 // in a group, a private question "@名字 私下：…" (or any @question when the person asked for it privately) is not shown in the group
+// Does "@同事 …" ask the colleague for something, or only acknowledge / answer them?
+// A reply to the bot that asked (or the follow-up after asking) only counts when it asks something new.
+const ACK_RE = /^(好|好喔|好的|好啊|好，|收到|了解|明白|OK|ok|Ok|沒問題|謝謝|感謝|讚|嗯|同意|就這樣|太好了|辛苦了|👍)/;
+const REQUEST_RE = /[？?]|請|幫我|幫忙|麻煩|能不能|可不可以|要不要|確認一下|交給你|你來/;
+export function mentionAsks(said, to, prompt) {
+  const s = String(said || '').trim();
+  if (!s) return false;
+  if (ACK_RE.test(s) && !REQUEST_RE.test(s)) return false;
+  const p = String(prompt || '');
+  const answering = p.match(/^(.+?) 問你：/);
+  if ((answering && answering[1] === to?.name) || /^同事已在上面回覆你的問題/.test(p)) return /[？?]/.test(s);
+  return true;
+}
 const privateAsk = (rest, prompt) => !/^交接/.test(rest) && (/^私下\s*[:：]/.test(rest) || PRIVATE.test(prompt || ''));
 const viaOf = job => { try { return job?.via ? JSON.parse(job.via) : null; } catch { return null; } };
 // 幕後 rows: who asked whom, what, the answer and how long it took. Old background jobs (before jobs.via) are read from their prompt.
@@ -2053,6 +2066,7 @@ async function route({ request: req, env, params }) {
             const priv = !!grp && privateAsk(ml.rest, job.prompt);
             const said = ml.rest.replace(/^私下\s*[:：]?\s*/, '');
             const hand = said.match(/^交接\s*[:：]?\s*(.+)$/);   // "@名字 交接：…" passes the whole job on; no need to come back
+            if (!hand && !mentionAsks(said, to, job.prompt)) continue;   // "@甲 收到／好喔／謝謝" or an answer back to the one who asked: no new round (stops bots thanking each other in a loop)
             if (!grp || priv) {   // outside a group, or asked privately: the other bot works on it in the background, in its own chat
               const what = hand ? hand[1] : said;
               await addMsg(db, U, to.id, 'sys', `🔁 「${self.name}」${hand ? '交辦' : '問'}：${what.slice(0, 600)}`);

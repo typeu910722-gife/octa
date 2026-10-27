@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { autonomyRules, buildPrompt } from '../public/octa-runner.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
-const { onRequest } = await import(apiUrl);
+const { onRequest, mentionAsks } = await import(apiUrl);
 const schema = readFileSync(join(import.meta.dirname, '..', 'schema.sql'), 'utf8');
 
 function openD1() {
@@ -342,4 +342,33 @@ test('web app: autonomy choice, standby status, plan buttons and the folded 幕�
   assert.equal(bs.before(msgs[0]), '');
   assert.match(bs.before(msgs[2]), /幕後 1 則/, 'shown where it happened, after the question');
   assert.equal(bs.rest(), '');
+});
+
+test('bots in a group stop after the answer: no "收到／好喔" ping-pong', async () => {
+  const t = await setup();
+  const a = await t.bot('claude測試用'), b = await t.bot('2');
+  const g = await t.group('互問', [a, b]);
+  await t.say(g, '@2 去問 claude測試用 行程最需要調整哪一點，再整理成一句話給我');
+  const j1 = await t.next();
+  assert.equal(j1.bot.id, b);
+  await t.done(j1.id, '@claude測試用 你覺得行程最需要調整哪一點？');
+  const j2 = await t.next();
+  assert.equal(j2.bot.id, a);
+  await t.done(j2.id, '@2 收到，我覺得神農街排太早，改成 16:30 再去。');   // an answer back to the asker
+  const j3 = await t.next();
+  assert.equal(j3.bot.id, b);
+  assert.match(j3.prompt, /同事已在上面回覆你的問題/);
+  await t.done(j3.id, '@claude測試用 好喔，那就這樣定了。\nYzz：神農街改到 16:30 再去。');
+  assert.equal(t.pending().length, 0, 'the thank-you does not start another round');
+});
+
+test('mentionAsks: acknowledgements and plain answers are not new questions', () => {
+  const two = { name: '2' };
+  assert.equal(mentionAsks('收到，這版就定案了', two, '幫我排行程'), false);
+  assert.equal(mentionAsks('好喔，那就這樣定了', two, ''), false);
+  assert.equal(mentionAsks('可以把行程排成半天', two, ''), true);
+  assert.equal(mentionAsks('好，請你再幫我查開放時間', two, ''), true);
+  assert.equal(mentionAsks('把這三個排成行程', two, '幫我排行程'), true);
+  assert.equal(mentionAsks('我覺得神農街太早', two, '2 問你：哪裡要改？'), false);
+  assert.equal(mentionAsks('那開放時間你查過嗎？', two, '2 問你：哪裡要改？'), true);
 });
