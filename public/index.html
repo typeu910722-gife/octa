@@ -833,11 +833,13 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .msgs>.m.cont{margin-top:0}
   .msgs>.day+.m,.msgs>.day{margin-top:16px}
   .m{gap:8px;max-width:100%;align-items:flex-end;animation:none}
+  .m:not(.me){align-items:flex-start}
   .m .bx{max-width:min(82%,560px);display:flex;flex-direction:column;align-items:flex-start}
   .m:not(.me) .bx{max-width:min(86%,560px)}
   .m.me .bx{align-items:flex-end}
-  .m:not(.me) .av.sm{width:28px;height:28px;font-size:12px;border:0;background:var(--pg);margin-bottom:20px}
-  .m:not(.me):not(.tail) .av.sm{visibility:hidden}
+  .m:not(.me) .av.sm{width:28px;height:28px;font-size:12px;border:0;background:var(--pg);margin-top:8px}
+  .m:not(.me):has(>.bx>.who) .av.sm{margin-top:29px}
+  .m.cont:not(.me) .av.sm{visibility:hidden}
   .m .who{font-family:var(--sans);font-size:12px;color:var(--mute);margin:0 0 3px 12px}
   .m.cont .who{display:none}
   .bub{border:0;border-radius:20px;padding:9px 14px;line-height:1.6}
@@ -864,6 +866,9 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .bsi{background:var(--pg);border:0}
   .more3{padding:8px 12px}
   .appr{gap:8px;margin-top:8px}
+  .m:not(.me) .bx:has(.appr [data-deny]){width:min(86%,400px)}
+  .appr:has([data-deny]){display:grid;grid-template-columns:1fr 1fr;align-self:stretch}
+  .appr:has([data-deny]) button{width:100%;padding-inline:10px;white-space:nowrap}
   .appr .btn{background:var(--ink);color:var(--pb);border-radius:99px;padding:10px 18px;font-size:14px;min-height:44px}
   .appr .no{border-radius:99px;padding:10px 16px;font-size:14px;min-height:44px;border-color:var(--pl);color:var(--ink);background:var(--pb)}
   .appr .hint2{margin-top:2px}
@@ -895,10 +900,12 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .atpop{left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:70px;min-width:0;max-height:min(300px,45vh);border:0;background:var(--pb);border-radius:16px;box-shadow:0 8px 28px var(--shadow)}
   .atpop button{min-height:44px;font-size:15px}
   .atpop button.on,.atpop button:hover{background:var(--pg)}
-  .oct{left:auto;right:10px;bottom:calc(var(--fh,64px) + 8px);flex-direction:row-reverse}
-  .oct-hit{width:40px;height:40px}
-  .oct-say{margin:0 2px 26px 0;border-radius:14px 14px 4px 14px;background:var(--pb);border-color:var(--pl)}
-  .oct-menu{left:auto;right:0}
+  .oct{left:auto;right:max(52px,calc(env(safe-area-inset-right,0px) + 46px));top:9px;bottom:auto;z-index:7;align-items:flex-start}
+  .oct-hit{width:38px;height:38px;filter:none}
+  .oct-say{display:none}
+  .oct-menu{left:auto;right:-46px;top:46px;bottom:auto;width:min(300px,calc(100vw - 24px));background:var(--pb);border:0;box-shadow:0 10px 36px var(--shadow)}
+  .pane:has(#buddy:not([hidden])) .msgs{padding-bottom:10px}
+  .pane:has(#buddy:not([hidden])) #more2{margin-left:40px}
   .askp .askt{background:var(--pb);border-color:var(--pl)}
   .askc{background:var(--pb);border-color:var(--pl)}
   /* menus: plain action sheets */
@@ -925,7 +932,10 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .sheet.page>.shd h2,:root .sheet.page>.shd h2{font-family:var(--sans);font-weight:600;font-size:calc(17px * var(--fz));flex:1;min-width:0}
   .sheet.page .back2{width:44px;height:44px;padding:0 0 4px;font-size:34px;font-weight:300;color:var(--ink);flex:none}
   .sheet.page .acts:has(>#sx:only-child){display:none}
-  .sheet.page .acts{margin:0 -16px;padding:10px 16px calc(4px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--pl)}
+  .veil .sheet.page{padding-bottom:0}
+  .veil .sheet.page::after{content:"";height:calc(12px + env(safe-area-inset-bottom,0px))}
+  .veil .sheet.page:has(.acts:not([hidden]))::after{display:none}
+  .sheet.page .acts{margin:0 -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--pl)}
   .smenu{gap:0;background:var(--pg);border-radius:16px;overflow:hidden}
   .smenu button{border:0;border-radius:0;background:none;padding:12px 14px;min-height:56px;box-shadow:inset 0 -1px 0 var(--pl)}
   .smenu button:last-child{box-shadow:none}
@@ -945,8 +955,8 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .dtask{background:var(--pg);border-radius:16px;padding:12px 14px;font-size:14px;line-height:1.7;color:var(--ink);white-space:pre-wrap;max-height:40vh;overflow:auto}
   .dtask em{display:block;font-style:normal;font-size:12px;color:var(--mute);margin-bottom:2px}
   .dsec{font-size:13px;color:var(--mute);margin:4px 4px -6px}
-  .dmem{display:flex;gap:8px;overflow-x:auto;padding:2px 0}
-  .dm{flex:none;display:flex;align-items:center;gap:8px;border:0;background:var(--pg);border-radius:99px;padding:6px 14px 6px 6px;min-height:44px;font-size:14px}
+  .dmem{display:flex;flex-wrap:wrap;gap:8px;padding:2px 0}
+  .dm{flex:none;max-width:100%;display:flex;align-items:center;gap:8px;border:0;background:var(--pg);border-radius:99px;padding:6px 14px 6px 6px;min-height:44px;font-size:14px}
   .dm .av.sm{border:0;background:var(--pb)}
   .dlist{background:var(--pg);border-radius:16px;overflow:hidden;display:grid}
   .drow{display:flex;align-items:center;gap:12px;border:0;background:none;text-align:left;padding:10px 14px;min-height:54px;box-shadow:inset 0 -1px 0 var(--pl);color:var(--ink)}
