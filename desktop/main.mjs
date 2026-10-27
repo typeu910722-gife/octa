@@ -150,6 +150,10 @@ async function loadMain() {
 const embeds = new Map();
 let embedSeq = 0;
 let focusBotId = '';
+// a dialog or menu is open in the chat page: the browser views sit above the page, so they step aside
+let covered = false;
+let pipSent = 'null';
+const thumbDot = () => !!cfg.thumbDot;
 function fitView(view, bounds, visible) {
   if (!view || !bounds) return;
   try { view.setBounds(bounds); } catch { }
@@ -192,7 +196,7 @@ function sendFrame(bucket, extra) {
   const page = bucket.active?.webContents;
   const tabs = bucket.tabs.map((v, i) => ({ i, on: v === bucket.active, title: tabTitle(v.webContents) }));
   const engines = ENGINE_IDS.map(id => ({ id, label: ENGINE_LABEL[id], on: id === (bucket.engine || 'chrome'), state: bucket.downloading === id ? 'down' : (ownedExe(id) ? 'ready' : 'none') }));
-  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...extra });
+  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', dot: thumbDot(), url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...extra });
 }
 function roundChrome(view, radius, solid) {
   if (!view) return;
@@ -221,7 +225,7 @@ function stopThumbs(bucket) { clearTimeout(bucket.thumbTimer); bucket.thumbTimer
 function startThumbs(bucket) {
   stopThumbs(bucket);
   const tick = async () => {
-    if (bucket.shown !== 'thumb' || !bucket.active || bucket.active.webContents.isDestroyed()) return;
+    if (bucket.shown !== 'thumb' || thumbDot() || !bucket.active || bucket.active.webContents.isDestroyed()) return;
     try {
       const shot = await bucket.active.webContents.debugger.sendCommand('Page.captureScreenshot', { format: 'jpeg', quality: 45 });
       sendFrame(bucket, { mode: 'thumb', jpeg: shot.data });
@@ -250,7 +254,7 @@ function placeBucket(bucket, frames) {
     // put the panel back above the chat every time, so a reload cannot cover it
     raiseView(bucket.chrome);
     fitView(bucket.chrome, frames.chrome, true);
-    roundChrome(bucket.chrome, THUMB_RADIUS, frames.mode === 'open');
+    roundChrome(bucket.chrome, frames.dot ? Math.floor(frames.chrome.width / 2) : THUMB_RADIUS, frames.mode === 'open');
   }
   // the page sits above the panel frame; the frame's edges stay outside the page and can still be grabbed
   if (page && frames.page && win) {
@@ -264,11 +268,19 @@ function holdOffscreen(bucket) {
   detachChrome(bucket);
   for (const v of bucket.tabs) parkView(bucket, v, !!bucket.shown && v === bucket.active);
 }
+// the chat page keeps its last messages clear of the corner card
+function tellPip(pip) {
+  const next = JSON.stringify(pip || null);
+  if (next === pipSent || !win || win.isDestroyed()) return;
+  pipSent = next;
+  try { win.webContents.send('octa:pip', pip || null); } catch { }
+}
 function layoutEmbed() {
   if (!win || win.isDestroyed()) return;
   const [w, h] = win.getContentSize();
   const main = win.contentView.children.find(v => v.webContents === win.webContents);
   fitView(main, { x: 0, y: 0, width: w, height: h }, true);
+  let pip = null;
   for (const bucket of embeds.values()) {
     if (!onScreen(bucket)) {
       stopThumbs(bucket);
@@ -277,14 +289,23 @@ function layoutEmbed() {
     }
     if (bucket.dragging && bucket.panelBox) {
       placeDrag(bucket);
+      pip = JSON.parse(pipSent);
       continue;
     }
     if (bucket.shown === 'open') bucket.openAt = freshOpen(bucket.openAt);
     const at = bucket.shown === 'open' ? bucket.openAt : (bucket.thumbAt || savedThumbAt());
-    const frames = embedFrames(w, h, bucket.shown, at, { tabs: bucket.tabs.length });
-    if (bucket.shown === 'thumb' && !bucket.thumbTimer) startThumbs(bucket);
+    const frames = embedFrames(w, h, bucket.shown, at, { tabs: bucket.tabs.length, dot: thumbDot(), covered });
+    if (frames.mode === 'hidden') {
+      stopThumbs(bucket);
+      holdOffscreen(bucket);
+      continue;
+    }
+    if (frames.dot) stopThumbs(bucket);
+    else if (bucket.shown === 'thumb' && !bucket.thumbTimer) startThumbs(bucket);
     placeBucket(bucket, frames);
+    if (frames.chrome) pip = { mode: frames.mode, dot: !!frames.dot, ...frames.chrome };
   }
+  tellPip(pip);
 }
 function versionFor(engine) {
   // Brave's release number is not a Chrome version. Chrome and Edge use this Chromium's own version
@@ -794,7 +815,7 @@ ipcMain.on('octa:browser-drag-start', e => {
   try {
     if (!trusted(e) || !win || win.isDestroyed()) { e.returnValue = none; return; }
     const bucket = chromeBucket(e.sender);
-    if (!bucket || (bucket.shown !== 'thumb' && bucket.shown !== 'open')) { e.returnValue = none; return; }
+    if (!bucket || (bucket.shown !== 'thumb' && bucket.shown !== 'open') || covered || (bucket.shown === 'thumb' && thumbDot())) { e.returnValue = none; return; }
     const [w, h] = win.getContentSize();
     const box = panelFrom(bucket, w, h);
     bucket.dragging = true;
@@ -832,7 +853,23 @@ ipcMain.on('octa:browser-drag-end', e => {
   sendFrame(bucket, { mode: bucket.shown || 'thumb', dragging: false });
 });
 const handle = (ch, fn) => ipcMain.handle(ch, (e, ...a) => { if (!trusted(e)) throw new Error('not allowed'); return fn(e, ...a); });
+// shrink every bot's corner card to a round button, or bring it back. Remembered on this computer.
+ipcMain.on('octa:browser-dot', (e, on) => {
+  if (!trusted(e) || !chromeBucket(e.sender)) return;
+  cfg = { ...cfg, thumbDot: !!on };
+  writeCfg(cfg);
+  layoutEmbed();
+  for (const bucket of embeds.values()) sendFrame(bucket, {});
+});
 handle('octa:version', () => app.getVersion());
+handle('octa:pip', () => JSON.parse(pipSent));
+handle('octa:cover', (_e, on) => {
+  const next = !!on;
+  if (next === covered) return covered;
+  covered = next;
+  layoutEmbed();
+  return covered;
+});
 handle('octa:show', () => { showWindow(); return true; });
 handle('octa:focus-bot', (_e, id) => {
   const next = String(id || '');

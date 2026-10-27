@@ -13,5 +13,6 @@ contextBridge.exposeInMainWorld('octaBrowser', {
   goOn() { ipcRenderer.send('octa:browser-continue'); },
   dragStart() { return ipcRenderer.sendSync('octa:browser-drag-start'); },
   dragBy(dx, dy, edge) { ipcRenderer.send('octa:browser-drag-by', { dx, dy, edge: edge || '' }); },
-  dragEnd() { ipcRenderer.send('octa:browser-drag-end'); }
+  dragEnd() { ipcRenderer.send('octa:browser-drag-end'); },
+  dot(on) { ipcRenderer.send('octa:browser-dot', !!on); }
 });

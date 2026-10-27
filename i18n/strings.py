@@ -985,3 +985,22 @@ T.update({
 })
 
 T.update({'這台電腦的 OCTA 是裝給所有使用者，Windows 會詢問是否允許變更，請按「是」': ('OCTA is installed for all users on this computer: Windows will ask to allow changes — press “Yes”', 'このパソコンの OCTA は全ユーザー向けにインストールされています。Windows が変更の許可を求めるので「はい」を押してください')})
+
+# more templates, stale / outdated computers
+T.update({
+ '排程發訊': ('Scheduled messages', '定時メッセージ'),
+ '定時發送訊息、提醒': ('Send messages and reminders on time', '決まった時間にメッセージやリマインド'),
+ '資料整理': ('Data cleanup', 'データ整理'),
+ '整理表格、名單並輸出檔案': ('Clean up tables and lists, save a file', '表や名簿を整理してファイルに出力'),
+ '網站監看': ('Site watch', 'サイト監視'),
+ '網頁有變化就通知你': ('Tells you when a page changes', 'ページが変わったら通知'),
+ '遊戲自動化': ('Game automation', 'ゲーム自動化'),
+ '定時開遊戲網頁做重複操作': ('Opens a game page on schedule for repeated actions', '定時にゲームページを開いて繰り返し操作'),
+ '很久沒連線': ('Not seen for a long time', '長期間未接続'),
+ '版本較舊，建議更新': ('Older version, please update', '古いバージョン、更新を推奨'),
+ '從未連線': ('Never connected', '未接続'),
+ '清除': ('Clear', '削除'),
+ '清除很久沒連線的電腦': ('Clear a computer not seen for a long time', '長期間未接続のパソコンを削除'),
+ '這台電腦超過 30 天沒連線（或從來沒連上）。清除後會從清單拿掉；那台電腦之後重新登入 OCTA 就會再出現。': ('This computer has not connected for over 30 days (or never did). Clearing removes it from the list; it comes back if it signs in to OCTA again.', 'このパソコンは 30 日以上接続されていません（または一度も接続していません）。削除すると一覧から消えます。再び OCTA にログインすると表示されます。'),
+})
+P.extend([(r'^這個範本附了例行任務「(.+)」（(.*)），目前暫停。先在分區資料寫好內容，再到任務設定 → 例行任務打開。$', 'This template comes with the routine “$1” ($2), paused for now. Fill in the folder notes first, then turn it on in Task settings → Routines.', 'このテンプレートには定期タスク「$1」（$2）が付いています（現在は一時停止）。先にフォルダのメモを書き、タスク設定 → 定期タスクでオンにしてください。')])

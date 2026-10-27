@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('octaDesktop', {
   show: () => ipcRenderer.invoke('octa:show'),   // bring the window forward (notification clicked)
   focusBot: id => ipcRenderer.invoke('octa:focus-bot', id || ''),   // only this bot's browser stays on screen
   onStage: cb => ipcRenderer.on('octa:stage', (_e, d) => cb(d)),
+  cover: on => ipcRenderer.invoke('octa:cover', !!on),   // a dialog is open: the bot's browser steps aside
+  pip: () => ipcRenderer.invoke('octa:pip'),   // where the bot's corner card is now ({mode, dot, x, y, width, height} or null)
+  onPip: cb => ipcRenderer.on('octa:pip', (_e, d) => cb(d)),
   useOffline: () => ipcRenderer.invoke('octa:offline'),
   useCloud: () => ipcRenderer.invoke('octa:cloud'),
   update: {

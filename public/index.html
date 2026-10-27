@@ -179,6 +179,7 @@ select{background:var(--bg);border:1px solid var(--line);border-radius:10px;padd
 .task{margin:8px 16px 0;padding:8px 12px;border:0;border-radius:var(--r);background:var(--panel);font-size:13px;color:var(--mute);line-height:1.6;white-space:pre-wrap;flex:none;min-height:0;max-height:8.5em;overflow:auto}
 .task em{font-style:normal;color:var(--gold);font-family:var(--tc);margin-right:6px}
 .msgs{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:14px;padding:16px 20px}
+html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}   /* desktop: room under the last message for the browser's corner card */
 .m{display:flex;gap:10px;align-items:flex-start;max-width:680px}
 .m .who{font-size:12px;color:var(--gold);margin-bottom:4px;font-family:var(--tc)}
 .m .bx{min-width:0}
@@ -1542,7 +1543,9 @@ const engState=k=>S.engines?(S.engines[k]?'ok':'no'):'unknown';
 const EMOJIS=['🤖','🐙','🦊','🐱','🐶','🐼','🦉','🐝','🧠','💬','📋','🧾','📊','📝','🔎','📦','🛎️','🧹','🏨','🛒','📅','💡','⚡','🌟'];
 const TPL=['用瀏覽器打開網站後台','整理成清單或表格','寫入 Google 試算表','擬好訊息給我確認再發','做完回報重點'];
 const TEMPLATES=[{k:'assistant',n:'一般助理',d:'一個機器人，什麼都可以問'},{k:'research',n:'研究小組',d:'查資料 → 整理摘要'},
-  {k:'shop',n:'門市小幫手',d:'訂單、客服回覆、日報'},{k:'lodging',n:'民宿入住流程',d:'訂房、打掃清單、入住訊息'}];
+  {k:'shop',n:'門市小幫手',d:'訂單、客服回覆、日報'},{k:'lodging',n:'民宿入住流程',d:'訂房、打掃清單、入住訊息'},
+  {k:'remind',n:'排程發訊',d:'定時發送訊息、提醒'},{k:'tidy',n:'資料整理',d:'整理表格、名單並輸出檔案'},
+  {k:'watch',n:'網站監看',d:'網頁有變化就通知你'},{k:'game',n:'遊戲自動化',d:'定時開遊戲網頁做重複操作'}];
 const tplHtml=()=>`<div class="tpls">${TEMPLATES.map(t=>`<button type="button" class="tplc" data-t="${t.k}"><b>${t.n}</b><small>${t.d}</small></button>`).join('')}</div>`;
 function bindTpl(root,after){root.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{b.disabled=true;
   try{await api('template','POST',{name:b.dataset.t,lang:I18N.lang});b.querySelector('small').textContent='已加入 ✓';await refresh();after&&after()}catch(e){b.disabled=false}})}
@@ -1752,6 +1755,24 @@ window.octaDesktop?.onStage?.(d=>{
   if(d.act==='hand')api('handoff','POST',{bot:d.bot,on:true}).then(()=>toast('已接手，機器人停止點擊')).catch(e=>toast(e.message));
   if(d.act==='go'){api('handoff','POST',{bot:d.bot,on:false}).catch(()=>{});api('messages','POST',{conv:d.bot,text:'登入好了，繼續'}).then(()=>refresh()).catch(e=>toast(e.message))}
 });
+// desktop: the bot's browser is a view above this page. It steps aside while a dialog is open,
+// and the newest messages stay clear of its corner card.
+(()=>{const D=window.octaDesktop;if(!D?.cover)return;
+  let pip=null,last=null,queued=false;
+  const hit=(a,b)=>!!(a&&b)&&a.left<b.x+b.width&&a.right>b.x&&a.top<b.y+b.height&&a.bottom>b.y;
+  const pad=()=>{const m=$('msgs');let h=0;
+    if(pip&&pip.mode==='thumb'&&m&&!m.hidden){const r=m.getBoundingClientRect();if(pip.x<r.right&&pip.x+pip.width>r.left)h=Math.max(0,Math.round(r.bottom-pip.y+8))}
+    document.documentElement.classList.toggle('pip',h>0);document.documentElement.style.setProperty('--pip',h+'px')};
+  const setPip=d=>{pip=d&&Number.isFinite(+d.x)?d:null;pad()};
+  const check=()=>{queued=false;const b=$('boot'),menu=document.querySelector('.menu');
+    const on=!$('veil').hidden||!!document.querySelector('.mveil')||(!!b&&!b.hidden&&!b.classList.contains('done'))||(!!menu&&hit(menu.getBoundingClientRect(),pip));
+    if(on===last)return;const was=last;last=on;
+    D.cover(on).then(()=>{if(!on&&was)return D.pip?.().then(setPip)}).catch(()=>{})};
+  const soon=()=>{if(!queued){queued=true;requestAnimationFrame(check)}};
+  const mo=new MutationObserver(soon);mo.observe(document.body,{childList:true});
+  mo.observe($('veil'),{attributes:true,attributeFilter:['hidden']});if($('boot'))mo.observe($('boot'),{attributes:true,attributeFilter:['hidden','class']});
+  D.onPip?.(d=>{if(!last)setPip(d)});D.pip?.().then(setPip).catch(()=>{});
+  addEventListener('resize',pad);if(window.ResizeObserver)new ResizeObserver(pad).observe($('msgs'));check()})();
 function msgMenu(anchor,m){if(!m||m.tmp)return;
   popMenu(anchor,`<button data-a="re"><span class="ck">↩</span>回覆這則</button><button data-a="cp"><span class="ck">⧉</span>複製文字</button><button data-a="frag"><span class="ck">✂</span>選取片段</button><button data-a="to"><span class="ck">➦</span>傳給別的機器人…</button>${m.by==='me'?'<button data-a="again"><span class="ck">↻</span>再傳一次</button>':''}`,
    {re:()=>setReply(m),
@@ -2003,6 +2024,10 @@ function openSettings(k){
   $('veil').hidden=false;$('sx').onclick=closeSheet;
   if($('lo'))$('lo').onclick=()=>{closeSheet();logoutAsk()};
   $('veil').querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>settingsGo[b.dataset.s]())}
+// a computer that has not checked in for 30 days (or never did) is probably gone
+const PC_STALE_MS=30*86400000;
+const pcStale=(c,t=Date.now())=>!c.online&&(!c.seen||t-c.seen>PC_STALE_MS);
+const verCmp=(a,b)=>{const p=v=>String(v||'').replace(/^v/i,'').split(/[.-]/).map(x=>parseInt(x,10)||0);const x=p(a),y=p(b);for(let i=0;i<Math.max(x.length,y.length);i++){const d=(x[i]||0)-(y[i]||0);if(d)return d<0?-1:1}return 0};
 const when=t=>t?new Date(t).toLocaleString(I18N.lang,{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 /* profile: what the bots call you */
 function openProfile(){subSheet('個人資料',`<label class="field">你的暱稱（機器人會這樣稱呼你）<input id="nick" maxlength="20" value="${esc(S.nick||'')}" placeholder="例如：Yz、阿哲" style="${field}"></label>
@@ -2069,15 +2094,18 @@ curl.exe -o octa-runner.mjs ${location.origin}/octa-runner.mjs</pre>
   if(CFG.local)return;
   let d={computers:[]};try{d=await api('devices')}catch(e){}
   if(!$('pcs'))return;
-  $('pcs').innerHTML=d.computers.length?`<div class="devs">${d.computers.map(c=>`<div class="dev"><span><b data-u>${esc(c.name)}</b> ${c.host?'<span class="pill p-ok">主機</span>':'<span class="pill p-off">備用</span>'} ${c.online?'<span class="pill p-ok">在線</span>':'<span class="pill p-off">離線</span>'}
-    <small>${c.version?'<span>版本</span> <span data-u>'+esc(c.version)+'</span> · ':''}<span>上次連線</span> ${when(c.seen)}${c.engines?' · '+Object.keys(ENG).filter(k=>c.engines[k]).map(k=>ENG[k].n).join('、'):''}</small></span>
-    <span class="row2">${c.host?'':`<button class="ghost" data-host="${c.id}">設為主機</button>`}<button class="ghost" data-rmpc="${c.id}">移除</button></span></div>`).join('')}</div>`
+  const hostVer=(d.computers.find(c=>c.host)||{}).version||'';
+  $('pcs').innerHTML=d.computers.length?`<div class="devs">${d.computers.map(c=>{const stale=pcStale(c),old=!c.host&&!!c.version&&!!hostVer&&verCmp(c.version,hostVer)<0;
+    return `<div class="dev"><span><b data-u>${esc(c.name)}</b> ${c.host?'<span class="pill p-ok">主機</span>':'<span class="pill p-off">備用</span>'} ${c.online?'<span class="pill p-ok">在線</span>':'<span class="pill p-off">離線</span>'}${stale?' <span class="pill p-pr">很久沒連線</span>':''}${old?' <span class="pill p-pr">版本較舊，建議更新</span>':''}
+    <small>${c.version?'<span>版本</span> <span data-u>'+esc(c.version)+'</span> · ':''}${c.seen?'<span>上次連線</span> '+when(c.seen):'<span>從未連線</span>'}${c.engines?' · '+Object.keys(ENG).filter(k=>c.engines[k]).map(k=>ENG[k].n).join('、'):''}</small></span>
+    <span class="row2">${c.host?'':`<button class="ghost" data-host="${c.id}">設為主機</button>`}<button class="ghost" data-rmpc="${c.id}"${stale?' data-stale="1"':''}>${stale?'清除':'移除'}</button></span></div>`}).join('')}</div>`
     :'<p>還沒有電腦連上。在電腦安裝 OCTA 桌面版並登入這個帳號，它就會成為主機。</p>';
   $('pcs').querySelectorAll('[data-host]').forEach(b=>b.onclick=async()=>{try{await api('host','POST',{id:b.dataset.host});toast(I18N.t('已切換主機'));await refresh();openComputers()}catch(e){toast(e.message)}});
   $('pcs').querySelectorAll('[data-rmpc]').forEach(b=>b.onclick=()=>{
-    $('veil').innerHTML=`<form class="sheet" id="rmf"><h2>移除這台電腦</h2><p>移除後，那台電腦需要重新登入 OCTA 才能再幫你工作。</p>
+    const stale=!!b.dataset.stale;
+    $('veil').innerHTML=`<form class="sheet" id="rmf"><h2>${stale?'清除很久沒連線的電腦':'移除這台電腦'}</h2><p>${stale?'這台電腦超過 30 天沒連線（或從來沒連上）。清除後會從清單拿掉；那台電腦之後重新登入 OCTA 就會再出現。':'移除後，那台電腦需要重新登入 OCTA 才能再幫你工作。'}</p>
     <label class="field">密碼<input id="rmPw" type="password" autocomplete="current-password" required></label><div class="errmsg" id="rmE"></div>
-    <div class="acts"><button type="button" class="no" id="sx">取消</button><button class="btn">移除</button></div></form>`;
+    <div class="acts"><button type="button" class="no" id="sx">取消</button><button class="btn">${stale?'清除':'移除'}</button></div></form>`;
     $('rmPw').focus();$('sx').onclick=openComputers;
     $('rmf').onsubmit=ev=>{ev.preventDefault();api('devices/remove','POST',{ids:[b.dataset.rmpc],pw:$('rmPw').value}).then(()=>{toast(I18N.t('已移除'));openComputers()}).catch(e=>$('rmE').textContent=e.message)}})}
 /* notifications */
