@@ -428,6 +428,25 @@ label.dev{justify-content:flex-start}
 .aiq small,.qw small{color:var(--faint);font-size:11px}
 .chg{display:grid;gap:12px;font-size:13px;color:var(--mute)}
 .chg b{color:var(--gold2);font-weight:500}
+/* memory kinds in 任務設定, and the 成果看板 bars (theme colours, readable on paper and dark) */
+.mseg{margin:6px 0}
+.mseg button{min-width:0;padding:7px 12px;grid-auto-flow:column;gap:6px;align-items:baseline}
+.mman summary{cursor:pointer;overflow-wrap:anywhere}
+.msteps{white-space:pre-wrap;font-size:13px;color:var(--mute);margin-top:6px;overflow-wrap:anywhere}
+.bdsum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
+.bdsum div{border:1px solid var(--line2);border-radius:12px;padding:10px;display:grid;gap:2px;background:var(--card)}
+.bdsum b{font-size:20px;font-weight:500;color:var(--gold2)}
+.bdsum small{color:var(--mute);font-size:12px}
+.board{display:grid;gap:12px;margin-bottom:12px}
+.bdrow{display:grid;gap:6px;border-bottom:1px solid var(--line2);padding-bottom:10px}
+.bdname{display:flex;gap:8px;align-items:center}
+.bdname b{font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bdname small{color:var(--mute)}
+.bdbar{display:flex;height:8px;border-radius:99px;background:var(--track);overflow:hidden}
+.bdbar .ok{background:var(--done)}.bdbar .bad{background:var(--prio)}
+.bdnums{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--mute)}
+.bdnums b{color:var(--ink);font-weight:500}
+@media (max-width:520px){.bdsum{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .chg ul{margin:4px 0 0;padding-left:18px;line-height:1.7}
 pre.notes{margin:0;white-space:pre-wrap;font:inherit;font-size:13px;color:var(--mute);background:var(--bg);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;max-height:220px;overflow:auto}
 .older{align-self:center}
@@ -983,7 +1002,7 @@ async function refresh(){
   try{const d=await api('state');if(!S.loaded)boot.set(85,'整理畫面…');
     const prevTop=S.loaded?topBotId():null,prevEng=JSON.stringify(S.engines||null);
     Object.assign(S,{me:d.me,prog:d.prog||0,bots:d.bots,groups:d.groups,folders:d.folders,routines:d.routines,busy:d.busy,runnerOnline:d.runnerOnline,engines:d.engines,
-      last:d.last,ur:d.ur,rev:d.rev,host:d.host,computers:d.computers,sched:d.sched,quick:d.quick||{},allow:d.allow||{},warm:d.warm??120,tokens:d.tokens||{},models:d.models||{},pins:d.pins||[],mute:d.mute||{},memory:d.memory||{},skills:d.skills||{},nsk:d.nsk||{},shareBrowser:d.shareBrowser!==false,nick:d.nick||""});
+      last:d.last,ur:d.ur,rev:d.rev,host:d.host,computers:d.computers,sched:d.sched,quick:d.quick||{},allow:d.allow||{},warm:d.warm??120,tokens:d.tokens||{},models:d.models||{},pins:d.pins||[],mute:d.mute||{},memory:d.memory||{},facts:d.facts||{},manuals:d.manuals||{},review:d.review!==false,skills:d.skills||{},nsk:d.nsk||{},shareBrowser:d.shareBrowser!==false,nick:d.nick||""});
     if(cur&&!conv(cur))cur=null;
     if(d.focus?.conv&&d.focus.dev&&d.focus.dev!==myDev&&conv(d.focus.conv))followRemote(d.focus);
     else if(cur&&conv(cur)&&d.focus?.conv!==cur)publishFocus(cur);
@@ -1569,7 +1588,7 @@ function sheet(kind,edit){
     return `<div class="field">備援 AI<div class="row2">${sel(0)}${sel(1)}</div><div class="row2" style="margin-top:8px">${sel(2,'opencode')}</div><p class="hmuted">第一、第二備援，以及可選的本機 Ollama。模型說流量不夠或額度用完，會立刻改叫下一個備援，接手後該查的頁面、該建的例行任務一樣要做；這台電腦沒裝的會跳過。HTTP 429 先重試一次再切換。登入或 API Key 無效不會重複呼叫。程式錯誤不會因此換模型。</p></div>`})()}`}
   <label class="field">分區<select id="sf_f"><option value="">未分區</option>${S.folders.map(f=>`<option data-u value="${f.id}" ${(c?c.folder:(conv(cur)?.folder||null))===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select></label>
   ${!g&&c&&((S.allow||{})[c.id]||[]).length?`<div class="field">一律允許的事（機器人做這些不會再問你）<div class="picks" id="sf_al">${S.allow[c.id].map((t,i)=>`<div class="pick"><span data-u style="flex:1">${esc(t)}</span><button type="button" class="mv" data-unallow="${i}" aria-label="收回">✕</button></div>`).join('')}</div></div>`:''}
-  ${!g&&c&&((S.memory||{})[c.id]||[]).length?`<div class="field">它記得的事（📌）<div class="picks" id="sf_mem">${S.memory[c.id].map((t,i)=>`<div class="pick"><span data-u style="flex:1">${esc(t)}</span><button type="button" class="mv" data-unmem="${i}" aria-label="忘記">✕</button></div>`).join('')}</div></div>`:''}
+  ${!g&&c?memHtml(c):''}
   ${!g&&c&&((S.skills||{})[c.id]||[]).length?`<div class="field">它會的技能（🧩，輸入 / 叫用）<div class="picks" id="sf_sk">${S.skills[c.id].map((k,i)=>`<div class="pick"><span data-u style="flex:1" title="${esc(k.steps)}">${esc(k.name)}</span><button type="button" class="mv" data-unsk="${i}" aria-label="刪除">✕</button></div>`).join('')}</div></div>`:''}
   ${!g&&c&&((S.nsk||{})[c.id]||[]).length?`<div class="field">Claude Code 技能（存在它的資料夾，會跟著帳號到任何主機）<div class="picks">${S.nsk[c.id].map(n=>`<div class="pick"><span data-u>${esc(n)}</span></div>`).join('')}</div></div>`:''}
   ${!g&&edit?(()=>{const r=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查'),ev=r&&r.enabled?((r.times||[]).find(t=>/^\*\//.test(t))||'').slice(2):'';return `<div class="field">24 小時待命<select id="sf_stand">${[['','關閉'],['10','每 10 分鐘巡一次'],['30','每 30 分鐘巡一次'],['60','每小時巡一次']].map(([v,l])=>`<option value="${v}"${v===ev?' selected':''}>${l}</option>`).join('')}</select><p class="hmuted">開啟後它會照指定任務定時自己檢查、有事就處理，需要時在背景找其他機器人幫忙；沒事不會出聲。主機電腦要開著。</p></div>`})():''}
@@ -1593,8 +1612,7 @@ function sheet(kind,edit){
       $('sf_m').innerHTML=(k==='opencode'&&!opts.length?`<option value="">${esc(I18N.t('這台電腦還沒下載模型，先到 AI 連線下載'))}</option>`:`<option value="">${esc(I18N.t('預設（推薦）'))}</option>`)+opts.map(m=>`<option value="${esc(m)}" ${m===curShort?'selected':''} data-u>${esc(m)}</option>`).join('')};
     const upd=()=>{const k=$('sf_e').value;fillModels();$('sf_hint').innerHTML=engState(k)==='ok'?'<span class="p-ok">這台電腦已連接這個 AI。</span>':`這台電腦還沒連接這個 AI。<a href="#" id="sf_conn">看怎麼連接</a>`;if($('sf_conn'))$('sf_conn').onclick=ev=>{ev.preventDefault();openAI(k)}};$('sf_e').onchange=upd;upd()}
   if(edit)renderRoutines();
-  if($('sf_mem'))$('sf_mem').onclick=async e=>{const x=e.target.closest('[data-unmem]');if(!x)return;const list=[...S.memory[c.id]];list.splice(+x.dataset.unmem,1);
-    try{await api('settings','PUT',{memory:{bot:c.id,list}});S.memory[c.id]=list;x.closest('.pick').remove();toast(I18N.t('已忘記'))}catch(err){toast(err.message)}};
+  if($('sf_mem'))bindMem(c);
   if($('sf_stand'))$('sf_stand').onchange=async e=>{const v=e.target.value,old=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查');e.target.disabled=true;try{if(old)await api('routines/'+old.id,'DELETE');if(v)await api('routines','POST',{conv:c.id,name:'待命巡查',times:['*/'+v],prompt:'（待命巡查）照你的指定任務檢查有沒有新狀況要處理（例如新訊息、新訂單、到期的事）。有就處理，需要同事幫忙就 @同事；處理完簡短回報。完全沒事就只回「（略過）」。'});await refresh();toast(v?'已開啟 24 小時待命':'已關閉待命')}catch(x){toast(x.message)}e.target.disabled=false};
   if($('sf_hmake'))$('sf_hmake').onclick=async()=>{$('sf_hmake').disabled=true;try{await api('routines','POST',{conv:c.id,name:'外部交接',trigger:'hook',prompt:'其他 AI 把工作交接給你：照交接內容處理，完成後在這裡回報結果；資訊不夠就直接問使用者。'});await refresh();sheet('b',true);setTimeout(()=>$('sf_hcopy')?.scrollIntoView({block:'center'}),50)}catch(e){toast(e.message);$('sf_hmake').disabled=false}};
   if($('sf_hcopy'))$('sf_hcopy').onclick=()=>{const r=S.routines.find(x=>x.conv===c.id&&x.hook&&x.name==='外部交接');navigator.clipboard?.writeText(hookUrl(r)).then(()=>toast(I18N.t('已複製'))).catch(()=>{})};
@@ -1936,6 +1954,24 @@ async function quickBot(){
 $('edit').onclick=()=>sheet(isG(cur)?'g':'b',true);
 
 $('settings').onclick=()=>openSettings();
+/* memory in three kinds: 規則 (📌), 事實 (📇), 做事手冊 (📘); same settings storage, told apart by type */
+const MEMT={rule:['規則','memory','它被糾正或學到的做法，每次工作都會照做。','例如：回覆客人要用敬語'],fact:['事實','facts','固定的資料，例如名單、網址、帳號名稱。','例如：後台網址是 https://…'],manual:['做事手冊','manuals','成功做完多步驟的工作後它自己寫下的流程（📘），做類似的事時會照著做。','']};
+const memList=(c,t)=>((S[MEMT[t][1]]||{})[c.id]||[]);
+function memHtml(c){return `<div class="field">它記得的事<div class="seg mseg" id="sf_mt" role="group" aria-label="記憶分類">${Object.entries(MEMT).map(([k,v],i)=>`<button type="button" data-mt="${k}" class="${i?'':'on'}"><b>${v[0]}</b><small>${memList(c,k).length}</small></button>`).join('')}</div>
+  <p class="hmuted" id="sf_mtip"></p><div class="picks" id="sf_mem"></div>
+  <div class="row2" id="sf_madd"><input id="sf_mnew" maxlength="300" style="${field}"><button type="button" class="ghost" id="sf_mgo">加入</button></div></div>`}
+function bindMem(c){let t='rule';
+  const draw=()=>{const list=memList(c,t);$('sf_mtip').textContent=I18N.t(MEMT[t][2]);$('sf_madd').hidden=t==='manual';$('sf_mnew').placeholder=I18N.t(MEMT[t][3]);
+    $('sf_mt').querySelectorAll('[data-mt]').forEach(b=>{b.classList.toggle('on',b.dataset.mt===t);b.querySelector('small').textContent=memList(c,b.dataset.mt).length});
+    $('sf_mem').innerHTML=list.length?list.map((x,i)=>t==='manual'?`<div class="pick mman"><details style="flex:1;min-width:0"><summary data-u>${esc(x.name)}</summary><div class="msteps" data-u>${esc(x.steps)}</div></details><small class="hmuted">${I18N.t('用過')} ${+x.used||0}</small><button type="button" class="mv" data-unmem="${i}" aria-label="刪除">✕</button></div>`
+      :`<div class="pick"><span data-u style="flex:1">${esc(x)}</span><button type="button" class="mv" data-unmem="${i}" aria-label="忘記">✕</button></div>`).join(''):`<p class="hmuted">${I18N.t('還沒有')}</p>`};
+  const save=async list=>{await api('settings','PUT',{memory:{bot:c.id,type:t,list}});S[MEMT[t][1]]=S[MEMT[t][1]]||{};S[MEMT[t][1]][c.id]=list;draw()};
+  $('sf_mt').onclick=e=>{const b=e.target.closest('[data-mt]');if(b){t=b.dataset.mt;draw()}};
+  $('sf_mem').onclick=async e=>{const x=e.target.closest('[data-unmem]');if(!x)return;const list=[...memList(c,t)];list.splice(+x.dataset.unmem,1);
+    try{await save(list);toast(I18N.t(t==='manual'?'已刪除':'已忘記'))}catch(err){toast(err.message)}};
+  const add=async()=>{const v=$('sf_mnew').value.trim();if(!v)return;try{await save([...memList(c,t).filter(x=>x!==v),v]);$('sf_mnew').value='';toast(I18N.t('已加入'))}catch(err){toast(err.message)}};
+  $('sf_mgo').onclick=add;$('sf_mnew').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};
+  draw()}
 /* ---------- settings: a menu, each item opens its own page ---------- */
 const field='flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--ink);font:inherit';
 /* on a big screen every settings page lives inside one wide two-pane sheet; on a phone each page is its own bottom sheet */
@@ -1956,9 +1992,10 @@ function settingsRows(){return [
     ['tpl','🧩','範本','一鍵建立常用的機器人'],
     ['code','{}','程式任務','隔離工作區、測試與差異審查'],
     ['logs','📋','工作紀錄','最近 100 筆'],
+    ['board','📊','成果看板','近 7 天 / 30 天的成果'],
     ['guide','🧭','設定指引','從頭設定一次'],
     ['ver','✨','最新版本',(window._upd&&['available','ready'].includes(window._upd.state))?'有新版本':'版本與更新內容']]}
-const settingsGo={look:()=>openLook(),buddy:()=>openBuddy(),me:()=>openProfile(),warm:()=>openWarm(),acct:()=>openAccount(),pc:()=>openComputers(),ai:()=>openAI(),noti:()=>openNotify(),conn:()=>openConnectors(),sched:()=>openSched(),files:()=>openStore(),notes:()=>openNotes(),tpl:()=>openTpl(),code:()=>openCode(),logs:()=>openLogs(),guide:()=>openGuide(),ver:()=>openVersion()};
+const settingsGo={look:()=>openLook(),buddy:()=>openBuddy(),me:()=>openProfile(),warm:()=>openWarm(),acct:()=>openAccount(),pc:()=>openComputers(),ai:()=>openAI(),noti:()=>openNotify(),conn:()=>openConnectors(),sched:()=>openSched(),files:()=>openStore(),notes:()=>openNotes(),tpl:()=>openTpl(),code:()=>openCode(),logs:()=>openLogs(),board:()=>openBoard(),guide:()=>openGuide(),ver:()=>openVersion()};
 function settingsFrame(){
   if($('sbody'))return;
   $('veil').innerHTML=`<div class="sheet settings"><div class="shd"><h2>設定</h2><button type="button" class="x" id="sx" aria-label="關閉">✕</button></div>
@@ -2135,7 +2172,13 @@ function openSched(){
   subSheet('例行任務排程',`<p>例行任務由這台一直開著的主機觸發。主機重開機後，錯過的那一次會補做，並通知你。</p>
   <div class="bchoice"><label class="bc"><input type="radio" name="sc" value="pc" ${v==='pc'?'checked':''}><span><b>主機觸發</b><small>時間到由這台主機執行。重開機後補做錯過的一次。</small></span></label>
   <label class="bc"><input type="radio" name="sc" value="cloud" ${v==='cloud'?'checked':''}><span><b>雲端觸發</b><small>改由雲端看時間。只有選了這個，主機沒連上時才會先排隊。</small></span></label></div>
-  <p class="hmuted">${CFG.local?'離線模式只能用電腦排程。':'時區：台灣時間（UTC+8）'}</p>`);
+  <p class="hmuted">${CFG.local?'離線模式只能用電腦排程。':'時區：台灣時間（UTC+8）'}</p>
+  <h3>每週自我檢討</h3>
+  <label class="toggle">每週自我檢討<button type="button" class="sw ${S.review!==false?'on':''}" id="scRev" aria-label="每週自我檢討"></button></label>
+  <p class="hmuted">每週一次，每個有工作的機器人回顧過去 7 天的失敗和被你糾正的事，提出要新增或修改的規則，用「核准」按鈕問你；你按核准才會寫入規則。沒有可建議的就不會發訊息。</p>
+  <div class="row2"><button type="button" class="ghost" id="scRevNow">現在檢討一次</button><span id="scRevMsg" class="hmuted"></span></div>`);
+  $('scRev').onclick=async()=>{const on=!$('scRev').classList.contains('on');try{await api('settings','PUT',{review:on});S.review=on;$('scRev').classList.toggle('on',on);toast(I18N.t('已儲存 ✓'))}catch(e){toast(e.message)}};
+  $('scRevNow').onclick=async()=>{$('scRevNow').disabled=true;try{const r=await api('review/run','POST');$('scRevMsg').textContent=r.sent?I18N.t('已請機器人檢討，有建議會傳到它的對話'):I18N.t('這 7 天沒有失敗或糾正，不用檢討')}catch(e){$('scRevMsg').textContent=e.message}$('scRevNow').disabled=false};
   $('veil').querySelectorAll('input[name=sc]').forEach(r=>r.onchange=async()=>{try{await api('settings','PUT',{sched:r.value});S.sched=r.value;toast(I18N.t('已儲存 ✓'))}catch(e){toast(e.message)}})}
 /* where files are kept */
 async function openStore(){
@@ -2193,6 +2236,22 @@ async function openLogs(){
   const dur=l=>l.finished&&l.started?new Intl.NumberFormat(I18N.lang,{style:'unit',unit:'second',unitDisplay:'short'}).format(Math.max(1,Math.round((l.finished-l.started)/1000))):'';
   const stc={done:['p-ok','完成'],error:['p-pr','失敗'],running:['','執行中'],pending:['p-off','排隊']};
   subSheet('工作紀錄',`<div class="logs">${d.logs.length?d.logs.map(l=>`<div class="log"><span class="pill st ${stc[l.status]?.[0]||''}">${stc[l.status]?.[1]||l.status}</span><b style="font-weight:500"><span data-u>${esc(l.kind==='test'?(ENG[l.url]?.n||l.url):l.bot)}</span>${l.kind==='open'?'（開瀏覽器）':l.kind==='test'?'（連線測試）':l.kind==='code'?'（程式任務）':''}</b><span style="font-size:12px;color:var(--faint)">${when(l.created)} ${dur(l)}</span><small data-u>${esc(l.convName)}${l.convName?'：':''}${esc(l.prompt)}</small></div>`).join(''):'<p>還沒有紀錄</p>'}</div>`)}
+/* results board: per bot, last 7 / 30 days, from the per-day totals */
+async function openBoard(span){
+  span=span==='d30'?'d30':'d7';
+  let d=null;try{d=await api('board')}catch(e){subSheet('成果看板',`<p class="errmsg">${esc(e.message)}</p>`);return}
+  const nf=new Intl.NumberFormat(I18N.lang),secs=s=>s==null?'—':s<60?`${s} ${I18N.t('秒')}`:`${Math.floor(s/60)} ${I18N.t('分')} ${s%60} ${I18N.t('秒')}`;
+  const mins=m=>m<60?`${m} ${I18N.t('分鐘')}`:`${(m/60).toFixed(1)} ${I18N.t('小時')}`;
+  const rows=d.bots.map(b=>({...b,v:b[span]})).filter(b=>b.v.done||b.v.failed).sort((a,b)=>b.v.done-a.v.done);
+  const max=Math.max(1,...rows.map(b=>b.v.done+b.v.failed));
+  const sum=rows.reduce((a,b)=>({done:a.done+b.v.done,failed:a.failed+b.v.failed,tokens:a.tokens+b.v.tokens,saved:a.saved+b.v.savedMin}),{done:0,failed:0,tokens:0,saved:0});
+  subSheet('成果看板',`<div class="seg" id="bdSpan" role="group" aria-label="期間"><button type="button" data-span="d7" class="${span==='d7'?'on':''}"><b>近 7 天</b></button><button type="button" data-span="d30" class="${span==='d30'?'on':''}"><b>近 30 天</b></button></div>
+  <div class="bdsum"><div><b>${nf.format(sum.done)}</b><small>完成</small></div><div><b>${nf.format(sum.failed)}</b><small>失敗</small></div><div><b>${sum.done+sum.failed?Math.round(sum.done/(sum.done+sum.failed)*100)+'%':'—'}</b><small>成功率</small></div><div><b>${mins(sum.saved)}</b><small>估計省下</small></div></div>
+  <div class="board">${rows.length?rows.map(b=>`<div class="bdrow"><div class="bdname"><span>${esc(b.avatar||'🤖')}</span><b data-u>${esc(b.name)}</b><small>${b.v.rate==null?'—':b.v.rate+'%'}</small></div>
+    <div class="bdbar" role="img" aria-label="${b.v.done} / ${b.v.failed}"><span class="ok" style="width:${b.v.done/max*100}%"></span><span class="bad" style="width:${b.v.failed/max*100}%"></span></div>
+    <div class="bdnums"><span>完成 <b>${nf.format(b.v.done)}</b></span><span>失敗 <b>${nf.format(b.v.failed)}</b></span><span>平均耗時 <b>${secs(b.v.avgSec)}</b></span><span>tokens <b>${b.v.tokens?nf.format(b.v.tokens):'—'}</b></span><span>估計省下 <b>${mins(b.v.savedMin)}</b></span></div></div>`).join(''):'<p>這段期間還沒有完成的工作</p>'}</div>
+  <p class="hmuted">「估計省下」是粗略估計：每件完成的工作算 ${d.est.task} 分鐘，有用到瀏覽器的再加 ${d.est.web} 分鐘，不是實際量測。tokens 只計算有回報用量的 AI。從這個版本開始累計，最多保留 60 天。</p>`);
+  $('bdSpan').onclick=e=>{const b=e.target.closest('[data-span]');if(b&&b.dataset.span!==span)openBoard(b.dataset.span)}}
 
 /* ---------- AI connections ---------- */
 const aiTests={},rmsgs={};

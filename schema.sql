@@ -105,6 +105,18 @@ CREATE TABLE IF NOT EXISTS jobs (
   tries INTEGER NOT NULL DEFAULT 0 -- retries already used on that same model
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
+CREATE TABLE IF NOT EXISTS stats (   -- 成果看板: totals per bot per day, added to when a chat job ends
+  user_id TEXT NOT NULL,
+  bot_id TEXT NOT NULL,
+  day TEXT NOT NULL,               -- local date YYYY-MM-DD
+  done INTEGER NOT NULL DEFAULT 0,
+  failed INTEGER NOT NULL DEFAULT 0,
+  ms INTEGER NOT NULL DEFAULT 0,   -- finished - started of completed jobs
+  timed INTEGER NOT NULL DEFAULT 0,
+  tokens INTEGER NOT NULL DEFAULT 0,
+  web INTEGER NOT NULL DEFAULT 0,  -- completed jobs that used the browser
+  PRIMARY KEY (user_id, bot_id, day)
+);
 CREATE TABLE IF NOT EXISTS live (   -- the latest frame of a bot's own browser, for phones watching the host
   bot_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

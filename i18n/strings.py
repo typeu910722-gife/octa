@@ -985,3 +985,38 @@ T.update({
 })
 
 T.update({'這台電腦的 OCTA 是裝給所有使用者，Windows 會詢問是否允許變更，請按「是」': ('OCTA is installed for all users on this computer: Windows will ask to allow changes — press “Yes”', 'このパソコンの OCTA は全ユーザー向けにインストールされています。Windows が変更の許可を求めるので「はい」を押してください')})
+
+# memory kinds, playbooks, weekly self-review, results board
+T.update({
+ '它記得的事': ('What it remembers', '覚えていること'),
+ '規則': ('Rules', 'ルール'),
+ '事實': ('Facts', '事実'),
+ '做事手冊': ('Playbooks', '作業手順書'),
+ '它被糾正或學到的做法，每次工作都會照做。': ('Ways of working it was corrected on or learned; it follows them every time.', '訂正されたり学んだりしたやり方。毎回これに従います。'),
+ '例如：回覆客人要用敬語': ('e.g. Reply to guests politely', '例：お客様には敬語で返信する'),
+ '固定的資料，例如名單、網址、帳號名稱。': ('Fixed data such as lists, URLs and account names.', 'リスト、URL、アカウント名などの固定データ。'),
+ '例如：後台網址是 https://…': ('e.g. The admin site is https://…', '例：管理画面の URL は https://…'),
+ '成功做完多步驟的工作後它自己寫下的流程（📘），做類似的事時會照著做。': ('Steps it wrote down itself after finishing a multi-step job (📘); it follows them for similar work.', '複数ステップの作業をやり遂げた後に自分で書いた手順（📘）。似た作業のときに従います。'),
+ '用過': ('Used', '使用'),
+ '還沒有': ('Nothing yet', 'まだありません'),
+ '已加入': ('Added', '追加しました'),
+ '成果看板': ('Results board', '成果ボード'),
+ '近 7 天 / 30 天的成果': ('Results for the last 7 / 30 days', '直近 7 日 / 30 日の成果'),
+ '近 7 天': ('Last 7 days', '直近 7 日'),
+ '近 30 天': ('Last 30 days', '直近 30 日'),
+ '成功率': ('Success rate', '成功率'),
+ '估計省下': ('Est. time saved', '推定節約時間'),
+ '平均耗時': ('Avg. time', '平均所要時間'),
+ '分': ('min', '分'),
+ '這段期間還沒有完成的工作': ('No finished work in this period yet', 'この期間に完了した作業はまだありません'),
+ '每週自我檢討': ('Weekly self-review', '週次の振り返り'),
+ '每週一次，每個有工作的機器人回顧過去 7 天的失敗和被你糾正的事，提出要新增或修改的規則，用「核准」按鈕問你；你按核准才會寫入規則。沒有可建議的就不會發訊息。': ('Once a week each bot that worked looks back at the last 7 days of failures and your corrections and suggests rules to add or change, asking with an Approve button. Rules are written only when you approve. If there is nothing to suggest, it stays quiet.', '週に一度、作業したボットが直近 7 日の失敗とあなたの訂正を振り返り、追加・修正したいルールを「承認」ボタンで提案します。承認したときだけルールに書き込みます。提案がなければメッセージは送りません。'),
+ '現在檢討一次': ('Review now', '今すぐ振り返る'),
+ '已請機器人檢討，有建議會傳到它的對話': ('Asked the bots to review; suggestions will appear in their chats', 'ボットに振り返りを依頼しました。提案はそれぞれのチャットに届きます'),
+ '這 7 天沒有失敗或糾正，不用檢討': ('No failures or corrections in the last 7 days — nothing to review', '直近 7 日に失敗や訂正はないので、振り返りは不要です'),
+})
+P.extend([
+ (r'^「估計省下」是粗略估計：每件完成的工作算 (\d+) 分鐘，有用到瀏覽器的再加 (\d+) 分鐘，不是實際量測。tokens 只計算有回報用量的 AI。從這個版本開始累計，最多保留 60 天。$',
+  '“Est. time saved” is a rough estimate: $1 minutes per finished job, plus $2 minutes when it used the browser — not a measurement. Tokens count only AIs that report usage. Counting starts with this version and keeps up to 60 days.',
+  '「推定節約時間」は大まかな見積もりです：完了した作業 1 件につき $1 分、ブラウザを使った作業はさらに $2 分。実測ではありません。トークンは使用量を報告する AI のみ。このバージョンから集計し、最大 60 日保持します。'),
+])

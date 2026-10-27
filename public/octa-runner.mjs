@@ -228,6 +228,27 @@ function records(job) {
     '- 使用者糾正你、或你發現一個例外（打錯字的名字、某種情況怎麼算、哪些已經確認過），立刻用 📌記住 寫成一條規則，下次照做。',
     fs.length ? '最近的紀錄：\n' + fs.map(n => '· ' + n).join('\n') : '（還沒有紀錄）'];
 }
+// 記憶分層: 規則 / 事實 / 做事手冊, each its own section and each capped (the server already keeps the newest that fit)
+const MEM_LIMIT = { rule: 3000, fact: 3000, manual: 3000 };
+const fitNewest = (list, chars) => { const out = []; let n = 0; for (let i = list.length - 1; i >= 0; i--) { const v = String(list[i] || ''); if (!v || n + v.length > chars) break; n += v.length; out.unshift(v); } return out; };
+export function memoryLines(job) {
+  const out = [], rules = fitNewest(job.memory || [], MEM_LIMIT.rule), facts = fitNewest(job.facts || [], MEM_LIMIT.fact);
+  if (rules.length) out.push('', '你的規則（之前被糾正或學到的做法，照著做）：', ...rules.map(m => '- ' + m));
+  if (facts.length) out.push('', '你記得的事實（固定的名單、網址、帳號名稱等資料；重要決定前仍要到來源確認最新狀況）：', ...facts.map(m => '- ' + m));
+  return [...out, ...manualLines(job)];
+}
+// the manuals change with each instruction, so a warm session gets them with the turn instead of in its fingerprint
+export function manualLines(job) {
+  let used = 0; const mans = [];
+  for (const m of job.manuals || []) { const s = `【${m.name}】\n${m.steps}`; if (used + s.length > MEM_LIMIT.manual) break; used += s.length; mans.push(s); }
+  return mans.length ? ['', '做事手冊（你之前成功做過類似的事，照這些步驟做；畫面跟手冊不一樣時以畫面為準，做完用同名 📘手冊 更新）：', ...mans] : [];
+}
+export function memoryHowTo() {
+  return [
+    '- 固定的資料（名單、網址、帳號名稱、門市地址這類不常變的事實）寫成「📇事實：一句話」，跟 📌記住（規則、做法、偏好）分開。',
+    '- 成功做完一件多步驟的工作（例如用瀏覽器操作，步驟有 3 步以上）而且以後還會再做時，在回覆最後單獨一行寫「📘手冊：名稱｜步驟1 → 步驟2 → 步驟3」（名稱用看得出是什麼工作的幾個字，例如「下載訂房報表」；步驟寫去哪裡、點什麼、怎麼判斷），下次做類似的事會提供給你。沒做完、失敗或只做一兩步的不要寫。'
+  ];
+}
 export function buildPrompt(job, here) {
   const lines = [
     `你是 OCTA（奧克塔）裡的機器人「${job.bot.name}」，在使用者自己的電腦上執行。`,
@@ -255,7 +276,7 @@ export function buildPrompt(job, here) {
     if (job.canAsk) lines.push('需要同事的資料或幫忙時，單獨一行寫「@同事名 你的問題」，系統會在背景傳給對方，對方回答後自動叫你繼續；整件事交給更適合的同事做，寫「@同事名 交接：要做的事」，對方做完會回報給你。不需要就不要寫。');
   }
   lines.push('', '你的運作環境（使用者問到你用什麼 AI、方案、還剩多少流量時，照這些資料回答，不要說你查不到）：', ...aboutMe(job));
-  if (job.memory?.length) lines.push('', '你記得的事（之前學到的偏好和重要事實；重要決定前仍要到來源確認最新狀況）：', ...job.memory.map(m => '- ' + m));
+  lines.push(...memoryLines(job));
   if (job.skills?.length) lines.push('', '你會的技能（使用者說「執行技能 X」或要做相同的事時，照步驟做）：', ...job.skills.map(k => `【${k.name}】\n${k.steps}`));
   if (job.notes) lines.push('', '共用資料（所有機器人都要知道）：', job.notes);
   if (job.folderNotes) lines.push('', `分區「${job.folder}」的資料：`, job.folderNotes);
@@ -273,6 +294,7 @@ export function buildPrompt(job, here) {
     '- 指定任務太簡短或模糊時（只有幾個字），根據你看到的實際情況推斷完整的工作內容，用 📝任務更新 寫出來，並提出合適的例行任務。',
     '- 記住長期有用的事：使用者說了穩定的偏好、規則或重要事實（例如「回覆客人要用敬語」「302 房冷氣壞了」），在回覆最後加一行「📌記住：一句話」。一次性的事不要記。',
     '- 存成技能：使用者說「把這個流程存起來／存成技能」，或同一套步驟你已經做順了，在回覆最後寫「🧩技能：技能名稱」，換行後條列每個步驟（去哪裡、點什麼、怎麼判斷、輸出什麼），最後一行寫「🧩結束」。',
+    ...memoryHowTo(),
     '',
     '規則：',
     `- 用${({ 'zh-TW': '繁體中文', 'zh-CN': '簡體中文', en: '英文（English）', ja: '日文（日本語）' })[job.lang] || '繁體中文'}回覆，簡潔、先給結果。你的最後輸出會原封不動顯示成聊天訊息。`,
@@ -1247,7 +1269,7 @@ function turnWithWatch(job, s, text, live) {
 }
 async function warmClaude(job, b, here, live) {
   // anything that changes the bot's standing instructions starts a fresh session
-  const fp = JSON.stringify([VERSION, job.memory, (job.skills || []).map(k => k.name + k.steps), job.bot.task, job.bot.model, job.bot.browser, job.bot.livePort, job.notes, job.folderNotes, job.group, (job.colleagues || []).map(c => c.name + c.task), job.allowed, job.lang, storeDir(), job.conv?.id, job.nick]);
+  const fp = JSON.stringify([VERSION, job.memory, job.facts, (job.skills || []).map(k => k.name + k.steps), job.bot.task, job.bot.model, job.bot.browser, job.bot.livePort, job.notes, job.folderNotes, job.group, (job.colleagues || []).map(c => c.name + c.task), job.allowed, job.lang, storeDir(), job.conv?.id, job.nick]);
   let s = sessions.get(job.bot.id), text;
   const ids = job.history.map(h => h.id || 0), newest = Math.max(0, ...ids);
   // a session that sat idle a long time (the computer may have slept) can hang on its old connection: start fresh
@@ -1258,7 +1280,7 @@ async function warmClaude(job, b, here, live) {
     // only what happened since the last turn, then the new instruction
     const fresh = job.history.filter(h => (h.id || 0) > s.lastId && !(h.who === '使用者' && h.text === job.prompt));
     text = [fresh.length ? '（上次之後的新對話）\n' + fresh.map(h => `【${h.who}】${h.text}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : '')).join('\n') : '',
-      dayInfo(job).join('\n'), workNotes(job).join('\n'), records(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'), workLoop().join('\n'), studioAim().join('\n'), turnGuide(), whoAmI(job), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
+      dayInfo(job).join('\n'), workNotes(job).join('\n'), records(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'), workLoop().join('\n'), studioAim().join('\n'), turnGuide(), whoAmI(job), manualLines(job).join('\n').trim(), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
     log(`⚡ ${job.bot.name}：AI 待機中，直接接續`);
   } else {
     if (s) closeSession(job.bot.id);
