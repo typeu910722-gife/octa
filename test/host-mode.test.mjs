@@ -267,3 +267,16 @@ test('moving again into a database that already has the rows only adds new ones'
   fresh.raw.prepare("INSERT INTO users (id,name,pw,created) VALUES ('local','本機','-',1)").run();
   await assert.rejects(importFromCloud({ call: callFn, db: fresh, tables: ['messages'] }), /只搬到/);
 });
+
+test('the page backs off while the host is off and knows which paths the cloud answers itself', () => {
+  const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
+  const api = readFileSync(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js'), 'utf8');
+  assert.match(page, /id="hostOff"[^>]*role="status"/);
+  assert.match(page, /HOFF_STEPS=\[5000,10000,30000,60000\]/);
+  const pageRe = new RegExp(page.match(/const CLOUD_ONLY=\/(.+?)\/;/)[1]);
+  const apiRe = new RegExp(api.match(/const CLOUD_ONLY = \/(.+?)\/;/)[1]);
+  for (const p of ['login', 'logout', 'me', 'devices', 'devices/remove', 'password', 'reset-code', 'host/deactivate', 'coach', 'runner-token', 'state', 'messages', 'wait', 'settings', 'bots', 'files'])
+    assert.equal(pageRe.test(p), apiRe.test(p), p);
+  assert.equal(pageRe.test('messages?conv=x'), false);
+  assert.equal(pageRe.test('me?x=1'), true);
+});

@@ -398,6 +398,17 @@ pre.code{max-width:100%;box-sizing:border-box;margin:0;background:var(--bg);bord
 .ytop div{position:absolute;inset:0 auto 0 0;width:40%;background:linear-gradient(90deg,var(--shade),var(--gold),var(--gold2));overflow:hidden;animation:ymove 1.1s ease-in-out infinite}
 @keyframes ymove{0%{left:-40%}100%{left:100%}}
 body.yloading .ytop{opacity:1}
+/* 主機模式: the host computer holding the data is off */
+.hostoff{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:60;width:max-content;max-width:min(560px,calc(100vw - 24px));display:flex;gap:10px;align-items:center;padding:8px 8px 8px 14px;border-radius:99px;background:color-mix(in srgb,var(--prio) 12%,var(--panel2));border:1px solid color-mix(in srgb,var(--prio) 45%,transparent);color:var(--ink);font-size:13px;line-height:1.4;box-shadow:0 8px 24px var(--shadow);animation:hoffin .25s ease-out}
+.hostoff[hidden]{display:none}
+.hostoff .hd{flex:none;width:8px;height:8px;border-radius:50%;background:var(--prio);animation:hoffp 1.6s ease-in-out infinite}
+.hostoff span{min-width:0}
+.hostoff .ghost{flex:none;padding:4px 12px;border-radius:99px}
+@keyframes hoffin{from{opacity:0;transform:translate(-50%,-8px)}}
+@keyframes hoffp{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.hostoff,.hostoff .hd{animation:none}}
+@media (max-width:760px){.hostoff{top:calc(6px + env(safe-area-inset-top,0px));width:auto;left:12px;right:12px;transform:none;max-width:none;border-radius:14px;padding:9px 8px 9px 12px;font-size:13.5px;background:color-mix(in srgb,var(--prio) 10%,var(--pb,var(--panel2)))}
+  @keyframes hoffin{from{opacity:0;transform:translateY(-8px)}}}
 body.yblock::before{content:"";position:fixed;inset:0;z-index:89;background:var(--veil);cursor:progress}
 /* settings pages */
 .shd{display:flex;align-items:center;gap:6px}
@@ -977,6 +988,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
 </style>
 </head>
 <body>
+<div class="hostoff" id="hostOff" role="status" aria-live="polite" hidden><i class="hd" aria-hidden="true"></i><span>主機電腦目前沒有連線，開機並打開 OCTA 後會自動恢復</span><button type="button" class="ghost" id="hostOffR">重試</button></div>
 <div class="boot" id="boot" role="progressbar" aria-label="載入中">
   <img src="/icon.png?v=octopus2" alt="">
   <div class="brand" data-u>OCTA｜奧克塔</div>
@@ -1171,10 +1183,25 @@ async function api(path,method='GET',body){
   if(!quiet)ybar.on(HEAVY.test(path));
   try{return await api_(path,method,body)}finally{if(!quiet)ybar.off()}
 }
+/* 主機模式: the account's data is on its host computer. While that computer is off the cloud answers hostOffline:
+   wait 5s → 10s → 30s → 60s between tries instead of asking the cloud again and again */
+const HOFF={on:false,until:0,step:0,t:null},HOFF_STEPS=[5000,10000,30000,60000];
+const CLOUD_ONLY=/^(signup|login|logout|password|reset|reset\/send|reset-code|pair|config|me|devices|devices\/remove|host|host\/[a-z]+|runner-token|coach)(\?|$)/;   // the cloud answers these itself
+function hostOff(on,path){
+  clearTimeout(HOFF.t);
+  if(!on){if(!HOFF.on)return;HOFF.on=false;HOFF.step=0;$('hostOff').hidden=true;setTimeout(()=>{if(!/^state/.test(path||''))refresh();if(!liveOn)live()},0);return}
+  const wait=HOFF_STEPS[Math.min(HOFF.step,HOFF_STEPS.length-1)];HOFF.step++;
+  HOFF.on=true;HOFF.until=Date.now()+wait;$('hostOff').hidden=false;
+  HOFF.t=setTimeout(()=>{HOFF.until=0;refresh()},wait)}
+$('hostOffR').onclick=()=>{clearTimeout(HOFF.t);HOFF.until=0;refresh()};
 async function api_(path,method,body){
   if(path.startsWith('desktop/')&&window.octaDesktop&&!CFG.local)return window.octaDesktop.call(path.slice(8),method==='GET'?undefined:(body||{}));
+  const viaHost=!CFG.local&&!CLOUD_ONLY.test(path);
+  if(viaHost&&HOFF.on&&Date.now()<HOFF.until)throw new Error(I18N.t('主機電腦目前沒有連線，開機並打開 OCTA 後會自動恢復'));   // no request until the next try
   const r=await fetch('/api/'+path,{method,headers:{'content-type':'application/json',...(TOKEN?{authorization:'Bearer '+TOKEN}:{})},body:body?JSON.stringify(body):undefined});
   const d=await r.json().catch(()=>({error:I18N.t('網路錯誤')+`（HTTP ${r.status}${r.headers.get('cf-mitigated')?' · Cloudflare 驗證':''}）`}));   // the status tells what went wrong (e.g. a Cloudflare check page)
+  if(r.status===503&&d.hostOffline){if(!HOFF.on||Date.now()>=HOFF.until)hostOff(true);throw new Error(d.error)}
+  if(viaHost&&HOFF.on&&r.status!==503)hostOff(false,path);   // the host answered again
   if(r.status===401&&!/^(login|pair|reset)/.test(path)){if(TOKEN)logout(true,true);throw new Error(d.error)}
   if(!r.ok)throw new Error(d.error||'發生錯誤');
   return d;
@@ -2314,8 +2341,8 @@ function settingsRows(){return [
     ['look','🎨','外觀','深色或紙色、字體大小、語言'],
     ['buddy','🐙','小八','輸入框旁的章魚小幫手'],
     ['me','🙂','個人資料',S.nick?`機器人稱呼你「${esc(S.nick)}」`:'設定機器人怎麼稱呼你'],
-    ['acct','👤','帳號與裝置',CFG.local?'離線模式不使用帳號':esc(S.me)],
-    ['pc','🖥','電腦與主機',S.runnerOnline?(CFG.local?'電腦在線':'主機在線'):(CFG.local?'電腦離線':'主機離線')],
+    ['acct','👤','帳號與裝置',CFG.host?esc(CFG.host.name||S.me):CFG.local?'離線模式不使用帳號':esc(S.me)],
+    ['pc','🖥','電腦與主機',CFG.host?'資料存在這台電腦':S.runnerOnline?(CFG.local?'電腦在線':'主機在線'):(CFG.local?'電腦離線':'主機離線')],
     ['ai','🔌','AI 連線','連接 AI、查看剩餘流量'],
     ['warm','⚡','AI 待機時間',warmText(S.warm??120)],
     ['noti','🔔','通知','這個裝置、Telegram、LINE'],
@@ -2385,6 +2412,7 @@ function openProfile(){subSheet('個人資料',`<label class="field">你的暱�
   $('nickGo').onclick=async()=>{const v=$('nick').value.trim();try{await api('settings','PUT',{nick:v});S.nick=v;toast(I18N.t('已儲存 ✓'))}catch(e){toast(e.message)}}}
 /* account & devices */
 async function openAccount(){
+  if(CFG.host){subSheet('帳號與裝置',`<p>帳號：<b data-u>${esc(CFG.host.name||S.me)}</b></p><p>這台電腦是主機，資料存在這台電腦。登入的裝置、密碼和重設碼，請用手機或瀏覽器打開雲端版登入後管理。</p>`);return}
   if(CFG.local){subSheet('帳號與裝置','<p>離線模式不使用帳號，資料只在這台電腦。要讓手機使用，請到「電腦與主機」開啟手機遠端，或改用雲端帳號。</p>');return}
   subSheet('帳號與裝置',`<p>帳號：<b data-u>${esc(S.me)}</b></p><div id="devs"><p class="fade">讀取中…</p></div>
   <h3>移除裝置</h3><p>勾選上面的裝置，輸入密碼後移除，那些裝置會被登出。</p>
@@ -2401,6 +2429,24 @@ async function openAccount(){
     try{await api('devices/remove','POST',{ids,pw:$('dPw').value});toast(I18N.t('已移除'));openAccount()}catch(e){$('dMsg').textContent=e.message}};
   $('pGo').onclick=async()=>{try{await api('password','POST',{old:$('pOld').value,pw:$('pNew').value});$('pMsg').textContent=I18N.t('已修改，其他裝置需要重新登入');$('pOld').value=$('pNew').value=''}catch(e){$('pMsg').textContent=e.message}};
   $('rcGo').onclick=async()=>{try{const r=await api('reset-code','POST');$('rcOut').textContent=r.code}catch(e){toast(e.message)}}}
+/* 主機模式: move this account's data to this computer (desktop app), or back to the cloud */
+window.octaDesktop?.onHostProgress?.(d=>boot.set(Math.max(1,Math.min(100,+d.p||0)),d.text?I18N.t(d.text):''));
+function hostMoveAsk(){
+  $('veil').innerHTML=`<div class="sheet"><h2>改成存在這台電腦</h2><p>會先備份這台電腦的資料，再把雲端上的機器人、對話、檔案和設定搬過來，約幾十秒到幾分鐘。搬移期間請不要關閉 OCTA。</p>
+  <div class="acts"><button class="no" id="sx">取消</button><button class="btn" id="hGo">開始搬移</button></div></div>`;
+  $('veil').hidden=false;$('sx').onclick=closeSheet;$('hGo').onclick=hostMoveRun}
+async function hostMoveRun(){
+  closeSheet();boot.show(I18N.t('準備搬移…'));
+  try{await window.octaDesktop.hostMove();boot.set(100,I18N.t('完成，切換到這台電腦的資料…'))}
+  catch(e){boot.hide();
+    $('veil').innerHTML=`<div class="sheet"><h2>搬移沒有完成</h2><p class="errmsg">${esc(String(e.message||e).replace(/^Error invoking remote method '[^']+': (Error: )?/,''))}</p><p>資料還在雲端，什麼都沒有改變。可以再試一次。</p>
+    <div class="acts"><button class="no" id="sx">關閉</button><button class="btn" id="hGo">重試</button></div></div>`;
+    $('veil').hidden=false;$('sx').onclick=closeSheet;$('hGo').onclick=hostMoveRun}}
+function hostBackAsk(){
+  $('veil').innerHTML=`<div class="sheet"><h2>改回存在雲端</h2><p>雲端的資料停在你搬到這台電腦的那一刻。之後在這台電腦上的新對話、機器人和設定的改動，不會帶回雲端（仍留在這台電腦的資料與備份裡）。</p>
+  <div class="acts"><button class="no" id="sx">取消</button><button class="btn" id="hGo">改回雲端</button></div></div>`;
+  $('veil').hidden=false;$('sx').onclick=closeSheet;
+  $('hGo').onclick=async()=>{closeSheet();boot.show(I18N.t('切換中…'));try{await window.octaDesktop.hostBack()}catch(e){boot.hide();toast(String(e.message||e).replace(/^Error invoking remote method '[^']+': (Error: )?/,''))}}}
 /* computers: one host does the work */
 async function openComputers(){
   let ds=null;if(DESK()){try{ds=await api('desktop/status')}catch(e){}}
@@ -2413,12 +2459,17 @@ async function openComputers(){
   <ol class="ol"><li>在 Chrome 安裝 <a href="https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm" target="_blank" rel="noopener">Playwright Extension</a></li>
     <li>點 Chrome 右上角的擴充功能圖示，複製畫面上的 PLAYWRIGHT_MCP_EXTENSION_TOKEN</li>
     <li>貼在這裡並儲存：<div class="row2" style="margin-top:6px"><input id="dExt" type="password" autocomplete="off" placeholder="${ds?.extToken?'已儲存（要更換再貼上新的）':'貼上 token'}" style="${field}"><button class="btn" id="dExtSave">儲存</button>${ds?.extToken?'<button class="ghost" id="dExtDel">移除</button>':''}</div></li></ol>
-  ${CFG.local?`<h3>手機遠端</h3>
+  ${window.octaDesktop&&!CFG.local?`<h3>資料存在這台電腦（省雲端額度，推薦）</h3>
+  <p>機器人、對話、檔案和設定改存在這台電腦，雲端只負責帳號登入和轉送，手機照樣用同一個網址登入。這台電腦關機時手機會看不到對話；不過機器人本來就要這台電腦開著才會工作。</p>
+  <p class="hmuted">搬移前會先備份這台電腦的資料；搬移沒完成的話什麼都不會改變，可以再試一次。</p>
+  <div class="row2"><button class="btn" id="hMove">改成存在這台電腦</button></div>`:''}
+  ${CFG.local&&!CFG.host?`<h3>手機遠端</h3>
   <p>開啟後會產生一個網址和配對碼，手機打開網址、輸入配對碼就能使用。關掉就斷開。</p>
   <label class="toggle">手機遠端<button type="button" class="sw ${ds?.remote?.on?'on':''}" id="dRemote"></button></label>
   <div id="dRemoteInfo">${ds?.remote?.on?remoteInfo(ds.remote):''}</div>`:''}
-  ${window.octaDesktop?`<div class="row2"><button class="ghost" id="dMode">${CFG.local?'改用雲端帳號（同步）':'改用離線模式（不同步）'}</button></div>`:''}`:'';
-  subSheet('電腦與主機',`${CFG.local?'<p>離線模式：機器人在這台電腦上工作。</p>':`<p>機器人在「主機」電腦上工作。手機、平板和其他電腦打開 <b data-u>${esc(location.host)}</b> 登入同一個帳號，就能指揮、看結果。有多台電腦裝了 OCTA 時，只有主機會接工作，其他電腦待命。</p><div id="pcs"><p class="fade">讀取中…</p></div>`}
+  ${window.octaDesktop&&!CFG.host?`<div class="row2"><button class="ghost" id="dMode">${CFG.local?'改用雲端帳號（同步）':'改用離線模式（不同步）'}</button></div>`:''}`:'';
+  subSheet('電腦與主機',`${CFG.host?`<p>資料存在這台電腦（帳號 <b data-u>${esc(CFG.host.name||'')}</b>）。手機、平板用同一個帳號登入雲端版就能使用；這台電腦關機時，手機會看不到對話。</p>
+  <div class="row2"><button class="ghost" id="hBack">改回存在雲端</button></div>`:CFG.local?'<p>離線模式：機器人在這台電腦上工作。</p>':`<p>機器人在「主機」電腦上工作。手機、平板和其他電腦打開 <b data-u>${esc(location.host)}</b> 登入同一個帳號，就能指揮、看結果。有多台電腦裝了 OCTA 時，只有主機會接工作，其他電腦待命。</p><div id="pcs"><p class="fade">讀取中…</p></div>`}
   <h3>瀏覽器</h3>
   <label class="toggle">所有機器人共用登入<button type="button" class="sw ${S.shareBrowser!==false?'on':''}" id="dShare"></button></label>
   <p class="hmuted">開著：在任何一個機器人的瀏覽器登入過的網站（LINE、Google…），其他機器人下次工作時也直接能用。每個機器人還是有自己的瀏覽器，可以同時工作。關掉：每個機器人的登入各自獨立。</p>
@@ -2436,6 +2487,8 @@ curl.exe -o octa-runner.mjs ${location.origin}/octa-runner.mjs</pre>
     $('dExtSave').onclick=()=>{const t=$('dExt').value.trim();if(t)saveExt(t)};if($('dExtDel'))$('dExtDel').onclick=()=>saveExt('');
     $('dAuto').onclick=async()=>{const on=!$('dAuto').classList.contains('on');$('dAuto').classList.toggle('on',on);await api('desktop/autostart','POST',{on}).catch(()=>{})};
     if($('dMode'))$('dMode').onclick=()=>{closeSheet();boot.show('切換中…');CFG.local?window.octaDesktop.useCloud():window.octaDesktop.useOffline()};
+    if($('hMove'))$('hMove').onclick=hostMoveAsk;
+    if($('hBack'))$('hBack').onclick=hostBackAsk;
     if($('dRemote'))$('dRemote').onclick=async()=>{const on=!$('dRemote').classList.contains('on');const b=$('dRemote');b.disabled=true;b.classList.toggle('on',on);
       $('dRemoteInfo').innerHTML=on?'<p class="fade">連線中，第一次會下載連線工具，約 30 秒…</p>':'';
       try{const r=await api('desktop/remote','POST',{on});$('dRemoteInfo').innerHTML=on?remoteInfo(r):''}
@@ -2444,12 +2497,19 @@ curl.exe -o octa-runner.mjs ${location.origin}/octa-runner.mjs</pre>
   if(CFG.local)return;
   let d={computers:[]};try{d=await api('devices')}catch(e){}
   if(!$('pcs'))return;
+  if(d.hmode&&$('hMove'))$('hMove').closest('.row2').hidden=true;
   const hostVer=(d.computers.find(c=>c.host)||{}).version||'';
   $('pcs').innerHTML=d.computers.length?`<div class="devs">${d.computers.map(c=>{const stale=pcStale(c),old=!c.host&&!!c.version&&!!hostVer&&verCmp(c.version,hostVer)<0;
     return `<div class="dev"><span><b data-u>${esc(c.name)}</b> ${c.host?'<span class="pill p-ok">主機</span>':'<span class="pill p-off">備用</span>'} ${c.online?'<span class="pill p-ok">在線</span>':'<span class="pill p-off">離線</span>'}${stale?' <span class="pill p-pr">很久沒連線</span>':''}${old?' <span class="pill p-pr">版本較舊，建議更新</span>':''}
     <small>${c.version?'<span>版本</span> <span data-u>'+esc(c.version)+'</span> · ':''}${c.seen?'<span>上次連線</span> '+when(c.seen):'<span>從未連線</span>'}${c.engines?' · '+Object.keys(ENG).filter(k=>c.engines[k]).map(k=>ENG[k].n).join('、'):''}</small></span>
     <span class="row2">${c.host?'':`<button class="ghost" data-host="${c.id}">設為主機</button>`}<button class="ghost" data-rmpc="${c.id}"${stale?' data-stale="1"':''}>${stale?'清除':'移除'}</button></span></div>`}).join('')}</div>`
     :'<p>還沒有電腦連上。在電腦安裝 OCTA 桌面版並登入這個帳號，它就會成為主機。</p>';
+  if(d.hmode){$('pcs').insertAdjacentHTML('afterbegin',`<p><b>資料存在主機電腦。</b> 主機電腦壞了或不再使用時，可以改回存在雲端（雲端的資料停在搬到主機的那一刻）。</p><div class="row2"><button class="ghost" id="hBackPw">改回存在雲端</button></div>`);
+    $('hBackPw').onclick=()=>{$('veil').innerHTML=`<form class="sheet" id="hbf"><h2>改回存在雲端</h2><p>雲端的資料停在搬到主機電腦的那一刻，之後在主機電腦上的新對話不會出現在雲端。主機電腦下次打開時也會切回雲端。</p>
+      <label class="field">密碼<input id="hbPw" type="password" autocomplete="current-password" required></label><div class="errmsg" id="hbE"></div>
+      <div class="acts"><button type="button" class="no" id="sx">取消</button><button class="btn">改回雲端</button></div></form>`;
+      $('hbPw').focus();$('sx').onclick=openComputers;
+      $('hbf').onsubmit=ev=>{ev.preventDefault();api('host/deactivate','POST',{pw:$('hbPw').value}).then(()=>{hostOff(false);toast(I18N.t('已改回存在雲端'));closeSheet();refresh()}).catch(e=>$('hbE').textContent=e.message)}}}
   $('pcs').querySelectorAll('[data-host]').forEach(b=>b.onclick=async()=>{try{await api('host','POST',{id:b.dataset.host});toast(I18N.t('已切換主機'));await refresh();openComputers()}catch(e){toast(e.message)}});
   $('pcs').querySelectorAll('[data-rmpc]').forEach(b=>b.onclick=()=>{
     const stale=!!b.dataset.stale;

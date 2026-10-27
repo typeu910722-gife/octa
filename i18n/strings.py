@@ -1105,3 +1105,45 @@ T.update({
 P.extend([
  (r'^每輪 (\d+) · 名稱、任務、排程、記憶$', '$1 routines on · Name, task, routines, memory', '定期タスク $1 件 · 名前・タスク・定期タスク・記憶'),
 ])
+# 主機模式 (data on the host computer)
+T.update({
+ '主機電腦目前沒有連線，開機並打開 OCTA 後會自動恢復': ('The host computer is offline. Turn it on and open OCTA — this will recover by itself.', 'ホストのパソコンがオフラインです。電源を入れて OCTA を開くと自動で復旧します。'),
+ '資料存在這台電腦': ('Data on this computer', 'データはこのパソコン'),
+ '這台電腦是主機，資料存在這台電腦。登入的裝置、密碼和重設碼，請用手機或瀏覽器打開雲端版登入後管理。': ('This computer is the host and keeps the data. Manage signed-in devices, password and reset codes by signing in to the web version on a phone or browser.', 'このパソコンはホストで、データはここにあります。ログイン中の端末・パスワード・リセットコードは、スマホやブラウザでクラウド版にログインして管理してください。'),
+ '資料存在這台電腦（省雲端額度，推薦）': ('Keep the data on this computer (saves cloud quota, recommended)', 'データをこのパソコンに保存（クラウドの容量を節約・おすすめ）'),
+ '機器人、對話、檔案和設定改存在這台電腦，雲端只負責帳號登入和轉送，手機照樣用同一個網址登入。這台電腦關機時手機會看不到對話；不過機器人本來就要這台電腦開著才會工作。': ("Bots, chats, files and settings are kept on this computer; the cloud only handles sign-in and passes requests along, and phones sign in at the same address. While this computer is off, phones can't see the chats — but the bots only work while it is on anyway.", 'ボット・会話・ファイル・設定をこのパソコンに保存し、クラウドはログインと中継だけを担当します。スマホは同じアドレスでログインできます。このパソコンの電源が切れている間はスマホで会話を見られませんが、ボットはもともとこのパソコンが動いている間だけ働きます。'),
+ '搬移前會先備份這台電腦的資料；搬移沒完成的話什麼都不會改變，可以再試一次。': ("This computer's data is backed up first. If the move doesn't finish, nothing changes and you can try again.", '移行の前にこのパソコンのデータをバックアップします。移行が完了しなかった場合は何も変わらず、もう一度試せます。'),
+ '改成存在這台電腦': ('Keep data on this computer', 'このパソコンに保存する'),
+ '資料存在這台電腦（帳號': ('Data is kept on this computer (account', 'データはこのパソコンにあります（アカウント'),
+ '）。手機、平板用同一個帳號登入雲端版就能使用；這台電腦關機時，手機會看不到對話。': ("). Phones and tablets sign in to the web version with the same account; while this computer is off, they can't see the chats.", '）。スマホやタブレットは同じアカウントでクラウド版にログインすれば使えます。このパソコンの電源が切れている間は会話を見られません。'),
+ '改回存在雲端': ('Move back to the cloud', 'クラウドに戻す'),
+ '資料存在主機電腦。': ('The data is on the host computer.', 'データはホストのパソコンにあります。'),
+ '主機電腦壞了或不再使用時，可以改回存在雲端（雲端的資料停在搬到主機的那一刻）。': ('If the host computer breaks or is no longer used, you can switch back to the cloud (the cloud copy is from the moment the data was moved).', 'ホストのパソコンが壊れたり使わなくなったりしたら、クラウドに戻せます（クラウドのデータは移行した時点のままです）。'),
+ '雲端的資料停在搬到主機電腦的那一刻，之後在主機電腦上的新對話不會出現在雲端。主機電腦下次打開時也會切回雲端。': ("The cloud copy is from the moment the data moved to the host computer; newer chats on the host won't appear in the cloud. The host computer switches back to the cloud the next time it opens.", 'クラウドのデータはホストへ移行した時点のままで、その後ホストでの新しい会話はクラウドに表示されません。ホストのパソコンも次に開いたときクラウドに切り替わります。'),
+ '改回雲端': ('Back to the cloud', 'クラウドに戻す'),
+ '已改回存在雲端': ('Switched back to the cloud', 'クラウドに戻しました'),
+ '會先備份這台電腦的資料，再把雲端上的機器人、對話、檔案和設定搬過來，約幾十秒到幾分鐘。搬移期間請不要關閉 OCTA。': ("This computer's data is backed up first, then the bots, chats, files and settings are copied from the cloud. It takes from tens of seconds to a few minutes; keep OCTA open meanwhile.", 'まずこのパソコンのデータをバックアップし、クラウドのボット・会話・ファイル・設定を移します。数十秒から数分かかります。移行中は OCTA を閉じないでください。'),
+ '開始搬移': ('Start moving', '移行を開始'),
+ '準備搬移…': ('Getting ready to move…', '移行の準備中…'),
+ '完成，切換到這台電腦的資料…': ('Done — switching to the data on this computer…', '完了。このパソコンのデータに切り替えています…'),
+ '搬移沒有完成': ('The move did not finish', '移行が完了しませんでした'),
+ '資料還在雲端，什麼都沒有改變。可以再試一次。': ('The data is still in the cloud and nothing changed. You can try again.', 'データはクラウドのままで、何も変わっていません。もう一度試せます。'),
+ '雲端的資料停在你搬到這台電腦的那一刻。之後在這台電腦上的新對話、機器人和設定的改動，不會帶回雲端（仍留在這台電腦的資料與備份裡）。': ("The cloud copy is from the moment you moved the data here. New chats and changes to bots and settings made on this computer since then won't go back to the cloud (they stay in this computer's data and backups).", 'クラウドのデータはこのパソコンへ移行した時点のままです。その後このパソコンで増えた会話やボット・設定の変更はクラウドに戻りません（このパソコンのデータとバックアップには残ります）。'),
+ '確認帳號…': ('Checking the account…', 'アカウントを確認中…'),
+ '建立和雲端的連線（第一次會下載連線工具，約 30 秒）…': ('Connecting to the cloud (the first time downloads a connection tool, about 30 s)…', 'クラウドに接続中（初回は接続ツールをダウンロードします。約 30 秒）…'),
+ '暫停這台電腦的工作…': ("Pausing this computer's work…", 'このパソコンの作業を一時停止中…'),
+ '改由這台電腦提供資料…': ('Switching the data over to this computer…', 'このパソコンからデータを提供するよう切り替え中…'),
+ '啟動機器人…': ('Starting the bots…', 'ボットを起動中…'),
+})
+P.extend([
+ ('^搬移(.+)… (\\d+) / (\\d+)$', 'Moving $1… $2 / $3', '$1を移行中… $2 / $3'),
+ ('^搬移(.+)… (\\d+)$', 'Moving $1… $2', '$1を移行中… $2'),
+])
+T.update({
+ '群組': ('Groups', 'グループ'),
+ '對話': ('Chats', '会話'),
+ '檔案': ('Files', 'ファイル'),
+ '檔案內容': ('File contents', 'ファイルの内容'),
+ '程式專案': ('Code projects', 'コードプロジェクト'),
+ '程式任務': ('Coding tasks', 'コーディングタスク'),
+})
