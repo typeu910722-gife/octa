@@ -3010,7 +3010,7 @@ async function start(){$('login').hidden=true;$('home').hidden=true;
   buddyBoot();
   addEventListener('resize',()=>{focusBrowser();buddyClamp()});
   boot.set(100,'完成');try{if(localStorage.getItem('octa_rail')==='0'&&innerWidth>760)$('app').classList.add('rail-collapsed')}catch(e){}boot.hide();render(true);live();
-  let g=null;try{g=localStorage.getItem('ebot_guided')}catch(e){}if(!S.bots.length&&!g)openGuide();else whatsNew()}
+  let g=null;try{g=localStorage.getItem('ebot_guided')}catch(e){}if(HOFF.on)return;if(!S.bots.length&&!g)openGuide();else whatsNew()}   // the host is off: the lists are empty only because nothing loaded
 // once after every update: show what the latest version added
 async function whatsNew(){const log=await changelog(),x=log[0];if(!x)return;let seen=null;try{seen=localStorage.getItem('octa_seen_v');localStorage.setItem('octa_seen_v',x.v)}catch(e){return}
   if(seen===x.v||(!seen&&!S.bots.length)||!$('veil').hidden)return;
