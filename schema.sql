@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   via TEXT                       -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
+CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created);
 CREATE TABLE IF NOT EXISTS stats (   -- 成果看板: totals per bot per day, added to when a chat job ends
   user_id TEXT NOT NULL,
   bot_id TEXT NOT NULL,

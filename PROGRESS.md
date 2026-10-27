@@ -117,3 +117,6 @@
 ## 2026-10-27 3.1.3
 - 實機：12:00 後多個機器人「執行逾時」、之後全部「排隊中」。原因：spawnCli 逾時用 child.kill()，Windows shell:true 只殺到 cmd，claude.exe＋Playwright MCP 成為孤兒、握著 stdout，close 不觸發 → 3 個 slot 永遠被占（實機看到 11:56、12:26、13:12 三個 claude -p 仍在跑）。修：taskkill /t /f 整組、exit 後 5 秒/kill 後 10 秒保底 resolve、QUIET_MS=8 分鐘無輸出即中止（訊息含「很久沒有回應」→ timeout 自動重試）。
 - 根因未明：瀏覽器那一輪的 browser_snapshot（讀取網頁內容）為何卡住（推測 LINE 頁面有彈窗/凍結）。
+
+## 2026-10-27 3.1.4
+- 14:05 Cloudflare 通知 D1 每日 500 萬列讀取用完（UTC 0 點＝台灣 08:00 重置，期間雲端版全部報錯）。分析：/api/state 每次變動每台裝置都讀，其中今日 token 統計 `jobs WHERE user_id AND created>=` 無可用索引→整個帳號的 jobs 全掃（約 1600 列）＋未讀 300 列。修：新增索引 job_created(user_id, created)（MIGRATIONS＋ensureSchema 用 INDEXED BY 探測）、未讀改 LIMIT 100。待辦：明天用 meta.rows_read 實測各端點；同帳號其他 D1 專案（E·ROOM、到班）也共用 500 萬額度。

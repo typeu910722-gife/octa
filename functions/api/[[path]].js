@@ -449,13 +449,15 @@ const MIGRATIONS = [
   // 成果看板: per bot per day totals (jobs are kept only 14 days)
   'CREATE TABLE IF NOT EXISTS stats (user_id TEXT NOT NULL, bot_id TEXT NOT NULL, day TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0, ms INTEGER NOT NULL DEFAULT 0, timed INTEGER NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0, web INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, bot_id, day))',
   // 主動性: how freely a bot acts, default standby once, who asked for a job (幕後)
-  'ALTER TABLE bots ADD COLUMN autonomy TEXT', 'ALTER TABLE bots ADD COLUMN stood INTEGER', 'ALTER TABLE jobs ADD COLUMN via TEXT'
+  'ALTER TABLE bots ADD COLUMN autonomy TEXT', 'ALTER TABLE bots ADD COLUMN stood INTEGER', 'ALTER TABLE jobs ADD COLUMN via TEXT',
+  // D1 讀取量: today's / last-14-days job queries (token counts, 幕後, weekly review) read only their own days
+  'CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created)'
 ];
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
   try {
-    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs'].map(q => db.prepare(q + ' LIMIT 0')));
+    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs', "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0"].map(q => db.prepare(q + ' LIMIT 0')));
     schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
@@ -2172,7 +2174,7 @@ async function route({ request: req, env, params }) {
       const convIds = [...all.bots.map(b => b.id), ...all.groups.map(g => g.id)];
       const [ur, busy, rev, ...lasts] = await db.batch([
         // recent bot replies, for unread counts and notifications
-        db.prepare("SELECT conv,id FROM messages WHERE user_id=? AND by_ NOT IN ('me','sys') ORDER BY id DESC LIMIT 300").bind(U),
+        db.prepare("SELECT conv,id FROM messages WHERE user_id=? AND by_ NOT IN ('me','sys') ORDER BY id DESC LIMIT 100").bind(U),   // D1 讀取量: every device reads this on each change
         db.prepare("SELECT conv,bot_id,status,kind,started,progress,eng FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')").bind(U),
         db.prepare('SELECT rev, prog FROM users WHERE id=?').bind(U),
         // newest non-system message of each conversation (list previews); one indexed lookup each
