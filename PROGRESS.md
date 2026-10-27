@@ -88,3 +88,12 @@
 - 3.0.42（10/27）：對照 Grok（分工/存檔/記憶）：browseRounds 報告存 bots/<id>/紀錄/<日期時間> <事>.txt（30 天），prompt 加 records()：用程式算、比對前幾天、有今天紀錄就不重捲、糾正即 📌記住。runner v17.23。待做：工作中仍可回聊天（背景讀取）。
 - 3.0.43（10/27）：檔案儲存「套用」id stGo 與登入列「繼續」重複→改 stApply（原本點套用無反應，且開過儲存頁後登入列繼續會被蓋成套用）。
 - 3.0.44（10/27）：job 732（09:09「我有教你怎麼撈補助嗎」）卡 10 分鐘無 progress：warm=-1 的 Claude 待機 session 從 06:41 閒置，電腦睡眠後連線卡死、stdin 寫入無回應且無逾時。加 turnWithWatch（首個事件 3 分、中途靜默 6 分→中止，重開完整 prompt 重試一次）、WARM_STALE 20 分閒置即重開。runner v17.24
+
+## 2026-10-27 3.1.0（四個代理並行開發後合併）
+- 可靠性：jobs.err_kind/err_msg/shot/retry_of；失敗分類（model-route.mjs FAIL_KINDS）、可重試類型自動重試 ≤2 次（第 2 次附原因換方法）、失敗截圖、最終失敗 Telegram sendPhoto 通知、工作紀錄原因＋看截圖＋↻重試（logs/retry）；prompt 加交件前自我核對。
+- 主動性：bots.autonomy（auto/report/ask）、📋計畫＋✅待確認「照計畫執行」、bots.stood（有指定任務自動開 30 分待命一次）、jobs.via＋/api/backstage「🔁 幕後 N 則」；群組 @ 最長名稱比對、@交接不重複接棒、「私下」走背景互問、runner/done 重送去重（status='running' 條件更新）；名稱不能有空白（舊名提示）。
+- 記憶與成長：規則／📇事實／📘手冊（≥3 步）分段注入；stats 表＋/api/board 成果看板；每週自我檢討（review/run、✅待確認：更新規則 → 核准直接寫入）。
+- 介面：瀏覽器小卡（WebContentsView）遇對話框讓開、可縮小圓點（desktop.json 記住）、訊息底部留空；電腦與主機「很久沒連線／從未連線」可清除、版本較舊提示；新範本 排程發訊／資料整理／網站監看／遊戲自動化。
+- i18n/build.py 已改成只替換 TEMPLATES_I18N 區塊；build 要用 opencc-python-reimplemented（系統 OpenCC 1.4 轉出的簡體不同）。
+- 測試：新增 reliability、proactive、memory-board、ui-fixes；既有 7 項失敗（appearance-ui 2、cdp-bridge 1、phone-ui 1、studio-aim 3）與 main 相同。
+- 實機基準（升級前，群組 123456）：並行 OK；接力時 2 被觸發兩次；機器人公開 @「claude 測試用」對方沒反應；小視窗擋訊息；一句自我介紹約 81K tokens（群組 prompt 偏大，待評估精簡）。
