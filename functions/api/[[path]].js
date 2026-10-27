@@ -174,8 +174,8 @@ async function addMsg(db, userId, conv, by, text, files = null, reply = null) {
 async function addJob(db, userId, conv, chain, prompt, depth = 0) {
   const steps = chain.map(s => (typeof s === 'string' ? { b: s, p: prompt } : s));
   if (!steps.length) return;
-  await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth) VALUES (?,?,?,?,?,?,?)')
-    .bind(userId, conv, steps[0].b, JSON.stringify(steps.slice(1)), steps[0].p, now(), depth).run();
+  await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,via) VALUES (?,?,?,?,?,?,?,?)')
+    .bind(userId, conv, steps[0].b, JSON.stringify(steps.slice(1)), steps[0].p, now(), depth, steps[0].v ? JSON.stringify(steps[0].v) : null).run();
 }
 // a user message starts the bot (or the group's members). `text` is what was typed; an empty one still hands the files over.
 async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
@@ -183,7 +183,8 @@ async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
   let chain, ordered = false;
   if (bot) chain = [bot.id];
   else {
-    const at = id => text.indexOf('@' + (bots.find(x => x.id === id)?.name || '\u0000'));
+    const pos = mentionsIn(text, group.members.map(id => bots.find(x => x.id === id)).filter(Boolean));
+    const at = id => (pos[id] ?? -1);
     const named = group.members.filter(id => at(id) >= 0).sort((a, b) => at(a) - at(b));
     chain = named.length ? named : group.members;
     const everyone = /你們|大家|各位|每位|每個|所有人|全部/.test(text);
@@ -220,6 +221,26 @@ async function cloneFile(db, userId, fileId, conv) {
   return { id, name: f.name, mime: f.mime };
 }
 const STANDBY = '待命巡查';   // a bot on 24-hour standby: checks its duties every N minutes, says nothing when there's nothing to do
+const STANDBY_PROMPT = '（待命巡查）照你的指定任務檢查有沒有新狀況要處理（例如新訊息、新訂單、到期的事）。有就處理，需要同事幫忙就 @同事；處理完簡短回報。完全沒事就只回「（略過）」。';
+const STANDBY_EVERY = 30;   // minutes: the default for a bot that just got a standing task
+// bot names are called with "@名字": no spaces of any kind (old names with spaces are left as they are)
+const NAME_SPACE = /[\s\u3000]/;
+const NAME_SPACE_ERR = '名稱不能有空格，才能用 @ 叫它';
+const noSpaces = n => String(n || '').replace(/[\s\u3000]+/g, '_');   // names OCTA makes itself (templates, hire, self-naming)
+const autonomyOk = a => (['auto', 'report', 'ask'].includes(a) ? a : 'report');
+// A bot that just got its standing task goes on 24-hour standby, once. Off again if the person turns it off; existing settings are left alone.
+async function autoStandby(db, userId, botId) {
+  const b = await db.prepare('SELECT id, task, stood FROM bots WHERE id=? AND user_id=?').bind(botId, userId).first();
+  if (!b || b.stood || !String(b.task || '').trim()) return false;
+  const has = await db.prepare('SELECT 1 AS n FROM routines WHERE user_id=? AND conv=? AND name=?').bind(userId, botId, STANDBY).first();
+  await db.prepare('UPDATE bots SET stood=1 WHERE id=? AND user_id=?').bind(botId, userId).run();
+  if (has) return false;
+  const ev = '*/' + STANDBY_EVERY;
+  await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)')
+    .bind('r-' + uid(), userId, botId, STANDBY, STANDBY_PROMPT, JSON.stringify([ev]), JSON.stringify({ [ev]: now() }), now()).run();
+  await addMsg(db, userId, botId, 'sys', `已開啟 24 小時待命：每 ${STANDBY_EVERY} 分鐘照指定任務巡查一次，沒事不會出聲。可在任務設定調整或關閉。`);
+  return true;
+}
 const BG = /^〔背景:([^:〕]+):(ask|give)〕/;   // a bot's message to another bot, run in the other bot's own chat
 const parallelGroup = g => /同時做|同時回|並行|各自處理|各自回/.test(g?.task || '');
 const turnsOf = g => !parallelGroup(g);
@@ -240,16 +261,56 @@ export function calmReply(text) {
   }
   return out.join('\n').trim();
 }
-const passed = t => /^[（(]?\s*(略過|PASS)\s*[）)]?[。.]?$/i.test(String(t).trim());
+// "@名字" in a message. Names may have spaces, emoji or mixed scripts; where names overlap ("claude" / "claude 測試用") the longest one wins.
+const nameEnds = (s, i) => i >= s.length || /[\s:：,，、。!！?？]/.test(s[i]) || (/[\u3400-\u9fff]/.test(s[i]) && !/[\u3400-\u9fff]/.test(s[i - 1]));
+function mentionsIn(text, bots) {
+  const t = String(text || ''), pos = {}, taken = [];
+  for (const b of [...bots].filter(b => b?.name).sort((x, y) => y.name.length - x.name.length)) {
+    let i = -1;
+    while ((i = t.indexOf('@' + b.name, i + 1)) >= 0) {
+      const end = i + b.name.length + 1;
+      if (taken.some(([a, z]) => i < z && end > a) || !nameEnds(t, end)) continue;
+      pos[b.id] = i; taken.push([i, end]); break;
+    }
+  }
+  return pos;
+}
+// a line that starts with "@名字 內容": {bot, rest}
+function mentionLine(line, bots) {
+  const t = String(line || '').trim();
+  if (!t.startsWith('@')) return null;
+  const hit = [...bots].filter(b => b?.name && t.startsWith('@' + b.name) && nameEnds(t, b.name.length + 1)).sort((x, y) => y.name.length - x.name.length)[0];
+  const rest = hit ? t.slice(hit.name.length + 1).replace(/^[\s:：,，、]+/, '').trim() : '';
+  return rest ? { bot: hit, rest } : null;
+}
+const PRIVATE = /私下|私底下|偷偷|背景(問|找|去)|不要在群組(問|說)/;   // the person wants the colleague asked out of the group's sight
+// in a group, a private question "@名字 私下：…" (or any @question when the person asked for it privately) is not shown in the group
+const privateAsk = (rest, prompt) => !/^交接/.test(rest) && (/^私下\s*[:：]/.test(rest) || PRIVATE.test(prompt || ''));
+const viaOf = job => { try { return job?.via ? JSON.parse(job.via) : null; } catch { return null; } };
+// 幕後 rows: who asked whom, what, the answer and how long it took. Old background jobs (before jobs.via) are read from their prompt.
+function backstageItems(rows) {
+  const out = [];
+  rows.forEach((r, i) => {
+    const v = viaOf(r), bg = String(r.prompt || '').match(BG);
+    const from = v?.f || bg?.[1], kind = v?.k || bg?.[2];
+    if (!from || !kind) return;
+    // a backup AI took the same job over: show only the run that counts
+    if (r.status === 'error' && rows.slice(i + 1).some(x => x.conv === r.conv && x.bot_id === r.bot_id && x.prompt === r.prompt)) return;
+    const what = v?.w || (String(r.prompt).match(/(?:交辦給你|在背景問你)：([^\n]*)/) || [])[1] || '';
+    out.push({ id: r.id, conv: r.conv, from, to: r.bot_id, kind, what: what.slice(0, 300), reply: r.result || '', status: r.status, created: r.created, ms: r.finished ? r.finished - (r.started || r.created) : null });
+  });
+  return out;
+}
+const passed = t => /^[（(]?\s*(略過|PASS)\s*[）)]?[。.]?$/i.test(String(t).replace(/^\s*📍.*$/gm, '').trim());   // "（略過）" plus the 📍 page line is still nothing to show
 async function loadAll(db, userId) {
   const [b, g, f, r] = await db.batch([
-    db.prepare('SELECT id,name,task,folder,engine,model,avatar,browser,shot_ts,shot_file,page,bpc,fb FROM bots WHERE user_id=? ORDER BY created').bind(userId),
+    db.prepare('SELECT id,name,task,folder,engine,model,avatar,browser,shot_ts,shot_file,page,bpc,fb,autonomy,stood FROM bots WHERE user_id=? ORDER BY created').bind(userId),
     db.prepare('SELECT id,name,task,members,folder FROM groups_ WHERE user_id=? ORDER BY created').bind(userId),
     db.prepare('SELECT id,name,notes FROM folders WHERE user_id=? ORDER BY created').bind(userId),
     db.prepare('SELECT id,conv,name,prompt,times,enabled,hook,watch FROM routines WHERE user_id=? ORDER BY created').bind(userId)
   ]);
   return {
-    bots: b.results.map(x => ({ ...x, fb: fbParse(x.fb) })),
+    bots: b.results.map(x => ({ ...x, fb: fbParse(x.fb), autonomy: autonomyOk(x.autonomy), stood: !!x.stood })),
     groups: g.results.map(x => ({ ...x, members: JSON.parse(x.members) })),
     folders: f.results,
     routines: r.results.map(x => ({ ...x, times: JSON.parse(x.times), enabled: !!x.enabled, watch: x.watch ? JSON.parse(x.watch) : null }))
@@ -358,13 +419,15 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id)',
   'CREATE TABLE IF NOT EXISTS live (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT, title TEXT, mime TEXT, data TEXT, ts INTEGER, handed INTEGER NOT NULL DEFAULT 0)',
   // 3.1: progress has its own counter (no full reload), live frames only while someone watches
-  'ALTER TABLE users ADD COLUMN prog INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE live ADD COLUMN watch INTEGER'
+  'ALTER TABLE users ADD COLUMN prog INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE live ADD COLUMN watch INTEGER',
+  // 主動性: how freely a bot acts, default standby once, who asked for a job (幕後)
+  'ALTER TABLE bots ADD COLUMN autonomy TEXT', 'ALTER TABLE bots ADD COLUMN stood INTEGER', 'ALTER TABLE jobs ADD COLUMN via TEXT'
 ];
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
   try {
-    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users'].map(q => db.prepare(q + ' LIMIT 0')));
+    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs'].map(q => db.prepare(q + ' LIMIT 0')));
     schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
@@ -596,10 +659,10 @@ async function coachApi(env, db, path, m, body, url) {
     return J({ ok: true });
   }
   if (sub === 'hire' && m === 'POST') {
-    let name = clean(body.name, 20), task = clean(body.task, 4000);
+    let name = clean(noSpaces(clean(body.name, 20)), 20), task = clean(body.task, 4000);
     if (!name || !task) return err('要有 name 和 task');
     if (all.bots.length >= 60) return err('機器人太多了');
-    for (let i = 2; all.bots.some(b => b.name === name); i++) name = clean(body.name, 17) + i;
+    for (let i = 2; all.bots.some(b => b.name === name); i++) name = clean(noSpaces(clean(body.name, 17)), 17) + i;
     let eng = {}; try { eng = JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || '{}') || {}; } catch { }
     const engine = ['claude', 'codex', 'gemini', 'opencode'].find(e => eng[e]) || all.bots[all.bots.length - 1]?.engine || 'claude';
     const id = 'b-' + uid();
@@ -1430,8 +1493,9 @@ async function route({ request: req, env, params }) {
               await putSettings(db, U, st);
               const nextEng = decision.action === 'switch' ? chain[decision.index] : current;
               const nextTries = decision.action === 'retry' ? (+job.tries || 0) + 1 : 0;
-              await db.prepare("UPDATE jobs SET status='error', finished=?, result=? WHERE id=?").bind(now(), clean(raw, 500), job.id).run();
-              await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries) VALUES (?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, job.prompt, now(), job.depth || 0, nextEng, nextTries).run();
+              const once = await db.prepare("UPDATE jobs SET status='error', finished=?, result=? WHERE id=? AND status='running'").bind(now(), clean(raw, 500), job.id).run();
+              if (!once.meta.changes) return ok();   // the same result was reported twice
+              await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,via) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, job.prompt, now(), job.depth || 0, nextEng, nextTries, job.via || null).run();
               const note = decision.action === 'switch'
                 ? `「${b.name}」的 ${lab(chain[index])} ${why}，改由 ${lab(nextEng)} 接手。已完成的對話會保留，不會重做已完成的步驟。`
                 : `「${b.name}」的 ${lab(current)} ${decision.reason === 'rate_limit' ? '被限流，同一個模型再試一次' : '暫時故障，同一個模型再試一次'}（第 ${nextTries} 次）。`;
@@ -1476,7 +1540,7 @@ async function route({ request: req, env, params }) {
           const self = await db.prepare('SELECT name, avatar FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first();
           if (nm && self && /^新機器人\d*$/.test(self.name)) {
             const mm = nm.trim().match(/^(\p{Extended_Pictographic}[\uFE0F\u200D\p{Extended_Pictographic}]*)?\s*(.+)$/u);
-            let name = clean((mm?.[2] || '').replace(/[「」"']/g, ''), 20);
+            let name = clean(noSpaces(clean((mm?.[2] || '').replace(/[「」"']/g, ''), 20)), 20);
             if (name) {
               const taken = await db.prepare('SELECT 1 FROM bots WHERE user_id=? AND name=? AND id<>?').bind(U, name, job.bot_id).first();
               if (taken) name = clean(name + '2', 20);
@@ -1526,7 +1590,9 @@ async function route({ request: req, env, params }) {
         }
         const claimedBuilt = good && job.kind === 'chat' && /排程已建好|例行任務已建好|已建立例行任務|已建好例行/.test(text);
         const tk = Number.isFinite(+body.tokens) && body.tokens !== null ? Math.max(0, Math.round(+body.tokens)) : null;
-        await db.prepare('UPDATE jobs SET status=?, finished=?, tokens=? WHERE id=?').bind(good ? 'done' : 'error', now(), tk, job.id).run();
+        // only once: a runner that retries runner/done must not post the reply (and start the next step) twice
+        const fin = await db.prepare("UPDATE jobs SET status=?, finished=?, tokens=?, result=COALESCE(?, result) WHERE id=? AND status='running'").bind(good ? 'done' : 'error', now(), tk, job.via || BG.test(job.prompt) ? text.slice(0, 1500) : null, job.id).run();
+        if (!fin.meta.changes) return ok();
         // where its website logins live: the first computer its browser ran on, until they're moved
         if (me.kind === 'runner' && body.browser) await db.prepare('UPDATE bots SET bpc=? WHERE id=? AND user_id=? AND bpc IS NULL').bind(label, job.bot_id, U).run();
         if (body.nskills && typeof body.nskills === 'object' && JSON.stringify(body.nskills).length < 300000) {   // the bot's own Claude Code skills, kept with the account
@@ -1543,7 +1609,12 @@ async function route({ request: req, env, params }) {
         }
         const isGroup = (await loadAll(db, U)).groups.some(g => g.id === job.conv);
         const quiet = isGroup || job.prompt.startsWith('（例行任務') || BG.test(job.prompt) || /^同事「[^」]*」回覆了你在背景問/.test(job.prompt);   // where "（略過）" means nothing to show
-        if (!(quiet && passed(text) && !outs.length)) await addMsg(db, U, job.conv, job.bot_id, text, outs);
+        let shown = text;
+        if (isGroup && job.kind === 'chat') {
+          const all2 = await loadAll(db, U), g2 = all2.groups.find(g => g.id === job.conv), mates = all2.bots.filter(b => g2?.members.includes(b.id) && b.id !== job.bot_id);
+          shown = text.split('\n').filter(l => { const ml = mentionLine(l, mates); return !(ml && privateAsk(ml.rest, job.prompt)); }).join('\n').trim();
+        }
+        if (shown && !(quiet && passed(shown) && !outs.length)) await addMsg(db, U, job.conv, job.bot_id, shown, outs);
         if (remember.length || skillsNew.length || sitesNew.length) {
           const st = await getSettings(db, U);
           if (sitesNew.length) { st.sites = st.sites || {}; for (const [d, v] of sitesNew) st.sites[d] = [...new Set([...(st.sites[d] || []), v])].slice(-12); }
@@ -1590,6 +1661,7 @@ async function route({ request: req, env, params }) {
           if (cur && cur.task !== learned) {
             await db.prepare('UPDATE bots SET task=? WHERE id=? AND user_id=?').bind(learned, job.bot_id, U).run();
             await addMsg(db, U, job.conv, 'sys', `已自動更新「${(await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人'}」的指定任務，可在任務設定修改`);
+            if (!String(cur.task || '').trim()) await autoStandby(db, U, job.bot_id);
           }
         }
         const earlierMine = job.kind === 'chat'
@@ -1604,6 +1676,13 @@ async function route({ request: req, env, params }) {
           else if (st.notifyAll && !JSON.parse(job.chain).length) await sendNotify(env, st, `【OCTA】${who} 完成：\n${text.slice(0, 600)}`);
         }
         if (body.page) await db.prepare('UPDATE bots SET page=? WHERE id=? AND user_id=?').bind(clean(body.page, 500), job.bot_id, U).run();
+        if (!good && job.kind === 'chat') {
+          const bgF = job.prompt.match(BG), via = viaOf(job);
+          const asker = bgF && (await db.prepare('SELECT id FROM bots WHERE id=? AND user_id=?').bind(bgF[1], U).first());
+          const me2 = (await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '同事';
+          if (asker) { await addMsg(db, U, (via?.c && (await db.prepare('SELECT 1 AS n FROM groups_ WHERE id=? AND user_id=?').bind(via.c, U).first()) ? via.c : asker.id), 'sys', `🔁 「${me2}」沒能完成${bgF[2] === 'ask' ? '回覆' : '交辦'}：${text.slice(0, 300)}`); await bump(db, U); }
+          else if (via?.k === 'ask' && JSON.parse(job.chain).length) { await addJob(db, U, job.conv, JSON.parse(job.chain), job.prompt, job.depth); await bump(db, U); }
+        }
         if (!good || job.kind !== 'chat') return ok();
         // Two replies in a row are stuck on the same sign-in: stop the chain and say so once.
         if (loginStuck) {
@@ -1627,36 +1706,48 @@ async function route({ request: req, env, params }) {
         const { bots, groups } = await loadAll(db, U);
         const self = bots.find(b => b.id === job.bot_id), grp = groups.find(g => g.id === job.conv);
         const asks = [], gives = [];
-        // a background message finished: hand the answer back to the bot that sent it
+        // a background message finished: hand the answer back to the bot that sent it, where it was talking (its own chat or the group)
         const bg = job.prompt.match(BG), from = bg && bots.find(b => b.id === bg[1]);
+        const back = viaOf(job)?.c, backConv = back && (bots.some(b => b.id === back) || groups.some(g => g.id === back)) ? back : from?.id;
         if (from && self && !passed(text)) {
-          await addMsg(db, U, from.id, 'sys', `🔁 「${self.name}」${bg[2] === 'ask' ? '回覆' : '完成交辦'}：${text.slice(0, 800)}`);
-          if (bg[2] === 'ask' && job.depth < MAX_ASK_DEPTH) await addJob(db, U, from.id, [from.id], `同事「${self.name}」回覆了你在背景問的問題：\n${text.slice(0, 3000)}\n\n請根據回覆繼續你原本在做的工作（看前面的對話）；已經沒事就只回「（略過）」。`, job.depth + 1);
+          await addMsg(db, U, backConv, 'sys', `🔁 「${self.name}」${bg[2] === 'ask' ? '回覆' : '完成交辦'}：${text.slice(0, 800)}`);
+          if (bg[2] === 'ask' && job.depth < MAX_ASK_DEPTH) await addJob(db, U, backConv, [{ b: from.id, p: `同事「${self.name}」回覆了你在背景問的問題：\n${text.slice(0, 3000)}\n\n請根據回覆繼續你原本在做的工作（看前面的對話）${backConv !== from.id ? '；在群組只回使用者要的最後結果（一兩句），不要轉述問答過程' : ''}；已經沒事就只回「（略過）」。` }], '', job.depth + 1);
         }
         if (self && job.depth < MAX_ASK_DEPTH && !passed(text)) {
+          const mates = bots.filter(b => b.id !== self.id && (!grp || grp.members.includes(b.id)));
           for (const line of text.split('\n')) {
-            const mm = line.trim().match(/^@(\S+)\s+(.+)$/);
-            if (!mm) continue;
-            const to = bots.find(b => b.name === mm[1] && b.id !== self.id && (!grp || grp.members.includes(b.id)));
-            if (!to || asks.some(a => a.b === to.id) || gives.some(a => a.b === to.id)) continue;
-            const hand = mm[2].match(/^交接\s*[:：]?\s*(.+)$/);   // "@名字 交接：…" passes the whole job on; no need to come back
-            if (!grp) {   // outside a group: the other bot works on it in the background, in its own chat
-              const what = hand ? hand[1] : mm[2];
+            const ml = mentionLine(line, mates);
+            if (!ml) continue;
+            const to = ml.bot;
+            if (asks.some(a => a.b === to.id) || gives.some(a => a.b === to.id)) continue;
+            const priv = !!grp && privateAsk(ml.rest, job.prompt);
+            const said = ml.rest.replace(/^私下\s*[:：]?\s*/, '');
+            const hand = said.match(/^交接\s*[:：]?\s*(.+)$/);   // "@名字 交接：…" passes the whole job on; no need to come back
+            if (!grp || priv) {   // outside a group, or asked privately: the other bot works on it in the background, in its own chat
+              const what = hand ? hand[1] : said;
               await addMsg(db, U, to.id, 'sys', `🔁 「${self.name}」${hand ? '交辦' : '問'}：${what.slice(0, 600)}`);
-              await addJob(db, U, to.id, [to.id], hand
+              await addJob(db, U, to.id, [{ b: to.id, v: { f: self.id, k: hand ? 'give' : 'ask', w: what.slice(0, 300), c: job.conv }, p: hand
                 ? `〔背景:${self.id}:give〕同事「${self.name}」交辦給你：${what}\n請照你的職責完成，最後簡短回報結果，回報會自動傳給${self.name}。`
-                : `〔背景:${self.id}:ask〕同事「${self.name}」在背景問你：${what}\n請直接回答，回答會自動傳給${self.name}。`, job.depth + 1);
+                : `〔背景:${self.id}:ask〕同事「${self.name}」在背景問你：${what}\n請直接回答，回答會自動傳給${self.name}。` }], '', job.depth + 1);
               gives.push({ b: to.id });
               continue;
             }
-            if (hand) gives.push({ b: to.id, p: `${self.name} 把工作交接給你：${hand[1]}\n（原本的指示：${job.prompt.slice(0, 1500)}）\n請接手完成並回報。` });
-            else asks.push({ b: to.id, p: `${self.name} 問你：${mm[2]}\n請直接回答 ${self.name}。` });
+            if (hand) gives.push({ b: to.id, v: { f: self.id, k: 'give', w: hand[1].slice(0, 300) }, p: `${self.name} 把工作交接給你：${hand[1]}\n（原本的指示：${job.prompt.slice(0, 1500)}）\n請接手完成並回報。` });
+            else asks.push({ b: to.id, v: { f: self.id, k: 'ask', w: said.slice(0, 300) }, p: `${self.name} 問你：${said}\n請直接回答 ${self.name}。` });
           }
         }
+        // a group hand-off: the member it went to is next in line and does it once; its own later turn for this same instruction is dropped.
+        // In a parallel group it may already be waiting on this message: it reads the hand-off in the chat, so it isn't queued twice.
+        const handed = [];
+        for (const g of gives) {
+          if (!g.p) continue;
+          const waiting = await db.prepare("SELECT 1 AS n FROM jobs WHERE user_id=? AND conv=? AND bot_id=? AND status='pending' LIMIT 1").bind(U, job.conv, g.b).first();
+          if (!waiting) handed.push(g);
+        }
+        if (gives.some(g => g.p)) rest = [...handed, ...rest.filter(s => !gives.some(g => g.p && g.b === s.b))];
         if (asks.length) rest = [...asks, { b: self.id, p: `同事已在上面回覆你的問題，請根據回覆繼續完成原本的指示：${job.prompt}` }, ...rest];
-        for (const g of gives) if (g.p) await addJob(db, U, job.conv, [g], g.p, job.depth + 1);
         if (gives.length || from) await bump(db, U);
-        await addJob(db, U, job.conv, rest, job.prompt, job.depth + (asks.length ? 1 : 0));
+        await addJob(db, U, job.conv, rest, job.prompt, job.depth + (asks.length || handed.length ? 1 : 0));
         return ok();
       }
       if (path === 'runner/shot' && m === 'POST') {   // the screenshot stays on the computer; only where it is goes up
@@ -1772,7 +1863,7 @@ async function route({ request: req, env, params }) {
       const lang = TEMPLATES_I18N[body.lang] ? body.lang : ((await getSettings(db, U)).lang || 'zh-TW');
       const raw = (TEMPLATES_I18N[lang] || TEMPLATES_I18N['zh-TW'])[body.name];
       if (!raw) return err('沒有這個範本');
-      const t = { folder: raw.folder, notes: raw.notes || '', bots: raw.bots.map(([k, name, task]) => ({ k, name, task })), groups: raw.groups.map(([name, task, members]) => ({ name, task, members })) };
+      const t = { folder: raw.folder, notes: raw.notes || '', bots: raw.bots.map(([k, name, task]) => ({ k, name: noSpaces(name), task })), groups: raw.groups.map(([name, task, members]) => ({ name, task, members })) };
       let folder = null;
       if (t.folder) {
         folder = (await db.prepare('SELECT id FROM folders WHERE user_id=? AND name=?').bind(U, t.folder).first())?.id;
@@ -1944,11 +2035,13 @@ async function route({ request: req, env, params }) {
     if (path === 'bots' && m === 'POST') {
       const name = clean(body.name, 20), task = clean(body.task, 4000);
       if (!name) return err('名稱要填');   // the task may be empty: the bot learns it from the chat
+      if (NAME_SPACE.test(name)) return err(NAME_SPACE_ERR);
       const { folders, bots } = await loadAll(db, U);
       if (bots.some(b => b.name === name)) return err('已經有同名的機器人，名字要不同才能用 @ 叫它');
       const id = uid(), engine = engineOk(body.engine);
-      await db.prepare('INSERT INTO bots (id,user_id,name,task,folder,engine,model,avatar,browser,created,fb) VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(id, U, name, task, folderOk(folders, body.folder), engine, modelOk(engine, body.model), avatarOk(body.avatar), body.browser === 'mine' ? 'mine' : null, now(), fbOk(body.fb)).run();
+      await db.prepare('INSERT INTO bots (id,user_id,name,task,folder,engine,model,avatar,browser,created,fb,autonomy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(id, U, name, task, folderOk(folders, body.folder), engine, modelOk(engine, body.model), avatarOk(body.avatar), body.browser === 'mine' ? 'mine' : null, now(), fbOk(body.fb), autonomyOk(body.autonomy)).run();
       await addMsg(db, U, id, 'sys', task ? '機器人已建立' : '機器人已建立：直接傳訊息告訴它要做什麼，它會自己整理成指定任務');
+      if (task) await autoStandby(db, U, id);
       return ok({ id });
     }
     if (path.startsWith('bots/') && path.endsWith('/bring-logins') && m === 'POST') {   // move a bot's website logins to the host computer
@@ -1973,9 +2066,13 @@ async function route({ request: req, env, params }) {
         if (!name) return err('名稱要填');   // the task may be empty: the bot learns it from the chat
         const { folders, bots } = await loadAll(db, U);
         if (bots.some(b => b.name === name && b.id !== id)) return err('已經有同名的機器人');
+        const old = bots.find(b => b.id === id);
+        if (NAME_SPACE.test(name) && name !== old?.name) return err(NAME_SPACE_ERR);   // an old name with spaces may stay until it is renamed
         const engine = engineOk(body.engine);
-        const fb = body.fb === undefined ? JSON.stringify(bots.find(b => b.id === id)?.fb || []) : fbOk(body.fb);
-        await db.prepare('UPDATE bots SET name=?,task=?,folder=?,engine=?,model=?,avatar=?,browser=?,fb=? WHERE id=? AND user_id=?').bind(name, task, folderOk(folders, body.folder), engine, modelOk(engine, body.model), avatarOk(body.avatar), body.browser === 'mine' ? 'mine' : null, fb, id, U).run();
+        const fb = body.fb === undefined ? JSON.stringify(old?.fb || []) : fbOk(body.fb);
+        const autonomy = body.autonomy === undefined ? (old?.autonomy || null) : autonomyOk(body.autonomy);
+        await db.prepare('UPDATE bots SET name=?,task=?,folder=?,engine=?,model=?,avatar=?,browser=?,fb=?,autonomy=? WHERE id=? AND user_id=?').bind(name, task, folderOk(folders, body.folder), engine, modelOk(engine, body.model), avatarOk(body.avatar), body.browser === 'mine' ? 'mine' : null, fb, autonomy, id, U).run();
+        if (old && task && !String(old.task || '').trim()) await autoStandby(db, U, id);   // just got its standing task
         return ok();
       }
       if (m === 'DELETE') {   // files stay on the host computer; only the records go
@@ -2051,6 +2148,7 @@ async function route({ request: req, env, params }) {
       const id = 'r-' + uid();
       await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created,hook,watch) VALUES (?,?,?,?,?,?,1,?,?,?,?)')
         .bind(id, U, conv, name, clean(body.prompt, 2000), JSON.stringify(times), JSON.stringify(fired), now(), trig.hook, trig.watch).run();
+      if (name === STANDBY) await db.prepare('UPDATE bots SET stood=1 WHERE id=? AND user_id=?').bind(conv, U).run();
       return ok({ id, hook: trig.hook });
     }
     if (path.startsWith('routines/')) {
@@ -2072,9 +2170,23 @@ async function route({ request: req, env, params }) {
           .bind(name, body.prompt === undefined ? r.prompt : clean(body.prompt, 2000), JSON.stringify(times), enabled, fired, trig.hook, trig.watch, trig.watch === r.watch ? r.wstate : null, id).run();
         return ok({ hook: trig.hook });
       }
-      if (m === 'DELETE') { await db.prepare('DELETE FROM routines WHERE id=?').bind(id).run(); return ok(); }
+      if (m === 'DELETE') {
+        await db.prepare('DELETE FROM routines WHERE id=?').bind(id).run();
+        if (r.name === STANDBY) await db.prepare('UPDATE bots SET stood=1 WHERE id=? AND user_id=?').bind(r.conv, U).run();   // turned off by the person: stays off
+        return ok();
+      }
     }
 
+    // 幕後: what bots asked of / handed to each other around this conversation
+    if (path === 'backstage' && m === 'GET') {
+      const conv = clean(url.searchParams.get('conv'), 64);
+      if (!conv) return err('要指定對話');
+      const rows = (await db.prepare(`SELECT id,conv,bot_id,prompt,via,status,created,started,finished,result FROM jobs
+        WHERE user_id=? AND kind='chat' AND created>? AND (via IS NOT NULL OR prompt LIKE '〔背景:%')
+          AND (conv=? OR via LIKE ? OR via LIKE ? OR prompt LIKE ?) ORDER BY id DESC LIMIT 80`)
+        .bind(U, now() - 14 * DAY, conv, '%"f":' + JSON.stringify(conv) + '%', '%"c":' + JSON.stringify(conv) + '%', '〔背景:' + conv + ':%').all()).results.reverse();
+      return J({ items: backstageItems(rows) });
+    }
     if (path === 'messages' && m === 'POST') {
       const conv = clean(body.conv, 64), text = clean(body.text, 4000);
       if (!text && !(body.files || []).length) return err('訊息是空的');
@@ -2484,7 +2596,7 @@ async function jobPayload(env, db, U, job) {
     conv: { id: conv.id, name: conv.name },
     shareBrowser: st.shareBrowser !== false,
     backup: !!(job.eng && job.eng !== ((bot.engine || 'claude') + (bot.model ? '|' + bot.model : ''))),
-    bot: { id: bot.id, name: bot.name, task: bot.task, page: bot.page, engine: (job.eng ? job.eng.split('|')[0] : bot.engine) || 'claude', model: job.eng ? job.eng.split('|')[1] || '' : bot.model || '', browser: bot.browser === 'mine' ? 'mine' : 'own' },
+    bot: { id: bot.id, name: bot.name, task: bot.task, page: bot.page, engine: (job.eng ? job.eng.split('|')[0] : bot.engine) || 'claude', model: job.eng ? job.eng.split('|')[1] || '' : bot.model || '', browser: bot.browser === 'mine' ? 'mine' : 'own', autonomy: autonomyOk(bot.autonomy) },
     folder: folders.find(f => f.id === bot.folder)?.name || null,
     folderNotes: folders.find(f => f.id === bot.folder)?.notes || '',
     notes: st.notes || '',

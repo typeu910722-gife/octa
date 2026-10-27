@@ -985,3 +985,31 @@ T.update({
 })
 
 T.update({'這台電腦的 OCTA 是裝給所有使用者，Windows 會詢問是否允許變更，請按「是」': ('OCTA is installed for all users on this computer: Windows will ask to allow changes — press “Yes”', 'このパソコンの OCTA は全ユーザー向けにインストールされています。Windows が変更の許可を求めるので「はい」を押してください')})
+
+# 主動性: autonomy, plan first, default standby, 幕後
+T.update({
+ '做事權限': ('How freely it acts', '作業の権限'),
+ '直接做': ('Just do it', 'そのまま実行'),
+ '看得懂就直接做完，不用先給你看計畫。付款、刪除、改帳號還是會先問你。': ('If the request is clear it does it all without showing you a plan first. It still asks before paying, deleting or changing accounts.', '内容が分かればプランを見せずに最後まで実行します。支払い・削除・アカウント変更の前は確認します。'),
+ '做完告知（建議）': ('Do it, then tell me (recommended)', '実行して報告（おすすめ）'),
+ '一般工作直接做，做完跟你說做了什麼。大任務先給你看計畫；送出訊息、刪除、付款前先問你。': ('Does normal work right away and tells you what it did. Shows you a plan for big jobs first, and asks before sending messages, deleting or paying.', '普段の作業はすぐ実行して報告します。大きな作業はまずプランを見せ、送信・削除・支払いの前に確認します。'),
+ '重要動作先問': ('Ask before important actions', '重要な操作は先に確認'),
+ '送出訊息、提交表單、刪除、付款這類收不回來的事，每一次都先問你。大任務先給你看計畫。': ('Asks you every time before anything that can’t be undone: sending messages, submitting forms, deleting, paying. Shows you a plan for big jobs first.', 'メッセージ送信・フォーム送信・削除・支払いなど取り消せない操作は毎回確認します。大きな作業はまずプランを見せます。'),
+ '填了指定任務的機器人會自動開啟 24 小時待命（每 30 分鐘照任務巡查一次，沒事不出聲），之後可以在任務設定關閉。': ('A bot with a standing task goes on 24-hour standby automatically (checks its task every 30 minutes, stays quiet when there’s nothing to do). You can turn it off in bot settings.', 'タスクを設定したボットは自動で 24 時間待機になります（30 分ごとにタスクを確認、何もなければ黙っています）。タスク設定でオフにできます。'),
+ '目前：關閉': ('Now: off', '現在：オフ'),
+ '目前：關閉。填入指定任務後會自動開啟（每 30 分鐘巡查一次）': ('Now: off. It turns on by itself once a standing task is filled in (checks every 30 minutes)', '現在：オフ。タスクを入力すると自動でオンになります（30 分ごとに確認）'),
+ '照做': ('Go ahead', 'この通り実行'),
+ '計畫要改：': ('Change the plan: ', 'プランの変更：'),
+ '詢問': ('asked', '質問'),
+ '交辦': ('handed over', '依頼'),
+ '排隊中': ('Queued', '順番待ち'),
+ '進行中': ('In progress', '進行中'),
+ '沒有完成': ('Not finished', '完了しませんでした'),
+ '名稱不能有空格，才能用 @ 叫它': ('The name can’t have spaces, so it can be called with @', '@ で呼べるように、名前にスペースは使えません'),
+ '名稱有空格，群組裡 @ 不到它，建議改名': ('This name has spaces, so it can’t be @-mentioned in groups. Consider renaming it.', '名前にスペースがあるため、グループで @ で呼べません。名前の変更をおすすめします。'),
+})
+P.extend([
+ (r'^目前：開啟，每 (\d+) 分鐘巡查一次$', 'Now: on, checks every $1 minutes', '現在：オン、$1 分ごとに確認'),
+ (r'^🔁 幕後 (\d+) 則$', '🔁 Behind the scenes: $1', '🔁 舞台裏 $1 件'),
+ (r'^已開啟 24 小時待命：每 (\d+) 分鐘照指定任務巡查一次，沒事不會出聲。可在任務設定調整或關閉。$', '24-hour standby is on: it checks its task every $1 minutes and stays quiet when there’s nothing to do. Change or turn it off in bot settings.', '24 時間待機をオンにしました：$1 分ごとにタスクを確認し、何もなければ黙っています。タスク設定で変更・オフにできます。'),
+])

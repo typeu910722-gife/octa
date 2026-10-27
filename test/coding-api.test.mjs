@@ -694,7 +694,8 @@ test('an Ollama reply still stores the instruction routines, memory, and skill',
   const done = await call(db, 'POST', 'runner/done', { token: rt, body: { id: job.id, ok: true, text: reply } });
   assert.equal(done.status, 200, JSON.stringify(done.data));
   const state = await call(db, 'GET', 'state', { token });
-  const routines = Object.fromEntries(state.data.routines.map(r => [r.name, r.times]));
+  // a bot created with a task is on 24-hour standby by default (test/proactive.test.mjs); this test is about the routines it wrote
+  const routines = Object.fromEntries(state.data.routines.filter(r => r.name !== '待命巡查').map(r => [r.name, r.times]));
   assert.deepEqual(routines, {
     補助名單: ['06:04', '15:30'],
     早報: ['06:41'],
@@ -718,7 +719,7 @@ test('an Ollama reply still stores the instruction routines, memory, and skill',
   const after = await call(db, 'GET', 'messages', { token, query: { conv: id } });
   assert.ok(after.data.msgs.some(m => m.by === 'sys' && m.text.includes('沒有新增例行任務')));
   const still = await call(db, 'GET', 'state', { token });
-  assert.equal(still.data.routines.length, 3);
+  assert.equal(still.data.routines.filter(r => r.name !== '待命巡查').length, 3);
 });
 
 test('a stuck reply is said once, and a group takes turns', async () => {

@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS bots (
   page TEXT,                     -- last page the bot reported
   shot_file TEXT,               -- files.id of the last screenshot (kept on the host computer)
   bpc TEXT,                      -- the computer that has its browser (logins)
-  fb TEXT                        -- backup AIs: JSON ["engine|model", …], used in order when the AI runs out of quota
+  fb TEXT,                       -- backup AIs: JSON ["engine|model", …], used in order when the AI runs out of quota
+  autonomy TEXT,                 -- 'auto' (just do it) | 'report' (do it, then tell; default) | 'ask' (ask before important actions)
+  stood INTEGER                  -- 1: 24-hour standby was set once (by the person or by default); never turned on again by itself
 );
 CREATE TABLE IF NOT EXISTS groups_ (
   id TEXT PRIMARY KEY,
@@ -102,7 +104,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   tokens INTEGER,                -- tokens the run used (when the AI reports it)
   pc TEXT,                       -- only this computer may take it (handing logins over)
   eng TEXT,                      -- "engine|model" a backup AI runs this job with
-  tries INTEGER NOT NULL DEFAULT 0 -- retries already used on that same model
+  tries INTEGER NOT NULL DEFAULT 0, -- retries already used on that same model
+  via TEXT                       -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE TABLE IF NOT EXISTS live (   -- the latest frame of a bot's own browser, for phones watching the host
