@@ -1083,3 +1083,25 @@ P.extend([
  (r'^🔁 幕後 (\d+) 則$', '🔁 Behind the scenes: $1', '🔁 舞台裏 $1 件'),
  (r'^已開啟 24 小時待命：每 (\d+) 分鐘照指定任務巡查一次，沒事不會出聲。可在任務設定調整或關閉。$', '24-hour standby is on: it checks its task every $1 minutes and stays quiet when there’s nothing to do. Change or turn it off in bot settings.', '24 時間待機をオンにしました：$1 分ごとにタスクを確認し、何もなければ黙っています。タスク設定で変更・オフにできます。'),
 ])
+
+# phone layout (≤760px): list header, details page, + menu
+T.update({
+ '搜尋': ('Search', '検索'),
+ '新增': ('New', '新規'),
+ '昨天': ('Yesterday', '昨日'),
+ '詳細資料': ('Details', '詳細'),
+ '成員': ('Members', 'メンバー'),
+ '模型與備援': ('Model & backups', 'モデルと予備'),
+ '電腦上的網址': ('Address on the computer', 'パソコンで開くアドレス'),
+ '歷史畫面': ('Past screens', '過去の画面'),
+ '以前的截圖': ('Earlier screenshots', '以前のスクリーンショット'),
+ '移到分區': ('Move to folder', 'フォルダへ移動'),
+ '照片或檔案': ('Photo or file', '写真またはファイル'),
+ '指令（瀏覽器、停止、歷史畫面…）': ('Commands (browser, stop, past screens…)', 'コマンド（ブラウザ、停止、過去の画面…）'),
+ '指定成員': ('Mention a member', 'メンバーを指定'),
+ '新分區': ('New folder', '新しいフォルダ'),
+ '進階建立': ('Advanced setup', '詳細設定で作成'),
+})
+P.extend([
+ (r'^每輪 (\d+) · 名稱、任務、排程、記憶$', '$1 routines on · Name, task, routines, memory', '定期タスク $1 件 · 名前・タスク・定期タスク・記憶'),
+])

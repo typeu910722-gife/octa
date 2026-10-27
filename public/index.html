@@ -931,10 +931,9 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .sheet.page>.shd{position:sticky;top:0;z-index:4;background:var(--pb);margin:0 -16px;padding:calc(6px + env(safe-area-inset-top,0px)) 16px 6px 4px;min-height:56px;border-bottom:1px solid var(--pl);gap:2px}
   .sheet.page>.shd h2,:root .sheet.page>.shd h2{font-family:var(--sans);font-weight:600;font-size:calc(17px * var(--fz));flex:1;min-width:0}
   .sheet.page .back2{width:44px;height:44px;padding:0 0 4px;font-size:34px;font-weight:300;color:var(--ink);flex:none}
-  .sheet.page .acts:has(>#sx:only-child){display:none}
+  .sheet.page .acts:has(>#sx:only-child){visibility:hidden;height:calc(8px + env(safe-area-inset-bottom,0px));padding:0;border:0;overflow:hidden}   /* only 關閉: ‹ does that; keep the room at the bottom */
   .veil .sheet.page{padding-bottom:0}
-  .veil .sheet.page::after{content:"";height:calc(12px + env(safe-area-inset-bottom,0px))}
-  .veil .sheet.page:has(.acts:not([hidden]))::after{display:none}
+  .veil .sheet.page.dsheet{padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
   .sheet.page .acts{margin:0 -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--pl)}
   .smenu{gap:0;background:var(--pg);border-radius:16px;overflow:hidden}
   .smenu button{border:0;border-radius:0;background:none;padding:12px 14px;min-height:56px;box-shadow:inset 0 -1px 0 var(--pl)}
@@ -944,6 +943,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .theme-pick button.on,.seg button.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
   .sample{background:var(--pb);border-color:var(--pl)}
   .sample .bub.me2{background:var(--ink);color:var(--pb)}
+  .sample .bub:not(.me2){background:var(--pg);color:var(--ink);border:0}
   .aic,.dev,.bc,.tplc,.pick,.rrow,.gbbox{background:var(--pg);border-color:transparent}
   /* details page */
   .dhero{display:grid;justify-items:center;gap:6px;text-align:center;padding:10px 0 2px}
