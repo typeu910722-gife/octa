@@ -294,7 +294,7 @@ export function mentionAsks(said, to, prompt) {
   if (!s) return false;
   if (ACK_RE.test(s) && !REQUEST_RE.test(s)) return false;
   const p = String(prompt || '');
-  const answering = p.match(/^(.+?) 問你：/);
+  const answering = p.match(/^(.+?) (?:問你：|把工作交接給你：)/);   // answering a question, or reporting back on a hand-off
   if ((answering && answering[1] === to?.name) || /^同事已在上面回覆你的問題/.test(p)) return /[？?]/.test(s);
   return true;
 }

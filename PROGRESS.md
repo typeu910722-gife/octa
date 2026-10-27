@@ -98,3 +98,4 @@
 - 測試：新增 reliability、proactive、memory-board、ui-fixes；既有 7 項失敗（appearance-ui 2、cdp-bridge 1、phone-ui 1、studio-aim 3）與 main 相同。
 - 實機基準（升級前，群組 123456）：並行 OK；接力時 2 被觸發兩次；機器人公開 @「claude 測試用」對方沒反應；小視窗擋訊息；一句自我介紹約 81K tokens（群組 prompt 偏大，待評估精簡）。
 - 實機發現：群組互問後兩個機器人用 @ 互相「收到／好喔」來回 5 輪（燒 token）→ mentionAsks()：道謝/確認類、回答給發問者的 @ 不開新一輪（有？才算新問題）。
+- 實機（測試4）：交接後 2 回報時 @ 回 claude測試用 又開一輪 → 回報給交接者也不算新問題（除非有？）。

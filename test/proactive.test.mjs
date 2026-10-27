@@ -372,3 +372,9 @@ test('mentionAsks: acknowledgements and plain answers are not new questions', ()
   assert.equal(mentionAsks('我覺得神農街太早', two, '2 問你：哪裡要改？'), false);
   assert.equal(mentionAsks('那開放時間你查過嗎？', two, '2 問你：哪裡要改？'), true);
 });
+
+test('a hand-off report back to the one who handed it over is not a new question', () => {
+  const a = { name: 'claude測試用' };
+  assert.equal(mentionAsks('我這邊配好了，你挑的兩樣早餐都有配飲料', a, 'claude測試用 把工作交接給你：配飲料'), false);
+  assert.equal(mentionAsks('牛肉湯要配熱的還是冰的？', a, 'claude測試用 把工作交接給你：配飲料'), true);
+});
