@@ -190,6 +190,13 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}   /* desktop: 
 .bub a{color:var(--gold2)}
 .sys{align-self:center;font-size:12px;color:var(--faint);font-family:var(--tc);letter-spacing:.1em}
 .work{align-self:flex-start;font-size:13px;color:var(--mute);display:flex;gap:10px;align-items:center}
+.bstage{align-self:center;max-width:min(560px,100%);font-size:12px;color:var(--mute)}
+.bstage summary{cursor:pointer;list-style:none;text-align:center;color:var(--faint);letter-spacing:.06em}
+.bstage summary::-webkit-details-marker{display:none}
+.bstage[open] summary{margin-bottom:6px}
+.bsi{border:1px solid var(--line2);border-radius:10px;padding:8px 10px;margin-top:6px;background:var(--bg);line-height:1.6;overflow-wrap:anywhere}
+.bsi .bsm{color:var(--faint)}
+.bsr{color:var(--ink);white-space:pre-wrap;margin-top:4px}
 .work button{background:none;border:1px solid var(--line2);border-radius:99px;padding:2px 10px;font-size:12px;color:var(--mute)}
 .fade{animation:fade 1.2s infinite}
 @keyframes fade{50%{opacity:.35}}
@@ -1123,6 +1130,7 @@ function loginHtml(m){const b=bot(m.by);if(!b||b.browser==='mine'||!NEEDLOGIN.te
 function apprHtml(m){const a=m.text.match(APPR);if(!a)return '';
   const later=convMsgs(m.conv).some(x=>x.id>m.id&&(x.by==='me'||x.by===m.by));
   if(later)return '';
+  if(/^照計畫/.test(a[1].trim()))return `<div class="appr"><button type="button" class="btn" data-approve="${m.id}">照做</button><button type="button" class="no" data-revise="${m.id}" data-plan="1">修改</button></div>`;   // 📋計畫: run it as written, or say what to change
   return `<div class="appr"><button type="button" class="btn" data-approve="${m.id}">核准（只這次）</button><button type="button" class="no" data-always="${m.id}">一律允許</button><button type="button" class="no" data-revise="${m.id}">修改</button><button type="button" class="no" data-deny="${m.id}">拒絕</button></div>`}
 function fmt(t){return esc(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/@([^\s@，。、]+)/g,'<span class="at">@$1</span>')}
 /* bot replies: a small, safe Markdown subset (everything is escaped first) */
@@ -1216,7 +1224,8 @@ function render(scroll){
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
     return `<div class="m" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}<div class="bub md${long&&!open?' long':''}" draggable="true" data-dragmsg="1" title="拖到別的機器人就能複製" data-u>${md(optText(m))}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
   // a date line whenever the day changes, like a phone's message app
-  mh+=convMsgs(cur).map(m=>{const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day">${esc(dayLabel(m.ts))}</div>`}return sep+row(m)}).join('');
+  const bs=backFor(cur,mc);   // 幕後: bot-to-bot requests, folded where they happened
+  mh+=convMsgs(cur).map(m=>{if(bs.hide(m))return '';const pre=bs.before(m);const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day">${esc(dayLabel(m.ts))}</div>`}return pre+sep+row(m)}).join('')+bs.rest();
   const bz=busyIn(cur);
   if(bz.length){const run=bz.find(b=>b.status==='running');
     mh+=`<div class="work"><span class="fade">${run&&run.kind==='chat'&&run.started?`<span class="el" data-since="${run.started}">${elapsed(run.started)}</span> `:''}${run?(run.kind==='open'?esc(nameOf(run.bot_id))+' 的瀏覽器正在顯示…':esc(nameOf(run.bot_id))+' '+(run.kind==='code'?'程式任務':run.progress&&/搜尋/.test(run.progress)?'搜尋':run.progress&&/測試/.test(run.progress)?'測試':run.progress&&/修復|修改|寫入/.test(run.progress)?'修改':'處理')+'中…'+(run.progress?`<span class="prog" data-u>${esc(run.progress)}</span>`:'')+(run.eng&&run.eng.split('|')[0]!==(c.engine||'claude')?` · 備援 ${esc((ENG[run.eng.split('|')[0]]||{n:run.eng.split('|')[0]}).n)}`:'')):S.runnerOnline?'排隊中…':'等待主機電腦上線…'}</span><button id="stop">停止</button></div>`}
@@ -1368,6 +1377,22 @@ $('q').addEventListener('input',()=>render(false));
 $('q').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('list').querySelector('.item');if(f){openConv(f.dataset.id);$('q').value='';render(false)}}if(e.key==='Escape'){$('q').value='';render(false);$('q').blur()}});
 $('jump').onclick=()=>{const b=$('msgs');b.scrollTo({top:b.scrollHeight,behavior:'smooth'});$('jump').hidden=true};
 $('msgs').addEventListener('scroll',()=>{const b=$('msgs');if(b.scrollHeight-b.scrollTop-b.clientHeight<60){$('jump').hidden=true;if(cur&&unread(cur)){markSeen(cur);render(false)}}},{passive:true});
+/* 幕後: what bots asked of / handed to each other (2.6.0 background requests and group @asks), one folded line per stretch */
+const BS={},BSOPEN=new Set();
+function loadBack(id){const real=convMsgs(id).filter(m=>!m.tmp),k=(real.length?real[real.length-1].id:0)+':'+busyIn(id).length,b=BS[id];
+  if(b&&(b.k===k||b.busy))return;BS[id]={items:b?.items||[],ok:!!b?.ok,k,busy:true};
+  api('backstage?conv='+encodeURIComponent(id)).then(d=>{BS[id]={items:d.items||[],ok:true,k,busy:false};if(cur===id)render()}).catch(()=>{BS[id].busy=false})}
+function backFor(id,mc){
+  if(mc?.loaded)loadBack(id);
+  const b=BS[id],since=Date.now()-13*864e5;
+  if(!b?.ok)return{hide:()=>false,before:()=>'',rest:()=>''};
+  const first=convMsgs(id).find(m=>!m.tmp),items=b.items.filter(x=>!(mc?.more&&first&&x.created<first.ts));let i=0;
+  const take=t=>{const out=[];while(i<items.length&&(t==null||items[i].created<t))out.push(items[i++]);return out.length?backHtml(out):''};
+  return{hide:m=>m.by==='sys'&&/^🔁/.test(m.text)&&m.ts>since,before:m=>m.tmp?'':take(m.ts),rest:()=>take(null)}}
+function backHtml(list){const key=String(list[0].id),run=list.some(x=>x.status==='pending'||x.status==='running');
+  const dur=x=>x.status==='pending'?'排隊中':x.status==='running'?'進行中':x.ms==null?'':x.ms<60000?Math.max(1,Math.round(x.ms/1000))+' 秒':Math.round(x.ms/60000)+' 分鐘';
+  return `<details class="bstage" data-bs="${key}"${BSOPEN.has(key)?' open':''}><summary><span>🔁 幕後 ${list.length} 則</span>${run?' · <span>進行中</span>':''}</summary>${list.map(x=>`<div class="bsi"><b data-u>${esc(nameOf(x.from))}</b> → <b data-u>${esc(nameOf(x.to))}</b> · <span class="bsm">${x.kind==='give'?'交辦':'詢問'}</span>${dur(x)?` · <span class="bsm">${dur(x)}</span>`:''}${x.what?`<div data-u>${esc(x.what)}</div>`:''}${x.reply?`<div class="bsr" data-u>↳ ${esc(x.reply.length>500?x.reply.slice(0,500)+'…':x.reply)}</div>`:x.status==='error'?'<div class="bsm">沒有完成</div>':''}</div>`).join('')}</details>`}
+$('msgs').addEventListener('toggle',e=>{const d=e.target;if(d.dataset?.bs)d.open?BSOPEN.add(d.dataset.bs):BSOPEN.delete(d.dataset.bs)},true);
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key===','&&!$('app').hidden){e.preventDefault();openSettings()}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='n'&&!$('app').hidden&&window.octaDesktop){e.preventDefault();sheet('b')}
@@ -1428,7 +1453,7 @@ $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).th
   if(ap||rv){const m=convMsgs(cur).find(x=>x.id==(ap||rv).dataset[ap?'approve':'revise']);if(!m)return;
     const at=isG(cur)?'@'+nameOf(m.by)+' ':'';
     if(ap){ap.disabled=true;sendMsg(at+'核准：'+m.text.match(APPR)[1])}
-    else{$('msg').value=at;$('msg').focus()}}};
+    else{$('msg').value=at+(rv.dataset.plan?I18N.t('計畫要改：'):'');$('msg').focus()}}};
 let atSel=0;
 // "/" at the start: built-in actions, saved instructions and the bot's skills
 function slashItems(){const c=conv(cur);if(!c)return [];const ids=isG(cur)?c.members:[cur];
@@ -1578,6 +1603,7 @@ function sheet(kind,edit){
   if(g&&!S.bots.length){alertSheet('先建立機器人','群組需要至少一個機器人成員。');return}
   $('veil').innerHTML=`<form class="sheet" id="sf"><h2>${edit?'任務設定':g?'新群組':'新機器人'}</h2>
   <label class="field">名稱<input id="sn" required maxlength="20" value="${c?esc(c.name):''}" placeholder="${g?'例如：退房檢查':'例如：評論員'}"></label>
+  ${!g&&c&&/[\s\u3000]/.test(c.name)?'<p class="hmuted">名稱有空格，群組裡 @ 不到它，建議改名</p>':''}
   ${g?`<div class="field">成員（由上到下依序執行，用 ↑↓ 調整順序）<div class="picks" id="picks">${(c?[...c.members.filter(bot),...S.bots.map(b=>b.id).filter(x=>!c.members.includes(x))]:S.bots.map(b=>b.id)).map(id=>{const b=bot(id);return `<label class="pick"><input type="checkbox" value="${b.id}" ${!c||c.members.includes(b.id)?'checked':''}><span class="av sm" data-u>${avOf(b.id)}</span><span data-u style="flex:1">${esc(b.name)}</span><button type="button" class="mv" data-up aria-label="往上">↑</button><button type="button" class="mv" data-down aria-label="往下">↓</button></label>`}).join('')}</div></div>`:''}
   <label class="field">${g?'協作規則（選填）':'指定任務（選填）'}<textarea id="st" maxlength="4000" placeholder="${g?'可以不填：成員依上面的順序輪流做；也可以寫誰先做、做完交給誰':'可以先不填：建立後直接傳訊息告訴它要做什麼，它會自己整理成指定任務'}">${c?esc(c.task):''}</textarea></label>
   ${g?'':`<div class="tpl">${TPL.map(t=>`<button type="button">${t}</button>`).join('')}</div>`}
@@ -1592,12 +1618,14 @@ function sheet(kind,edit){
   ${(()=>{const opts=Object.entries(ENG).filter(([k,v])=>!v.hide).flatMap(([k,v])=>[[k,v.full+'（預設模型）'],...modelsFor(k).map(m=>[k+'|'+m,v.full+'・'+m])]),fb=c?.fb||[];
     const sel=(i,only)=>`<select id="sf_fb${i}"><option value="">不使用</option>${opts.filter(([v])=>!only||v.split('|')[0]===only).map(([v,l])=>`<option value="${esc(v)}"${fb[i]===v?' selected':''}>${esc(l)}${engState(v.split('|')[0])==='ok'?'':'（還沒連接）'}</option>`).join('')}</select>`;
     return `<div class="field">備援 AI<div class="row2">${sel(0)}${sel(1)}</div><div class="row2" style="margin-top:8px">${sel(2,'opencode')}</div><p class="hmuted">第一、第二備援，以及可選的本機 Ollama。模型說流量不夠或額度用完，會立刻改叫下一個備援，接手後該查的頁面、該建的例行任務一樣要做；這台電腦沒裝的會跳過。HTTP 429 先重試一次再切換。登入或 API Key 無效不會重複呼叫。程式錯誤不會因此換模型。</p></div>`})()}`}
+  ${g?'':`<div class="field">做事權限<div class="bchoice" id="sf_au">${[['auto','直接做','看得懂就直接做完，不用先給你看計畫。付款、刪除、改帳號還是會先問你。'],['report','做完告知（建議）','一般工作直接做，做完跟你說做了什麼。大任務先給你看計畫；送出訊息、刪除、付款前先問你。'],['ask','重要動作先問','送出訊息、提交表單、刪除、付款這類收不回來的事，每一次都先問你。大任務先給你看計畫。']].map(([v,t,d])=>`<label class="bc"><input type="radio" name="sf_au" value="${v}" ${(c?.autonomy||'report')===v?'checked':''}><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div></div>`}
+  ${!g&&!edit?'<p class="hmuted">填了指定任務的機器人會自動開啟 24 小時待命（每 30 分鐘照任務巡查一次，沒事不出聲），之後可以在任務設定關閉。</p>':''}
   <label class="field">分區<select id="sf_f"><option value="">未分區</option>${S.folders.map(f=>`<option data-u value="${f.id}" ${(c?c.folder:(conv(cur)?.folder||null))===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select></label>
   ${!g&&c&&((S.allow||{})[c.id]||[]).length?`<div class="field">一律允許的事（機器人做這些不會再問你）<div class="picks" id="sf_al">${S.allow[c.id].map((t,i)=>`<div class="pick"><span data-u style="flex:1">${esc(t)}</span><button type="button" class="mv" data-unallow="${i}" aria-label="收回">✕</button></div>`).join('')}</div></div>`:''}
   ${!g&&c?memHtml(c):''}
   ${!g&&c&&((S.skills||{})[c.id]||[]).length?`<div class="field">它會的技能（🧩，輸入 / 叫用）<div class="picks" id="sf_sk">${S.skills[c.id].map((k,i)=>`<div class="pick"><span data-u style="flex:1" title="${esc(k.steps)}">${esc(k.name)}</span><button type="button" class="mv" data-unsk="${i}" aria-label="刪除">✕</button></div>`).join('')}</div></div>`:''}
   ${!g&&c&&((S.nsk||{})[c.id]||[]).length?`<div class="field">Claude Code 技能（存在它的資料夾，會跟著帳號到任何主機）<div class="picks">${S.nsk[c.id].map(n=>`<div class="pick"><span data-u>${esc(n)}</span></div>`).join('')}</div></div>`:''}
-  ${!g&&edit?(()=>{const r=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查'),ev=r&&r.enabled?((r.times||[]).find(t=>/^\*\//.test(t))||'').slice(2):'';return `<div class="field">24 小時待命<select id="sf_stand">${[['','關閉'],['10','每 10 分鐘巡一次'],['30','每 30 分鐘巡一次'],['60','每小時巡一次']].map(([v,l])=>`<option value="${v}"${v===ev?' selected':''}>${l}</option>`).join('')}</select><p class="hmuted">開啟後它會照指定任務定時自己檢查、有事就處理，需要時在背景找其他機器人幫忙；沒事不會出聲。主機電腦要開著。</p></div>`})():''}
+  ${!g&&edit?(()=>{const r=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查'),ev=r&&r.enabled?((r.times||[]).find(t=>/^\*\//.test(t))||'').slice(2):'';return `<div class="field">24 小時待命<select id="sf_stand">${[['','關閉'],['10','每 10 分鐘巡一次'],['30','每 30 分鐘巡一次'],['60','每小時巡一次']].map(([v,l])=>`<option value="${v}"${v===ev?' selected':''}>${l}</option>`).join('')}</select><p class="hmuted">開啟後它會照指定任務定時自己檢查、有事就處理，需要時在背景找其他機器人幫忙；沒事不會出聲。主機電腦要開著。</p><p class="hmuted" id="sf_standnow">${standNow(ev,!r&&!c.stood)}</p></div>`})():''}
   ${!g&&edit?(()=>{const r=S.routines.find(x=>x.conv===c.id&&x.hook&&x.name==='外部交接');return `<div class="field">從其他 AI 交接工作（例如 Grok Bot）${r?`<div class="row2"><input readonly value="${esc(hookUrl(r))}" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--ink);font:inherit;font-size:12px" data-u><button type="button" class="ghost" id="sf_hcopy">複製</button></div>
     <p class="hmuted" style="overflow-wrap:anywhere">把這段話給你的 Grok Bot（或其他 AI）：「要把工作交給 OCTA 的${esc(c.name)}時，用 POST 傳 JSON 到 ${esc(hookUrl(r))} ，格式是 {"text":"工作內容","from":"你的名字"}。」收到後${esc(c.name)}會自動開始做，結果在這個對話裡。網址等同鑰匙，不要公開。</p>`:`<div class="row2"><button type="button" class="ghost" id="sf_hmake">產生交接網址</button></div><p class="hmuted">其他 AI 用這個網址把工作交給這個機器人，它會自動開始做。</p>`}</div>`})():''}
   ${!g&&c&&c.bpc&&c.bpc!==S.host?`<div class="field">網站登入<p class="hmuted" style="margin:4px 0">它登入過的網站存在「<span data-u>${esc(c.bpc.replace(/^desktop:/,''))}</span>」電腦的瀏覽器裡，不在目前的主機上。</p><div class="row2"><button type="button" class="ghost" id="sf_bring">把網站登入帶到主機</button><span id="sf_bmsg" class="hmuted"></span></div></div>`:''}
@@ -1607,6 +1635,7 @@ function sheet(kind,edit){
   <div class="acts">${edit?'<button type="button" class="del" id="sd">刪除</button>':''}<button type="button" class="no" id="sx">取消</button><button class="btn">${edit?'儲存':'建立'}</button></div></form>`;
   $('veil').hidden=false;$('sn').focus();
   $('sx').onclick=closeSheet;
+  if(!g){const nm0=c?.name||'';sheet.nameOk=()=>{const v=$('sn').value.trim(),bad=/[\s\u3000]/.test(v)&&v!==nm0;$('se').textContent=bad?I18N.t('名稱不能有空格，才能用 @ 叫它'):'';$('sn').setAttribute('aria-invalid',bad?'true':'false');return !bad};$('sn').addEventListener('input',sheet.nameOk)}   // bots are called with @名字
   if(!g){let av=c?.avatar||'';
     const box=$('sf_av');box.onclick=e=>{const b=e.target.closest('[data-emo]');if(!b)return;av=b.dataset.emo;$('sf_avc').value='';box.querySelectorAll('.emo-b').forEach(x=>x.classList.toggle('on',x===b))};
     $('sf_avc').oninput=()=>{av=$('sf_avc').value.trim();box.querySelectorAll('.emo-b').forEach(x=>x.classList.toggle('on',false))};
@@ -1619,7 +1648,7 @@ function sheet(kind,edit){
     const upd=()=>{const k=$('sf_e').value;fillModels();$('sf_hint').innerHTML=engState(k)==='ok'?'<span class="p-ok">這台電腦已連接這個 AI。</span>':`這台電腦還沒連接這個 AI。<a href="#" id="sf_conn">看怎麼連接</a>`;if($('sf_conn'))$('sf_conn').onclick=ev=>{ev.preventDefault();openAI(k)}};$('sf_e').onchange=upd;upd()}
   if(edit)renderRoutines();
   if($('sf_mem'))bindMem(c);
-  if($('sf_stand'))$('sf_stand').onchange=async e=>{const v=e.target.value,old=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查');e.target.disabled=true;try{if(old)await api('routines/'+old.id,'DELETE');if(v)await api('routines','POST',{conv:c.id,name:'待命巡查',times:['*/'+v],prompt:'（待命巡查）照你的指定任務檢查有沒有新狀況要處理（例如新訊息、新訂單、到期的事）。有就處理，需要同事幫忙就 @同事；處理完簡短回報。完全沒事就只回「（略過）」。'});await refresh();toast(v?'已開啟 24 小時待命':'已關閉待命')}catch(x){toast(x.message)}e.target.disabled=false};
+  if($('sf_stand'))$('sf_stand').onchange=async e=>{const v=e.target.value,old=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查');e.target.disabled=true;try{if(old)await api('routines/'+old.id,'DELETE');if(v)await api('routines','POST',{conv:c.id,name:'待命巡查',times:['*/'+v],prompt:'（待命巡查）照你的指定任務檢查有沒有新狀況要處理（例如新訊息、新訂單、到期的事）。有就處理，需要同事幫忙就 @同事；處理完簡短回報。完全沒事就只回「（略過）」。'});await refresh();toast(v?'已開啟 24 小時待命':'已關閉待命');if($('sf_standnow'))$('sf_standnow').textContent=I18N.t(standNow(v,false))}catch(x){toast(x.message)}e.target.disabled=false};
   if($('sf_hmake'))$('sf_hmake').onclick=async()=>{$('sf_hmake').disabled=true;try{await api('routines','POST',{conv:c.id,name:'外部交接',trigger:'hook',prompt:'其他 AI 把工作交接給你：照交接內容處理，完成後在這裡回報結果；資訊不夠就直接問使用者。'});await refresh();sheet('b',true);setTimeout(()=>$('sf_hcopy')?.scrollIntoView({block:'center'}),50)}catch(e){toast(e.message);$('sf_hmake').disabled=false}};
   if($('sf_hcopy'))$('sf_hcopy').onclick=()=>{const r=S.routines.find(x=>x.conv===c.id&&x.hook&&x.name==='外部交接');navigator.clipboard?.writeText(hookUrl(r)).then(()=>toast(I18N.t('已複製'))).catch(()=>{})};
   if($('sf_bring'))$('sf_bring').onclick=async()=>{$('sf_bring').disabled=true;try{await api('bots/'+c.id+'/bring-logins','POST');$('sf_bmsg').textContent=I18N.t('開始搬移，完成後對話裡會通知你')}catch(e){$('sf_bmsg').textContent=e.message;$('sf_bring').disabled=false}};
@@ -1632,15 +1661,16 @@ function sheet(kind,edit){
     if(b.hasAttribute('data-down')&&row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row)};
   $('veil').querySelectorAll('.tpl button').forEach(b=>b.onclick=()=>{const t=$('st');t.value=(t.value?t.value+'；':'')+b.textContent});
   if(edit)$('sd').onclick=()=>deleteConv(cur);
-  $('sf').onsubmit=async e=>{e.preventDefault();
+  $('sf').onsubmit=async e=>{e.preventDefault();if(!g&&sheet.nameOk&&!sheet.nameOk()){$('sn').focus();return}
     const body={name:$('sn').value,task:$('st').value,folder:$('sf_f').value||null};
-    if(!g){body.avatar=sheet.av?.()||'';body.browser=$('veil').querySelector('input[name=sf_b]:checked')?.value||'own';body.engine=$('sf_e').value;body.model=$('sf_m').value.trim();body.fb=[$('sf_fb0')?.value,$('sf_fb1')?.value,$('sf_fb2')?.value].filter(Boolean);}
+    if(!g){body.autonomy=$('veil').querySelector('input[name=sf_au]:checked')?.value||'report';body.avatar=sheet.av?.()||'';body.browser=$('veil').querySelector('input[name=sf_b]:checked')?.value||'own';body.engine=$('sf_e').value;body.model=$('sf_m').value.trim();body.fb=[$('sf_fb0')?.value,$('sf_fb1')?.value,$('sf_fb2')?.value].filter(Boolean);}
     if(g)body.members=[...$('veil').querySelectorAll('.picks input:checked')].map(i=>i.value);
     try{const r=await api(edit?(g?'groups/':'bots/')+cur:(g?'groups':'bots'),edit?'PUT':'POST',body);
       if(!edit)cur=r.id;
       const ql=$('sf_q').value.split('\n').map(x=>x.trim()).filter(Boolean).slice(0,12);
       if(ql.join('\n')!==((S.quick||{})[cur]||[]).join('\n'))await api('settings','PUT',{quick:{conv:cur,list:ql}});closeSheet();await refresh();$('app').classList.add('chat');focusBrowser()}
     catch(err){$('se').textContent=err.message}}}
+function standNow(ev,auto){return ev?`目前：開啟，每 ${ev} 分鐘巡查一次`:auto?'目前：關閉。填入指定任務後會自動開啟（每 30 分鐘巡查一次）':'目前：關閉'}
 function alertSheet(t,p){$('veil').innerHTML=`<div class="sheet"><h2>${esc(t)}</h2><p>${esc(p)}</p><div class="acts"><button class="btn" id="sx">知道了</button></div></div>`;$('veil').hidden=false;$('sx').onclick=closeSheet}
 const ago=t=>{const m=Math.round((Date.now()-t)/60000),rt=new Intl.RelativeTimeFormat(I18N.lang,{numeric:'auto'});return m<60?rt.format(-m,'minute'):m<1440?rt.format(-Math.round(m/60),'hour'):rt.format(-Math.round(m/1440),'day')};
 /* ---------- bot browsers ---------- */

@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS bots (
   page TEXT,                     -- last page the bot reported
   shot_file TEXT,               -- files.id of the last screenshot (kept on the host computer)
   bpc TEXT,                      -- the computer that has its browser (logins)
-  fb TEXT                        -- backup AIs: JSON ["engine|model", …], used in order when the AI runs out of quota
+  fb TEXT,                       -- backup AIs: JSON ["engine|model", …], used in order when the AI runs out of quota
+  autonomy TEXT,                 -- 'auto' (just do it) | 'report' (do it, then tell; default) | 'ask' (ask before important actions)
+  stood INTEGER                  -- 1: 24-hour standby was set once (by the person or by default); never turned on again by itself
 );
 CREATE TABLE IF NOT EXISTS groups_ (
   id TEXT PRIMARY KEY,
@@ -106,7 +108,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   err_kind TEXT,                 -- why it failed: not_logged_in | site_changed | quota | timeout | tool_error | unknown
   err_msg TEXT,                  -- the error text behind it (short)
   shot TEXT,                     -- files.id of the screenshot taken when it ended
-  retry_of INTEGER               -- the failed job this one tries again
+  retry_of INTEGER               -- the failed job this one tries again,
+  via TEXT                       -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE TABLE IF NOT EXISTS stats (   -- 成果看板: totals per bot per day, added to when a chat job ends
