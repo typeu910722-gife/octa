@@ -12,4 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - run: curl -fsS --max-time 60 "${{ vars.OCTA_URL || 'https://octa.yzprojecttw.com' }}/api/cron"
+      # a failed tick (e.g. the database's daily free quota is used up) is only a warning: the next tick tries again,
+      # and it should not send a "Run failed" notice every few minutes
+      - run: curl -fsS --max-time 60 "${{ vars.OCTA_URL || 'https://octa.yzprojecttw.com' }}/api/cron" || echo "::warning::這次排程沒有成功（例如雲端資料庫今天的免費額度用完），下一次會再試"
