@@ -120,3 +120,10 @@
 
 ## 2026-10-27 3.1.4
 - 14:05 Cloudflare 通知 D1 每日 500 萬列讀取用完（UTC 0 點＝台灣 08:00 重置，期間雲端版全部報錯）。分析：/api/state 每次變動每台裝置都讀，其中今日 token 統計 `jobs WHERE user_id AND created>=` 無可用索引→整個帳號的 jobs 全掃（約 1600 列）＋未讀 300 列。修：新增索引 job_created(user_id, created)（MIGRATIONS＋ensureSchema 用 INDEXED BY 探測）、未讀改 LIMIT 100。待辦：明天用 meta.rows_read 實測各端點；同帳號其他 D1 專案（E·ROOM、到班）也共用 500 萬額度。
+
+## 2026-10-27 3.2.0 主機模式（資料存主機）
+- 雲端：users.hmode/hurl/hkey/hseen＋host_hooks；/api/host/register|export|activate|deactivate；hmode=1 時非白名單（CLOUD_ONLY）請求以 HMAC 簽章（x-octa-user/ts/sig）轉送到主機 quick tunnel，主機回 x-octa-host on/off/bad；連不上回 503 hostOffline；session＋host 資訊 isolate 快取 60 秒（每請求 ≤1 次 D1 讀）；cron 略過主機帳號；待命電腦 runner/* 回 standby。
+- 主機：desktop/host-mode.mjs（簽章驗證、hostHandler、importFromCloud、hostLink 心跳 10 分）；cfg.mode=host 視窗載入本機 server；遷移 octa:host-move（備份→暫存庫逐表分頁→驗證→替換→activate→補抓訊息）、octa:host-back。
+- 前端：hostOffline 頂部提示 5→10→30→60 秒退避；設定→電腦與主機 搬移／改回按鈕。
+- 修 schema.sql retry_of 行逗號寫在註解裡（新庫的 via 被吃成型別名稱）。
+- 未實測：Electron IPC 搬移流程、真實 cloudflared、Worker→trycloudflare、手機畫面。待 D1 額度重置（台灣 08:00）後在使用者電腦實際搬移。風險：quick tunnel 網址會變（心跳 10 分重註冊）、Workers 免費每日 10 萬請求。

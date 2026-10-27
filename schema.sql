@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   err_kind TEXT,                 -- why it failed: not_logged_in | site_changed | quota | timeout | tool_error | unknown
   err_msg TEXT,                  -- the error text behind it (short)
   shot TEXT,                     -- files.id of the screenshot taken when it ended
-  retry_of INTEGER               -- the failed job this one tries again,
+  retry_of INTEGER,              -- the failed job this one tries again
   via TEXT                       -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
