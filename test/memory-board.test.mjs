@@ -138,7 +138,8 @@ test('replies save facts and playbooks; the next similar job gets the playbook; 
   assert.deepEqual(next.memory, ['報表要用西元年']);
   assert.deepEqual(next.facts, ['後台網址是 https://admin.example.test']);
   assert.equal(next.manuals[0].name, '下載訂房報表');
-  await call(t.db, 'POST', 'runner/done', { token: t.rt, body: { id: next.id, ok: false, text: '⚠ 網站打不開' } });
+    // a fixed-code error is not retried automatically, so this is the final failure
+  await call(t.db, 'POST', 'runner/done', { token: t.rt, body: { id: next.id, ok: false, text: '⚠ TypeError: 網站打不開' } });
   state = (await call(t.db, 'GET', 'state', { token: t.token })).data;
   assert.equal(state.manuals[t.bot][0].used, 1);
 
@@ -172,7 +173,7 @@ test('weekly review asks the bot, its suggestion needs approval, approval writes
   await turn(t, '查一下訂單', '查好了\n📌記住：訂單編號前面要加 #');
   await call(t.db, 'POST', 'messages', { token: t.token, body: { conv: t.bot, text: '再查一次' } });
   const j = (await call(t.db, 'POST', 'runner/next', { token: t.rt, body: { slots: 1, wait: false } })).data.job;
-  await call(t.db, 'POST', 'runner/done', { token: t.rt, body: { id: j.id, ok: false, text: '⚠ 找不到訂單頁' } });
+  await call(t.db, 'POST', 'runner/done', { token: t.rt, body: { id: j.id, ok: false, text: '⚠ TypeError: 找不到訂單頁' } });
 
   // 「現在檢討一次」: one failure and one correction this week → one review job
   const r = await call(t.db, 'POST', 'review/run', { token: t.token });
