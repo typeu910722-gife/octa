@@ -49,7 +49,7 @@ export function hostHandler(opts) {
     const path = pathQuery.split('?')[0].split('/').filter(Boolean).map(s => { try { return decodeURIComponent(s); } catch { return s; } });
     if (path[0] === 'desktop' || path[0] === 'runner') return send(res, 403, { error: '不允許' }, 'on');   // this computer's own controls and its runner stay local
     const o = String(req.headers['x-octa-origin'] || '');
-    const origin = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(o) ? o : 'https://' + (req.headers.host || 'host');   // links the API writes point at the cloud address
+    const origin = /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(o) ? o : 'https://' + (req.headers.host || 'host');   // links the API writes point at the cloud address
     let coach = String(req.headers['x-octa-coach'] || '');
     try { coach = decodeURIComponent(coach); } catch { }
     const env = { ...opts.env(), isLocal: true, ...(path[0] === 'coach' && coach ? { coachAs: { user_id: 'local', label: coach.slice(0, 40) } } : {}) };
