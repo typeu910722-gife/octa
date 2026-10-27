@@ -31,6 +31,7 @@
     "files": [
       "main.mjs",
       "server.mjs",
+      "host-mode.mjs",
       "cdp-bridge.mjs",
       "embed-layout.mjs",
       "browser-catalog.mjs",

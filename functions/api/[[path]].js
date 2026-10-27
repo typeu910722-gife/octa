@@ -1644,7 +1644,8 @@ async function route({ request: req, env, params }) {
       await cleared(db, [lim[0], ['n:' + name.toLowerCase()]]);   // a successful reset also unlocks sign-in
       return J({ token: await newSession(db, u.id, 'web', null, meta) });
     }
-    if (path === 'config' && m === 'GET') return J({ signup: env.ALLOW_SIGNUP === 'true', local: !!env.isLocal, pair: !!env.pairCheck, download: env.DOWNLOAD_URL || '', repo: env.REPO_URL || '' });
+    if (path === 'config' && m === 'GET') return J({ signup: env.ALLOW_SIGNUP === 'true', local: !!env.isLocal, pair: !!env.pairCheck, download: env.DOWNLOAD_URL || '', repo: env.REPO_URL || '',
+      host: typeof env.hostMode === 'function' ? env.hostMode() : null });   // desktop 主機模式: {name} of the cloud account whose data is here
     if (path === 'pair' && m === 'POST') {   // desktop offline mode: phone pairs with a code instead of an account
       if (!env.pairCheck) return err('這個版本不使用配對碼', 404);
       if (!env.pairCheck(String(body.code || ''))) return err('配對碼錯誤或已失效', 401);

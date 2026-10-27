@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('octaDesktop', {
   onPip: cb => ipcRenderer.on('octa:pip', (_e, d) => cb(d)),
   useOffline: () => ipcRenderer.invoke('octa:offline'),
   useCloud: () => ipcRenderer.invoke('octa:cloud'),
+  hostMove: () => ipcRenderer.invoke('octa:host-move'),   // 主機模式: move the account's data to this computer
+  hostBack: () => ipcRenderer.invoke('octa:host-back'),   // and back to the cloud
+  onHostProgress: cb => ipcRenderer.on('octa:host-progress', (_e, d) => cb(d)),
   update: {
     status: () => ipcRenderer.invoke('octa:update-status'),
     check: () => ipcRenderer.invoke('octa:update-check'),

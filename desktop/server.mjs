@@ -5,13 +5,14 @@
 // Can run inside Electron (main.mjs) or on its own: `node server.mjs`.
 
 import http from 'node:http';
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, chmodSync, cpSync, rmSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, chmodSync, cpSync, rmSync, readdirSync, statSync, copyFileSync } from 'node:fs';
 import { join, dirname, extname, normalize } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, execFile } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { createRequire } from 'node:module';
 import os from 'node:os';
+import { hostHandler, hostLink, importFromCloud } from './host-mode.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -29,9 +30,10 @@ async function openDb(file) {
   const initSqlJs = require('sql.js');
   const SQL = await initSqlJs({ locateFile: f => join(dirname(require.resolve('sql.js')), f) });
   const db = existsSync(file) ? new SQL.Database(readFileSync(file)) : new SQL.Database();
-  let timer = null;
+  let timer = null, closed = false;
   const save = () => {
     clearTimeout(timer); timer = null;
+    if (closed) return;
     const tmp = file + '.tmp';
     writeFileSync(tmp, Buffer.from(db.export()));
     renameSync(tmp, file);
@@ -66,7 +68,8 @@ async function openDb(file) {
       catch (e) { db.run('ROLLBACK'); throw e; }
     },
     exec: sql => { db.exec(sql); dirty(); },
-    save
+    save,
+    close() { save(); closed = true; db.close(); }   // 主機模式 move: the file is replaced by the moved copy
   };
   return d1;
 }
@@ -178,16 +181,22 @@ const newCode = () => Array.from({ length: 8 }, () => CODE_CHARS[randomInt(CODE_
 export async function startServer(opts = {}) {
   const dataDir = opts.dataDir || (existsSync(join(os.homedir(), '.ebot')) ? join(os.homedir(), '.ebot') : join(os.homedir(), '.octa'));
   mkdirSync(dataDir, { recursive: true });
-  const db = await openDb(join(dataDir, 'ebot.sqlite'));
-  db.exec(readFileSync(SCHEMA, 'utf8'));
-  for (const m of MIGRATIONS) { try { db.exec(m); } catch { } }
-  await db.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();
+  const dbFile = join(dataDir, 'ebot.sqlite');
+  const prepDb = async file => {
+    const d = await openDb(file);
+    d.exec(readFileSync(SCHEMA, 'utf8'));
+    for (const m of MIGRATIONS) { try { d.exec(m); } catch { } }
+    await d.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();
+    return d;
+  };
+  let db = await prepDb(dbFile);
   const { onRequest } = await import(pathToFileURL(API).href);
+  const host = opts.host || { enabled: () => false };   // 主機模式 (main.mjs): { enabled, key, user, name, cloud, token, onKey, onMode, log }
 
   const tzOffset = -new Date().getTimezoneOffset();
   let runnerSeen = 0;
-  const remote = { on: false, url: '', code: '', proc: null, fails: 0 };
-  const base = { DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false' };
+  const remote = { on: false, url: '', code: '', fails: 0 };   // phone pairing (offline mode) over the tunnel
+  const base = { DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false', hostMode: () => (host.enabled() ? { name: host.name?.() || '' } : null) };
   const callApi = async (req, res, env, origin) => {
     const request = await toRequest(req, origin);
     const path = new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
@@ -196,7 +205,7 @@ export async function startServer(opts = {}) {
   };
 
   // local port: the desktop window and the built-in runner; trusted, no login
-  let localPort = 0;
+  let localPort = 0, link = null;
   const local = http.createServer(async (req, res) => {
     try {
       const host = req.headers.host || '';
@@ -207,6 +216,7 @@ export async function startServer(opts = {}) {
       if (req.method !== 'GET' && !(req.headers['content-type'] || '').includes('application/json')) { res.writeHead(415); return res.end(); }   // forces a CORS preflight for other sites
       if (req.url.startsWith('/api/desktop/')) return desktopApi(req, res);
       await callApi(req, res, { ...base, isLocal: true, runnerOnline: () => Date.now() - runnerSeen < 60000 }, `http://${host}`);
+      if (req.method !== 'GET') link?.poke();   // a routine may have got an external-event key: the cloud must know it
     } catch (e) { json(res, { error: e.message }, 500); }
   });
   // reuse last port so the window keeps its saved preferences (language, drafts)
@@ -216,9 +226,19 @@ export async function startServer(opts = {}) {
   localPort = await listen(local, want);
   try { writeFileSync(portFile, String(localPort)); } catch { }
 
-  // remote port: only reached through the tunnel; phone must pair first
+  // remote port: only reached through the tunnel. Requests the cloud signed (主機模式) are answered as this
+  // computer's user; a phone without an account must pair first (offline mode).
+  const fromCloud = hostHandler({
+    onRequest, env: () => ({ ...base, runnerOnline: () => Date.now() - runnerSeen < 60000 }),
+    enabled: () => host.enabled(), key: () => host.key?.() || '', expectUser: () => host.user?.() || '', onChange: () => link?.poke()
+  });
   const remoteSrv = http.createServer(async (req, res) => {
     try {
+      if (req.url === '/__octa_ping') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }   // is the tunnel still alive
+      if (req.headers['x-octa-sig']) {
+        const c = []; for await (const x of req) c.push(x);
+        return await fromCloud(req, res, Buffer.concat(c));
+      }
       if (!remote.on) { res.writeHead(503); return res.end('遠端已關閉'); }
       if (!req.url.startsWith('/api/')) return serveStatic(req, res);
       if (req.url.startsWith('/api/desktop/') || req.url.startsWith('/api/runner')) { res.writeHead(403); return res.end(); }
@@ -234,20 +254,76 @@ export async function startServer(opts = {}) {
   });
   const remotePort = await listen(remoteSrv, localPort + 1);
 
+  // one Cloudflare quick tunnel to the remote port, shared by phone pairing and 主機模式
+  const tunnel = { url: '', proc: null, starting: null };
+  function ensureTunnel() {
+    if (tunnel.url && tunnel.proc) return Promise.resolve(tunnel.url);
+    if (tunnel.starting) return tunnel.starting;
+    tunnel.starting = (async () => {
+      const bin = await ensureCloudflared(join(dataDir, 'bin'));
+      const proc = spawn(bin, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${remotePort}`], { windowsHide: true });
+      tunnel.proc = proc;
+      const url = await new Promise((ok, no) => {
+        const t = setTimeout(() => no(new Error('連線逾時，請再試一次')), 45000);
+        const scan = d => { const m = String(d).match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/); if (m) { clearTimeout(t); ok(m[0]); } };
+        proc.stdout.on('data', scan); proc.stderr.on('data', scan);
+        proc.on('exit', () => { clearTimeout(t); no(new Error('連線工具結束了')); });
+      }).catch(e => { proc.kill(); if (tunnel.proc === proc) tunnel.proc = null; throw e; });
+      tunnel.url = url;
+      proc.on('exit', () => {
+        if (tunnel.proc !== proc) return;
+        Object.assign(tunnel, { url: '', proc: null }); Object.assign(remote, { on: false, url: '', code: '' });
+        if (link?.running) setTimeout(() => link?.poke(), 10000);   // 主機模式: a new tunnel, and the cloud is told its address
+      });
+      return url;
+    })().finally(() => (tunnel.starting = null));
+    return tunnel.starting;
+  }
+  function stopTunnel() { const p = tunnel.proc; Object.assign(tunnel, { url: '', proc: null }); p?.kill(); }
   async function setRemote(on) {
-    if (!on) { remote.proc?.kill(); Object.assign(remote, { on: false, url: '', code: '', proc: null }); return { on: false }; }
-    if (remote.on && remote.url) return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
-    const bin = await ensureCloudflared(join(dataDir, 'bin'));
-    const proc = spawn(bin, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${remotePort}`], { windowsHide: true });
-    remote.proc = proc; remote.code = newCode(); remote.on = true;
-    remote.url = await new Promise((ok, no) => {
-      const t = setTimeout(() => no(new Error('連線逾時，請再試一次')), 45000);
-      const scan = d => { const m = String(d).match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/); if (m) { clearTimeout(t); ok(m[0]); } };
-      proc.stdout.on('data', scan); proc.stderr.on('data', scan);
-      proc.on('exit', () => { clearTimeout(t); no(new Error('連線工具結束了')); });
-    }).catch(e => { proc.kill(); Object.assign(remote, { on: false, proc: null }); throw e; });
-    proc.on('exit', () => { if (remote.proc === proc) Object.assign(remote, { on: false, url: '', proc: null }); });
+    if (!on) { Object.assign(remote, { on: false, url: '', code: '' }); if (!link?.running) stopTunnel(); return { on: false }; }
+    if (remote.on && remote.url && tunnel.url) return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
+    const url = await ensureTunnel();
+    Object.assign(remote, { on: true, url, code: newCode(), fails: 0 });
     return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
+  }
+
+  // ---------- 主機模式 ----------
+  // keep a tunnel open and tell the cloud its address (when it changes and every 10 minutes)
+  async function hostStart() {
+    if (link?.running) return null;
+    link = hostLink({
+      cloud: host.cloud, token: () => host.token?.() || '', tunnel: ensureTunnel,
+      ping: async u => { const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000); try { return (await fetch(u + '/__octa_ping', { signal: ctl.signal })).ok; } finally { clearTimeout(t); } },
+      restartTunnel: async () => { stopTunnel(); },
+      hooks: async () => (await base.DB.prepare('SELECT hook FROM routines WHERE hook IS NOT NULL').all()).results.map(r => r.hook),
+      onKey: k => host.onKey?.(k), onMode: m => host.onMode?.(m), log: e => host.log?.(e)
+    });
+    return link.start();
+  }
+  function hostStop() { link?.stop(); link = null; if (!remote.on) stopTunnel(); }
+  // copy the account's data from the cloud into a new database file, check it, then put it in place of this one.
+  // The old file is kept as a dated backup; a failure leaves everything as it was.
+  async function hostImport({ call, onProgress }) {
+    db.save();
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    const backup = join(dataDir, `ebot.backup-${stamp}.sqlite`);
+    if (existsSync(dbFile)) copyFileSync(dbFile, backup);
+    const tmpFile = dbFile + '.moving';
+    rmSync(tmpFile, { force: true });
+    const fresh = await prepDb(tmpFile);
+    let out;
+    try { out = await importFromCloud({ call, db: fresh, onProgress }); fresh.close(); }
+    catch (e) { try { fresh.close(); } catch { } rmSync(tmpFile, { force: true }); throw e; }
+    db.close();
+    renameSync(tmpFile, dbFile);
+    db = await prepDb(dbFile);
+    base.DB = db;
+    return { ...out, backup };
+  }
+  // what changed in the cloud while moving (messages written before the cloud started forwarding)
+  async function hostCatchUp({ call, after }) {
+    return importFromCloud({ call, db: base.DB, tables: ['messages'], start: { messages: after }, insert: 'ignore', verify: false });
   }
   async function qr(text) { try { return await require('qrcode').toDataURL(text, { margin: 1, width: 360 }); } catch { return ''; } }
 
@@ -398,7 +474,8 @@ export async function startServer(opts = {}) {
 
   return {
     url: `http://127.0.0.1:${localPort}`, dataDir, webDir: WEB, desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
-    async close() { runner.stop(); remote.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
+    hostStart, hostStop, hostImport, hostCatchUp,
+    async close() { runner.stop(); link?.stop(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
   };
 }
 

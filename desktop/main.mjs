@@ -140,7 +140,7 @@ function showWindow() {
 const showSplash = () => win.loadFile(join(here, 'splash.html'));
 
 async function loadMain() {
-  if (cfg.mode === 'local') { await win.loadURL(server.url); return; }
+  if (cfg.mode === 'local' || cfg.mode === 'host') { await win.loadURL(server.url); return; }   // 主機模式: the data is here, no detour through the cloud
   progress(70, '連線到 OCTA 雲端…');
   try { await win.loadURL(CLOUD); }
   catch (e) { if (!String(e).includes('ERR_ABORTED')) logError('cloud', e); }
@@ -887,7 +887,7 @@ const call = async (path, token, method = 'GET', body) => {
   return d;
 };
 handle('octa:connect', async (_e, webToken) => {   // the page signed in: run this account's bots on this computer
-  if (!webToken || cfg.mode === 'local') return { ok: false };
+  if (!webToken || cfg.mode === 'local' || cfg.mode === 'host') return { ok: false };
   const who = await call('me', webToken);
   // keep this computer's key when the same account signs in again (it stays the same computer in the list)
   let reuse = false;
@@ -910,6 +910,7 @@ handle('octa:disconnect', (_e, opts) => {
 });
 handle('octa:working', () => ({ working: !!runner && runnerFor.startsWith(CLOUD), standby: !!runner?.standby?.() }));
 handle('octa:offline', async () => {
+  if (cfg.mode === 'host') server.hostStop();
   cfg = { ...cfg, mode: 'local' }; writeCfg(cfg);
   stopRunner(); await startRunnerFor(server.url, '');
   await win.loadURL(server.url); return { ok: true };
@@ -968,8 +969,79 @@ function checkLastUpdate() {
   if (r === 0) shell.openExternal('https://github.com/typeu910722-gife/octa/releases/latest/download/OCTA-Setup.exe');
 }
 handle('octa:cloud', async () => {
+  if (cfg.mode === 'host') server.hostStop();
   cfg = { ...cfg, mode: 'cloud' }; writeCfg(cfg);
   stopRunner(); await showSplash(); progress(60, '重新連線…'); await loadMain(); return { ok: true };
+});
+
+// ---------- 主機模式: the account's data lives on this computer ----------
+// The cloud keeps the account and forwards requests here through the tunnel (signed with cfg.hostKey).
+let moving = false;
+const hostOpts = {
+  enabled: () => cfg.mode === 'host', key: () => cfg.hostKey || '', user: () => cfg.hostUser?.id || '', name: () => cfg.hostUser?.name || '',
+  cloud: CLOUD, token: () => cfg.runnerToken || '',
+  onKey: k => { if (k && k !== cfg.hostKey) { cfg = { ...cfg, hostKey: k }; writeCfg(cfg); } },
+  // someone switched the account back to the cloud (e.g. from the phone while this computer was off)
+  onMode: m => { if (m === 0 && cfg.mode === 'host' && !moving) hostToCloud('這個帳號已改回存在雲端，這台電腦也切回雲端模式。').catch(e => logError('host-off', e)); },
+  log: e => logError('host-link', e)
+};
+async function hostToCloud(note) {
+  cfg = { ...cfg, mode: 'cloud' }; writeCfg(cfg);
+  server.hostStop(); stopRunner();
+  if (cfg.runnerToken) await startRunnerFor(CLOUD, cfg.runnerToken);
+  if (note) new Notification({ title: 'OCTA', body: note, icon: icon() }).show();
+  if (win) { await showSplash(); progress(60, '重新連線…'); await loadMain(); }
+}
+// move: back up → copy every table from the cloud into a new database → check the counts → put it in place →
+// the cloud starts forwarding → pick up messages written meanwhile → this computer's runner works from here
+handle('octa:host-move', async () => {
+  if (moving) throw new Error('正在搬移中，請稍候');
+  if (cfg.mode === 'local' || cfg.mode === 'host') throw new Error('目前不是雲端模式');
+  if (!cfg.runnerToken) throw new Error('請先登入雲端帳號，等這台電腦連上後再試');
+  moving = true;
+  const tell = (p, text) => win?.webContents.send('octa:host-progress', { p, text });
+  const rt = cfg.runnerToken;
+  const post = (path, body) => call(path, rt, 'POST', body || {});
+  let paused = false;
+  try {
+    tell(3, '確認帳號…');
+    const who = await post('runner/hello', { app: app.getVersion() });
+    cfg = { ...cfg, hostUser: { id: who.user, name: who.name } }; writeCfg(cfg);
+    tell(8, '建立和雲端的連線（第一次會下載連線工具，約 30 秒）…');
+    try { await server.hostStart(); }
+    catch (e) { throw new Error(e.status === 403 ? '這台電腦不是主機。請先在下面的電腦清單把這台電腦「設為主機」再試。' : '無法建立連線：' + e.message); }
+    if (!cfg.hostKey) throw new Error('雲端沒有給連線金鑰，請再試一次');
+    tell(14, '暫停這台電腦的工作…');
+    stopRunner(); paused = true;
+    const res = await server.hostImport({
+      call: post,
+      onProgress: e => tell(15 + Math.round(70 * (e.index + (e.expect ? Math.min(1, e.got / e.expect) : 1)) / e.total), `搬移${e.label}… ${e.got}${e.expect ? ' / ' + e.expect : ''}`)
+    });
+    tell(88, '改由這台電腦提供資料…');
+    await post('host/activate');
+    cfg = { ...cfg, mode: 'host', hostMoved: Date.now() }; writeCfg(cfg);
+    try { await server.hostCatchUp({ call: post, after: res.lastMessage }); } catch (e) { logError('host-catchup', e); }
+    tell(96, '啟動機器人…');
+    await startRunnerFor(server.url, '');
+    tell(100, '完成');
+    setTimeout(() => win?.loadURL(server.url).catch(() => { }), 700);
+    return { ok: true, counts: res.counts, backup: res.backup };
+  } catch (e) {
+    logError('host-move', e);
+    if (cfg.mode !== 'host') {   // nothing changed for the account: keep working from the cloud
+      server.hostStop();
+      if (paused && cfg.runnerToken) await startRunnerFor(CLOUD, cfg.runnerToken).catch(() => { });
+    }
+    throw new Error(e.message);
+  } finally { moving = false; }
+});
+// back to the cloud: the cloud's copy is from the moment of moving; what was done on this computer since stays here (and in its backups)
+handle('octa:host-back', async () => {
+  if (cfg.mode !== 'host') return { ok: false };
+  try { await call('host/deactivate', cfg.runnerToken, 'POST', {}); }
+  catch (e) { if (e.status !== 401 && e.status !== 403) throw new Error('連不上雲端，請稍後再試（' + e.message + '）'); }
+  await hostToCloud();
+  return { ok: true };
 });
 
 // ---------- app ----------
@@ -1009,6 +1081,7 @@ async function start() {
   server = await startServer({
     dataDir,
     runner: false,   // started below for whichever mode is in use
+    host: hostOpts,
     hooks: {
       openFolder: () => shell.openPath(dataDir),
       pickFolder: async () => { const r = await dialog.showOpenDialog(win, { title: '選擇 OCTA 檔案資料夾', properties: ['openDirectory', 'createDirectory'] }); return r.canceled ? null : r.filePaths[0]; },
@@ -1025,9 +1098,10 @@ async function start() {
     try { app.setLoginItemSettings({ openAtLogin: true, args: LOGIN_ARGS, path: process.execPath }); } catch (e) { logError('autostart', e); }
   }
   progress(50, '準備機器人…');
-  if (cfg.mode === 'local') await startRunnerFor(server.url, '');
+  if (cfg.mode === 'local' || cfg.mode === 'host') await startRunnerFor(server.url, '');
   else if (cfg.runnerToken) await startRunnerFor(CLOUD, cfg.runnerToken);   // keep working before the page finishes loading
   clearTimeout(slow);
+  if (cfg.mode === 'host') server.hostStart().catch(e => logError('host-start', e));   // keeps retrying by itself
 
   tray = new Tray(icon().resize({ width: 16, height: 16 }));
   tray.setToolTip('OCTA｜奧克塔');
