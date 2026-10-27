@@ -1,4 +1,4 @@
-import { classifyModelFailure, decideRoute, replyIsProviderRefusal } from '../../public/model-route.mjs';
+import { classifyModelFailure, decideRoute, replyIsProviderRefusal, classifyJobFailure, FAIL_KINDS, MAX_AUTO_RETRY, autoRetryable, retryPrompt, stripRetryNote, failureNotice } from '../../public/model-route.mjs';
 import { normalizeCustom, publicConnectors, runConnector } from '../../public/connectors.mjs';
 // OCTA API — Cloudflare Pages Function, single router.
 // Web app uses a "web" session token; each computer's runner uses its own "runner" token.
@@ -261,9 +261,20 @@ async function getSettings(db, userId) {
 }
 const putSettings = (db, userId, st) => db.prepare('UPDATE users SET settings=? WHERE id=?').bind(JSON.stringify(st), userId).run();
 const mask = t => (t ? '••••' + String(t).slice(-4) : '');
-async function sendNotify(env, st, text) {
+async function sendNotify(env, st, text, photo = null) {
   const out = [];
-  if (st.tg?.token && st.tg?.chat) {
+  if (st.tg?.token && st.tg?.chat && photo) {   // base64 JPEG of the failed job's screen; the text goes as its caption
+    let r = null;
+    try {
+      const fd = new FormData();
+      fd.append('chat_id', st.tg.chat);
+      fd.append('caption', text.slice(0, 1000));
+      fd.append('photo', new Blob([Uint8Array.from(atob(photo), c => c.charCodeAt(0))], { type: 'image/jpeg' }), 'screenshot.jpg');
+      r = await fetch(`https://api.telegram.org/bot${st.tg.token}/sendPhoto`, { method: 'POST', body: fd }).catch(() => null);
+    } catch { }
+    if (r?.ok && text.length <= 1000) { out.push('Telegram'); photo = 'sent'; }
+  }
+  if (st.tg?.token && st.tg?.chat && photo !== 'sent') {
     const r = await fetch(`https://api.telegram.org/bot${st.tg.token}/sendMessage`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ chat_id: st.tg.chat, text: text.slice(0, 4000) })
     }).catch(() => null);
@@ -358,13 +369,15 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id)',
   'CREATE TABLE IF NOT EXISTS live (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT, title TEXT, mime TEXT, data TEXT, ts INTEGER, handed INTEGER NOT NULL DEFAULT 0)',
   // 3.1: progress has its own counter (no full reload), live frames only while someone watches
-  'ALTER TABLE users ADD COLUMN prog INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE live ADD COLUMN watch INTEGER'
+  'ALTER TABLE users ADD COLUMN prog INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE live ADD COLUMN watch INTEGER',
+  // why a job failed, its screenshot, and the automatic retry it led to
+  'ALTER TABLE jobs ADD COLUMN err_kind TEXT', 'ALTER TABLE jobs ADD COLUMN err_msg TEXT', 'ALTER TABLE jobs ADD COLUMN shot TEXT', 'ALTER TABLE jobs ADD COLUMN retry_of INTEGER'
 ];
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
   try {
-    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users'].map(q => db.prepare(q + ' LIMIT 0')));
+    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs'].map(q => db.prepare(q + ' LIMIT 0')));
     schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
@@ -1286,7 +1299,7 @@ async function route({ request: req, env, params }) {
         // stale running jobs become errors
         const stale = (await db.prepare("SELECT id,conv,bot_id FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND started<?) OR started<?)").bind(U, now() - 20 * MIN, now() - 3 * 3600000).all()).results;
         for (const s of stale) {
-          await db.prepare("UPDATE jobs SET status='error' WHERE id=?").bind(s.id).run();
+          await db.prepare("UPDATE jobs SET status='error', err_kind='timeout', err_msg=? WHERE id=?").bind('執行超過 20 分鐘沒有回報，已中止', s.id).run();
           await addMsg(db, U, s.conv, s.bot_id, '⚠ 執行逾時，已中止。');
           changed++;
         }
@@ -1401,6 +1414,7 @@ async function route({ request: req, env, params }) {
         const job = await db.prepare("SELECT * FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
         if (!job) return err('找不到執行中的任務', 404);
         let good = body.ok !== false;
+        let fail = null;   // { kind, msg, ai }: why a chat job finally failed (工作紀錄, notification)
         // Classify the failure before choosing a backup. Quota, HTTP 429, auth, and
         // transient outages are not the same action, and a code or tool failure does not switch models.
         // A model that exits 0 and only says the quota is gone is the same failure: call the backup,
@@ -1430,8 +1444,11 @@ async function route({ request: req, env, params }) {
               await putSettings(db, U, st);
               const nextEng = decision.action === 'switch' ? chain[decision.index] : current;
               const nextTries = decision.action === 'retry' ? (+job.tries || 0) + 1 : 0;
-              await db.prepare("UPDATE jobs SET status='error', finished=?, result=? WHERE id=?").bind(now(), clean(raw, 500), job.id).run();
-              await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries) VALUES (?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, job.prompt, now(), job.depth || 0, nextEng, nextTries).run();
+              const fk = classifyJobFailure(raw, { hint: body.err_kind, stalled: !!body.stalled });
+              await db.prepare("UPDATE jobs SET status='error', finished=?, result=?, err_kind=?, err_msg=? WHERE id=?").bind(now(), clean(raw, 500), fk, clean(raw.replace(/^⚠\s*/, ''), 500), job.id).run();
+              // the second try on the same model carries the reason and asks for another way
+              const nextPrompt = decision.action === 'retry' ? retryPrompt(job.prompt, nextTries, fk, raw) : stripRetryNote(job.prompt);
+              await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, nextPrompt, now(), job.depth || 0, nextEng, nextTries, job.id).run();
               const note = decision.action === 'switch'
                 ? `「${b.name}」的 ${lab(chain[index])} ${why}，改由 ${lab(nextEng)} 接手。已完成的對話會保留，不會重做已完成的步驟。`
                 : `「${b.name}」的 ${lab(current)} ${decision.reason === 'rate_limit' ? '被限流，同一個模型再試一次' : '暫時故障，同一個模型再試一次'}（第 ${nextTries} 次）。`;
@@ -1440,6 +1457,19 @@ async function route({ request: req, env, params }) {
               return ok();
             }
             if (decision.message) body.text = (decision.reason === 'cancelled' ? '' : '⚠ ') + decision.message;
+            if (decision.reason !== 'cancelled') {
+              fail = { kind: classifyJobFailure(raw, { hint: body.err_kind, stalled: !!body.stalled }), msg: clean(raw.replace(/^⚠\s*/, ''), 500), ai: decision.reason === 'auth' };
+              // timeouts, changed pages, tool errors and unknown errors: the same job again (at most twice),
+              // the second time with the reason attached. Quota went to the backup AI above; a sign-in is never retried.
+              const n = (+job.tries || 0) + 1;
+              if (['execution', 'tool'].includes(decision.reason) && autoRetryable(fail.kind, raw) && n <= MAX_AUTO_RETRY) {
+                await db.prepare("UPDATE jobs SET status='error', finished=?, result=?, err_kind=?, err_msg=? WHERE id=?").bind(now(), clean(raw, 500), fail.kind, fail.msg, job.id).run();
+                await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, retryPrompt(job.prompt, n, fail.kind, raw), now(), job.depth || 0, job.eng || null, n, job.id).run();
+                await addMsg(db, U, job.conv, 'sys', `「${b.name}」這次沒做成（${FAIL_KINDS[fail.kind].label}），自動重試第 ${n} 次${n >= MAX_AUTO_RETRY ? '，這次會換一種方法' : ''}…`);
+                await bump(db, U);
+                return ok();
+              }
+            }
           }
         }
         if (job.kind === 'export' || job.kind === 'import') {   // handing a bot's website logins to another computer
@@ -1467,6 +1497,12 @@ async function route({ request: req, env, params }) {
           return ok();
         }
         let text = clean(body.text, 20000) || (good ? '（完成，無回覆內容）' : '⚠ 執行失敗');
+        if (fail) {   // the final failure says why in plain words; a website sign-in shows the login card (接手／繼續)
+          const fk = FAIL_KINDS[fail.kind] || FAIL_KINDS.unknown;
+          if (fail.kind === 'not_logged_in' && !fail.ai && !LOGIN_WAIT.test(text)) text = '⚠ 需要使用者在電腦上登入。' + text.replace(/^⚠\s*/, '');
+          if (!/^⚠/.test(text)) text = '⚠ ' + text;
+          text += `\n原因：${fk.label}。${fail.ai ? '' : fk.next}`;
+        }
         if (good && job.kind === 'chat' && text.includes('【回覆】')) text = text.slice(text.lastIndexOf('【回覆】') + 4).trim() || '（完成）';   // drop the running commentary before the reply
         if (good && job.kind === 'chat') text = calmReply(text) || '（完成）';
         // 📛名稱：🎮 遊戲員 — a new bot names itself after it learns its job
@@ -1597,10 +1633,14 @@ async function route({ request: req, env, params }) {
           : [];
         const loginStuck = good && job.kind === 'chat' && LOGIN_WAIT.test(text);
         const loginAgain = loginStuck && earlierMine.length >= 2 && LOGIN_WAIT.test(earlierMine[1]?.text || '');
+        // paused for a sign-in counts as not_logged_in in 工作紀錄, even though the reply itself came back fine
+        if (fail || loginStuck) await db.prepare('UPDATE jobs SET err_kind=?, err_msg=? WHERE id=?').bind(fail ? fail.kind : 'not_logged_in', fail ? fail.msg : clean(text, 500), job.id).run();
         if (job.kind === 'chat' && !loginAgain) {
           const st = await getSettings(db, U);
           const who = (await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人';
-          if (!good || needsYou(text)) await sendNotify(env, st, `【OCTA】${who} 需要你處理：\n${text.slice(0, 600)}`);
+          const photo = (fail || loginStuck) && typeof body.shot === 'string' && /^[A-Za-z0-9+/=]+$/.test(body.shot.slice(0, 200)) && body.shot.length < 900000 ? body.shot : null;
+          if (fail || loginStuck) await sendNotify(env, st, failureNotice(who, job.prompt, fail ? fail.kind : 'not_logged_in', fail ? fail.msg : text), photo);
+          else if (!good || needsYou(text)) await sendNotify(env, st, `【OCTA】${who} 需要你處理：\n${text.slice(0, 600)}`);
           else if (st.notifyAll && !JSON.parse(job.chain).length) await sendNotify(env, st, `【OCTA】${who} 完成：\n${text.slice(0, 600)}`);
         }
         if (body.page) await db.prepare('UPDATE bots SET page=? WHERE id=? AND user_id=?').bind(clean(body.page, 500), job.bot_id, U).run();
@@ -1666,11 +1706,13 @@ async function route({ request: req, env, params }) {
         if (!p) return err('路徑不正確');
         const old = await db.prepare('SELECT shot_file FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first();
         const id = 'file-' + uid();
+        const kept = old?.shot_file && await db.prepare('SELECT 1 AS n FROM jobs WHERE user_id=? AND shot=? AND err_kind IS NOT NULL').bind(U, old.shot_file).first();   // a failed job's screenshot stays
         await db.batch([
           db.prepare("INSERT INTO files (id,user_id,name,mime,data,ts,conv,loc,path,size,pc) VALUES (?,?,?,?,'',?,?,'pc',?,?,?)").bind(id, U, name, mimeOf(name, body.mime), now(), job.conv, p, +body.size || null, me.kind === 'runner' ? label : null),
           db.prepare('UPDATE bots SET shot_ts=?, shot_file=?, bpc=IFNULL(bpc,?) WHERE id=? AND user_id=?').bind(now(), id, me.kind === 'runner' ? label : null, job.bot_id, U),
-          db.prepare('DELETE FROM files WHERE id=? AND user_id=?').bind(old?.shot_file || '', U),
-          db.prepare('DELETE FROM chunks WHERE file_id=?').bind(old?.shot_file || ''),
+          db.prepare('UPDATE jobs SET shot=? WHERE id=? AND user_id=?').bind(id, +body.id, U),
+          db.prepare('DELETE FROM files WHERE id=? AND user_id=?').bind(kept ? '' : old?.shot_file || '', U),
+          db.prepare('DELETE FROM chunks WHERE file_id=?').bind(kept ? '' : old?.shot_file || ''),
           db.prepare('DELETE FROM shots WHERE bot_id=? AND user_id=?').bind(job.bot_id, U)
         ]);
         return ok();
@@ -2290,8 +2332,20 @@ async function route({ request: req, env, params }) {
     }
     if (path === 'logs' && m === 'GET') {
       const { bots, groups } = await loadAll(db, U);
-      const rows = (await db.prepare("SELECT id,conv,bot_id,prompt,status,kind,url,created,started,finished FROM jobs WHERE user_id=? ORDER BY id DESC LIMIT 100").bind(U).all()).results;
-      return J({ logs: rows.map(r => ({ ...r, bot: r.kind === 'test' ? 'AI 連線測試：' + r.url : bots.find(b => b.id === r.bot_id)?.name || '已刪除', convName: (bots.find(b => b.id === r.conv) || groups.find(g => g.id === r.conv))?.name || '', prompt: r.prompt.slice(0, 80) })) });
+      const rows = (await db.prepare("SELECT id,conv,bot_id,prompt,status,kind,url,created,started,finished,err_kind,err_msg,shot,retry_of FROM jobs WHERE user_id=? ORDER BY id DESC LIMIT 100").bind(U).all()).results;
+      const retried = new Set(rows.map(r => r.retry_of).filter(Boolean));
+      return J({ logs: rows.map(r => ({ ...r, retried: retried.has(r.id), bot: r.kind === 'test' ? 'AI 連線測試：' + r.url : bots.find(b => b.id === r.bot_id)?.name || '已刪除', convName: (bots.find(b => b.id === r.conv) || groups.find(g => g.id === r.conv))?.name || '', prompt: stripRetryNote(r.prompt).slice(0, 80) })) });
+    }
+    if (path === 'logs/retry' && m === 'POST') {   // 工作紀錄 → 重試: the same job again, from the start
+      const j = await db.prepare('SELECT * FROM jobs WHERE id=? AND user_id=?').bind(+body.id, U).first();
+      if (!j) return err('找不到這筆紀錄', 404);
+      if ((j.kind || 'chat') !== 'chat' || j.status === 'pending' || j.status === 'running') return err('這筆不能重試');
+      const { bots } = await loadAll(db, U), b = bots.find(x => x.id === j.bot_id);
+      if (!b) return err('機器人已刪除');
+      await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,retry_of) VALUES (?,?,?,?,?,?,?,?)').bind(U, j.conv, j.bot_id, j.chain || '[]', stripRetryNote(j.prompt), now(), j.depth || 0, j.id).run();
+      await addMsg(db, U, j.conv, 'sys', `從工作紀錄重新執行「${b.name}」的工作`);
+      await bump(db, U);
+      return ok();
     }
     if (path.startsWith('shot/') && m === 'GET') {
       const b = await db.prepare('SELECT shot_file FROM bots WHERE id=? AND user_id=?').bind(path.slice(5), U).first();

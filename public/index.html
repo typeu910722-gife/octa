@@ -322,6 +322,9 @@ form.in .send,form.in .clip{height:46px}
 .log{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;border-bottom:1px solid var(--line2);padding-bottom:6px;align-items:baseline}
 .log small{grid-column:2/4;color:var(--faint);font-size:12px;overflow-wrap:anywhere}
 .log .st{font-size:11px}
+.lfail{grid-column:2/4;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:12px}
+.lfail small{flex-basis:100%;color:var(--faint);overflow-wrap:anywhere}
+.lfail .pill{font-size:11px}.lfail .lact{display:flex;gap:6px}.lfail .lact button{font-size:12px;padding:2px 8px}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px;color:var(--mute)}
 .kv b{font-weight:500;color:var(--ink)}
 .toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px}
@@ -2192,7 +2195,16 @@ async function openLogs(){
   let d={logs:[]};try{d=await api('logs')}catch(e){}
   const dur=l=>l.finished&&l.started?new Intl.NumberFormat(I18N.lang,{style:'unit',unit:'second',unitDisplay:'short'}).format(Math.max(1,Math.round((l.finished-l.started)/1000))):'';
   const stc={done:['p-ok','完成'],error:['p-pr','失敗'],running:['','執行中'],pending:['p-off','排隊']};
-  subSheet('工作紀錄',`<div class="logs">${d.logs.length?d.logs.map(l=>`<div class="log"><span class="pill st ${stc[l.status]?.[0]||''}">${stc[l.status]?.[1]||l.status}</span><b style="font-weight:500"><span data-u>${esc(l.kind==='test'?(ENG[l.url]?.n||l.url):l.bot)}</span>${l.kind==='open'?'（開瀏覽器）':l.kind==='test'?'（連線測試）':l.kind==='code'?'（程式任務）':''}</b><span style="font-size:12px;color:var(--faint)">${when(l.created)} ${dur(l)}</span><small data-u>${esc(l.convName)}${l.convName?'：':''}${esc(l.prompt)}</small></div>`).join(''):'<p>還沒有紀錄</p>'}</div>`)}
+  subSheet('工作紀錄',`<div class="logs">${d.logs.length?d.logs.map(l=>`<div class="log"><span class="pill st ${stc[l.status]?.[0]||''}">${l.status==='done'&&l.err_kind==='not_logged_in'?'待登入':stc[l.status]?.[1]||l.status}</span><b style="font-weight:500"><span data-u>${esc(l.kind==='test'?(ENG[l.url]?.n||l.url):l.bot)}</span>${l.kind==='open'?'（開瀏覽器）':l.kind==='test'?'（連線測試）':l.kind==='code'?'（程式任務）':''}</b><span style="font-size:12px;color:var(--faint)">${when(l.created)} ${dur(l)}</span><small data-u>${esc(l.convName)}${l.convName?'：':''}${esc(l.prompt)}</small>${logFail(l)}</div>`).join(''):'<p>還沒有紀錄</p>'}</div>`);
+  document.querySelectorAll('[data-lshot]').forEach(b=>b.onclick=()=>openFile(b.dataset.lshot));
+  document.querySelectorAll('[data-lretry]').forEach(b=>b.onclick=()=>{b.disabled=true;api('logs/retry','POST',{id:+b.dataset.lretry}).then(()=>{toast(I18N.t('已重新排入，會照原本的指示再做一次'));refresh()}).catch(e=>{b.disabled=false;toast(e.message)})})}
+// why a job failed, in plain words, with its screenshot and a 重試 button (工作紀錄)
+const FAILK={not_logged_in:['需要登入','網站把機器人登出了，或要先登入才能繼續。'],site_changed:['網頁變了','網頁上找不到要操作的地方，可能改版或跳出了別的畫面。'],quota:['額度用完','AI 的使用額度用完或被限流了。'],timeout:['逾時','做太久，或 AI 很久沒有回應，已中止。'],tool_error:['工具出錯','瀏覽器、搜尋或其他工具出錯。'],unknown:['其他錯誤','執行時發生錯誤。']};
+function logFail(l){const k=l.err_kind&&(FAILK[l.err_kind]||FAILK.unknown);if(!k&&l.status!=='error')return '';
+  const canRetry=(l.kind||'chat')==='chat'&&l.status==='error'&&!l.retried;
+  return `<div class="lfail">${k?`<span class="pill p-pr">${k[0]}</span><span>${k[1]}</span>`:''}${l.retried?'<span class="pill p-off">已自動重試</span>':''}
+    ${l.err_msg?`<small data-u>${esc(String(l.err_msg).slice(0,300))}</small>`:''}
+    <span class="lact">${l.shot?`<button type="button" class="ghost" data-lshot="${esc(l.shot)}">看截圖</button>`:''}${canRetry?`<button type="button" class="ghost" data-lretry="${l.id}">↻ 重試</button>`:''}</span></div>`}
 
 /* ---------- AI connections ---------- */
 const aiTests={},rmsgs={};

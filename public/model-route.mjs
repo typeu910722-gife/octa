@@ -89,3 +89,53 @@ export function decideRoute({ kind, tries = 0, chain = [], index = 0, resetsAt =
   }
   return { action: 'stop', reason: kind, message: '' };
 }
+
+// ---------- why a bot's job failed (shown in 工作紀錄 and notifications) ----------
+// Separate from classifyModelFailure, which only chooses retry vs backup AI. These kinds are
+// what the user sees, and whether OCTA should try the same job again on its own.
+export const FAIL_KINDS = {
+  not_logged_in: { label: '需要登入', why: '網站把機器人登出了，或要先登入才能繼續。', next: '在電腦上打開機器人的瀏覽器登入，再按「繼續」。', retry: false },
+  site_changed: { label: '網頁變了', why: '網頁上找不到要操作的地方，可能改版或跳出了別的畫面。', next: '看截圖確認畫面；網站改版了就告訴機器人新的位置。', retry: true },
+  quota: { label: '額度用完', why: 'AI 的使用額度用完或被限流了。', next: '等額度重置，或在任務設定加一個備援 AI。', retry: false },
+  timeout: { label: '逾時', why: '做太久，或 AI 很久沒有回應，已中止。', next: '把工作拆小一點再交代，或稍後按重試。', retry: true },
+  tool_error: { label: '工具出錯', why: '瀏覽器、搜尋或其他工具出錯。', next: '確認電腦的網路和瀏覽器正常，再按重試。', retry: true },
+  unknown: { label: '其他錯誤', why: '執行時發生錯誤。', next: '看錯誤訊息後按重試；一直失敗就換個說法交代。', retry: true }
+};
+export const MAX_AUTO_RETRY = 2;
+// A program that crashes the same way every time (a failing test, a syntax error) is not helped by running it again.
+const SAME_EVERY_TIME = /AssertionError|SyntaxError|ReferenceError|TypeError:|tests? failed|測試(沒過|失敗)/i;
+export const autoRetryable = (kind, text) => !!FAIL_KINDS[kind]?.retry && !(kind === 'unknown' && SAME_EVERY_TIME.test(String(text || '')));
+const SITE_LOGIN_RE = /需要使用者在電腦上登入|登入(已)?(過期|逾時|失效)|被登出|請(先|重新)登入|要先登入|session (has )?expired|sign ?in (to continue|required)|log ?in required|please (log|sign) ?in|not logged in|未登入/i;
+const SITE_CHANGED_RE = /找不到(元素|按鈕|欄位|連結|選項|輸入框|要點的)|頁面(不同|改版|變了|不一樣)|版面(改|變)了?|element (is )?(not found|not attached|not visible)|no (such )?element|ref\b.{0,30}not found|strict mode violation|waiting for (locator|selector)|locator\(|not (found|visible) in (the )?(page|snapshot)/i;
+const TIMEOUT_RE = /超過\s*\d+\s*分鐘|很久沒有回應|逾時|timed? ?out|timeout|ETIMEDOUT/i;
+const TOOL_RE = /\bmcp\b|playwright|browser_\w+|tool (error|failed)|工具(錯誤|失敗|出錯)|target (page|closed)|net::ERR|ECONNREFUSED|ECONNRESET|瀏覽器(錯誤|失敗|打不開)/i;
+
+export function classifyJobFailure(text, { hint, stalled } = {}) {
+  if (hint && FAIL_KINDS[hint]) return hint;
+  if (stalled) return 'timeout';
+  const t = String(text || '');
+  const model = classifyModelFailure(t);
+  if (SITE_LOGIN_RE.test(t) || model === 'auth') return 'not_logged_in';
+  if (model === 'quota' || model === 'rate_limit') return 'quota';
+  if (SITE_CHANGED_RE.test(t)) return 'site_changed';
+  if (TIMEOUT_RE.test(t)) return 'timeout';
+  if (model === 'tool' || model === 'transient' || model === 'unavailable' || TOOL_RE.test(t)) return 'tool_error';
+  return 'unknown';
+}
+// the job is tried again with the reason attached; earlier notes are replaced, not stacked
+const RETRY_NOTE = /\n\n（自動重試 \d+）[\s\S]*$/;
+export const stripRetryNote = p => String(p || '').replace(RETRY_NOTE, '');
+export function retryPrompt(prompt, n, kind, msg) {
+  const base = stripRetryNote(prompt);
+  if (n < MAX_AUTO_RETRY) return base;
+  const k = FAIL_KINDS[kind] || FAIL_KINDS.unknown;
+  const m = String(msg || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return `${base}\n\n（自動重試 ${n}）前一次失敗了，原因：${k.label}（${k.why}）${m ? '錯誤訊息：' + m : ''}這次請換一種方法做，不要重複上次失敗的步驟。`;
+}
+// plain words for a notification: which bot, what it was doing, why, what to do next
+export function failureNotice(who, prompt, kind, msg) {
+  const k = FAIL_KINDS[kind] || FAIL_KINDS.unknown;
+  const what = stripRetryNote(prompt).replace(/\s+/g, ' ').trim().slice(0, 100);
+  const m = String(msg || '').replace(/^⚠\s*/, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return [`【OCTA】${who} 沒有完成工作`, what ? `做什麼：${what}` : '', `原因：${k.label}——${k.why}`, m ? `訊息：${m}` : '', `建議：${k.next}`].filter(Boolean).join('\n');
+}

@@ -196,7 +196,8 @@ function dayInfo(job) {
     '一次把整件事做完再回覆，花幾分鐘沒關係；能確定的先整理出來，有疑點的另外列在最後，不要因為有疑點就整份不給。',
     '名字、編號、數字、金額只能抄這一次畫面上或資料裡看到的字，不准自己編；沒看到的空著。',
     '日期沒有寫年份時，當成今年、離今天最近的那一天。',
-    '找資料不能只看畫面上看得到的：用搜尋、篩選、往下捲到載入完整，相關的帳號和頁面都要看過。');
+    '找資料不能只看畫面上看得到的：用搜尋、篩選、往下捲到載入完整，相關的帳號和頁面都要看過。',
+    '交出數字、名單、清單之前，先回頭對照原始資料（畫面、檔案、紀錄）逐項核對一次，對不上就重算。回覆裡不用描述核對過程，只有無法確認的疑點才另外列出。');
   return out;
 }
 const notesFile = job => join(workDir, 'bots', String(job.bot.id).replace(/[^\w-]/g, ''), '工作筆記.md');
@@ -337,7 +338,7 @@ export function buildLocalPrompt(job, here) {
     job.backup ? '你是在其他 AI 沒有額度時代替它把這件工作做完。該查的頁面要查，該記的要記。不要因為自己是備援就少做。' : '',
     `現在要做：${instruction}`,
     task ? `指定任務：${task}` : '',
-    '規則：先看完再下結論。名字、編號、數字只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。',
+    '規則：先看完再下結論。名字、編號、數字只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。交出數字、名單、清單之前，先回頭對照原始資料核對一次，對不上就重算；不用描述核對過程，有疑點才另列。',
     job.group ? `群組「${job.group.name}」依序做。你只做自己的部分，做完就停。` : '',
     hist.length ? '最近的對話：\n' + hist.join('\n') : '',
     notes ? '工作筆記節錄：\n' + notes : '',
@@ -891,10 +892,13 @@ async function chatRun(job) {
   // what the browser shows now: taken by OCTA itself (no need for the bot to remember)
   let page = (res.text.match(/📍\s*目前頁面[:：]\s*(\S+)/) || [])[1];
   const d = new Date(), z = n => String(n).padStart(2, '0'), stamp = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
+  // a failed run (or one waiting for a sign-in) also sends its screen once, for the Telegram notification
+  let shotB64 = null;
   const saveShot = async (buf, ext) => {
     const p = freeName(join(here, '截圖'), safeName(job.bot.name) + '-' + stamp + ext);
     writeFileSync(p, buf);
     await api('runner/shot', { id: job.id, path: rel(p), name: basename(p), size: buf.length });
+    if ((!res.ok || /需要使用者在電腦上登入/.test(res.text || '')) && /^\.jpe?g$/.test(ext) && buf.length < 600000) shotB64 = buf.toString('base64');
   };
   try {
     const live = port ? await browserSnapshot(port, start) : null;
@@ -902,7 +906,7 @@ async function chatRun(job) {
     else { const shot = newestImage(dir, start); if (shot) await saveShot(readFileSync(shot.p), extname(shot.p).toLowerCase()); }
   } catch (e) { log('截圖儲存失敗：' + e.message); }
   const nsk = collectSkills(dir, job.nskills);
-  await api('runner/done', { id: job.id, ok: res.ok, text: res.text, page, tokens: res.tokens ?? null, files: res.ok ? newFiles(join(here, '輸出'), start) : [], browser: !!port, stopped: stoppedByUser, ...(nsk ? { nskills: nsk } : {}) });
+  await api('runner/done', { id: job.id, ok: res.ok, text: res.text, page, tokens: res.tokens ?? null, files: res.ok ? newFiles(join(here, '輸出'), start) : [], browser: !!port, stopped: stoppedByUser, ...(nsk ? { nskills: nsk } : {}), ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : {}), ...(shotB64 ? { shot: shotB64 } : {}) });
   log(`${res.ok ? '✓' : '✗'} ${job.bot.name}`);
   if (['claude', 'codex'].includes(job.bot.engine || 'claude')) lastUsage = 0;   // refresh how much is left
   try { cfg.onDone?.(job, res); } catch { }

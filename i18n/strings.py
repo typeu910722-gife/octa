@@ -985,3 +985,22 @@ T.update({
 })
 
 T.update({'這台電腦的 OCTA 是裝給所有使用者，Windows 會詢問是否允許變更，請按「是」': ('OCTA is installed for all users on this computer: Windows will ask to allow changes — press “Yes”', 'このパソコンの OCTA は全ユーザー向けにインストールされています。Windows が変更の許可を求めるので「はい」を押してください')})
+
+T.update({   # 工作紀錄: why a job failed
+ '待登入': ('Needs sign-in', 'ログイン待ち'),
+ '已自動重試': ('Retried automatically', '自動で再試行済み'),
+ '看截圖': ('View screenshot', 'スクリーンショットを見る'),
+ '已重新排入，會照原本的指示再做一次': ('Queued again — it will redo the original instruction', 'もう一度キューに入れました。元の指示をやり直します'),
+ '需要登入': ('Sign-in needed', 'ログインが必要'),
+ '網站把機器人登出了，或要先登入才能繼續。': ('The site signed the bot out, or a sign-in is needed to continue.', 'サイトからログアウトされたか、続けるにはログインが必要です。'),
+ '網頁變了': ('Page changed', 'ページが変わった'),
+ '網頁上找不到要操作的地方，可能改版或跳出了別的畫面。': ('Couldn’t find what to use on the page — it may have been redesigned or another screen popped up.', '操作する場所がページに見つかりません。デザインが変わったか、別の画面が出た可能性があります。'),
+ '額度用完': ('Out of quota', '利用枠切れ'),
+ 'AI 的使用額度用完或被限流了。': ('The AI’s usage quota ran out or it was rate-limited.', 'AI の利用枠を使い切ったか、レート制限されました。'),
+ '逾時': ('Timed out', 'タイムアウト'),
+ '做太久，或 AI 很久沒有回應，已中止。': ('It took too long, or the AI stopped responding, so it was stopped.', '時間がかかりすぎたか AI が応答しなくなったため、中止しました。'),
+ '工具出錯': ('Tool error', 'ツールのエラー'),
+ '瀏覽器、搜尋或其他工具出錯。': ('The browser, search or another tool failed.', 'ブラウザ、検索、その他のツールでエラーが起きました。'),
+ '其他錯誤': ('Other error', 'その他のエラー'),
+ '執行時發生錯誤。': ('Something went wrong while running.', '実行中にエラーが起きました。'),
+})

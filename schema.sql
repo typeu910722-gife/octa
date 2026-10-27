@@ -102,7 +102,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   tokens INTEGER,                -- tokens the run used (when the AI reports it)
   pc TEXT,                       -- only this computer may take it (handing logins over)
   eng TEXT,                      -- "engine|model" a backup AI runs this job with
-  tries INTEGER NOT NULL DEFAULT 0 -- retries already used on that same model
+  tries INTEGER NOT NULL DEFAULT 0, -- retries already used on that same model
+  err_kind TEXT,                 -- why it failed: not_logged_in | site_changed | quota | timeout | tool_error | unknown
+  err_msg TEXT,                  -- the error text behind it (short)
+  shot TEXT,                     -- files.id of the screenshot taken when it ended
+  retry_of INTEGER               -- the failed job this one tries again
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE TABLE IF NOT EXISTS live (   -- the latest frame of a bot's own browser, for phones watching the host
