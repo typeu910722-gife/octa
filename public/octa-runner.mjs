@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '17.23';
+export const VERSION = '17.24';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -1196,12 +1196,14 @@ function startSession(job, b) {
   const s = { child, turn: null, err: [] };
   let part = '';
   child.stdout.on('data', d => {
+    s.seenAt = Date.now();
     part += d.toString('utf8');
     let i;
     while ((i = part.indexOf('\n')) >= 0) {
       const l = part.slice(0, i); part = part.slice(i + 1);
       let e; try { e = JSON.parse(l); } catch { continue; }
       if (!s.turn) continue;
+      s.turn.heard = true;
       if (e.type === 'assistant') for (const c of e.message?.content || []) {
         if (c.type === 'tool_use') s.turn.progress?.(describeTool(c.name, c.input));
         else if (c.type === 'text' && c.text?.trim()) s.turn.progress?.('整理回覆中');
@@ -1220,10 +1222,27 @@ function warmSend(job, text, live) {
   const s = sessions.get(job.bot.id);
   if (!s?.child) return Promise.resolve({ ok: false, text: '⚠ 沒有正在待機的對話' });
   live.ctl.kill = () => closeSession(job.bot.id, `${job.bot.name}：已停止`);
+  return turnWithWatch(job, s, text, live).then(r => { s.doneAt = Date.now(); return r; });
+}
+const WARM_STALE = 20 * 60000;   // reuse a waiting session only if it answered within the last 20 minutes
+const FIRST_WORD = 180000, QUIET = 360000;   // no sign of life this long → the session is stuck
+function turnWithWatch(job, s, text, live) {
   return new Promise(done => {
-    s.turn = { done, progress: live.progress };
+    const started = Date.now();
+    s.seenAt = started;
+    const end = r => { clearInterval(dog); done(r); };
+    s.turn = { done: end, progress: live.progress, heard: false };
+    const dog = setInterval(() => {
+      if (!s.turn) return clearInterval(dog);
+      const quiet = Date.now() - (s.seenAt || started);
+      if (quiet > (s.turn.heard ? QUIET : FIRST_WORD)) {
+        const t = s.turn; s.turn = null;
+        closeSession(job.bot.id, `${job.bot.name}：AI ${Math.round(quiet / 60000)} 分鐘沒有動靜`);
+        t.done({ ok: false, stalled: true, text: '⚠ AI 很久沒有回應，已中止' });
+      }
+    }, 10000);
     try { s.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n'); }
-    catch (e) { s.turn = null; done({ ok: false, text: '⚠ ' + e.message }); }
+    catch (e) { s.turn = null; end({ ok: false, text: '⚠ ' + e.message }); }
   });
 }
 async function warmClaude(job, b, here, live) {
@@ -1231,7 +1250,10 @@ async function warmClaude(job, b, here, live) {
   const fp = JSON.stringify([VERSION, job.memory, (job.skills || []).map(k => k.name + k.steps), job.bot.task, job.bot.model, job.bot.browser, job.bot.livePort, job.notes, job.folderNotes, job.group, (job.colleagues || []).map(c => c.name + c.task), job.allowed, job.lang, storeDir(), job.conv?.id, job.nick]);
   let s = sessions.get(job.bot.id), text;
   const ids = job.history.map(h => h.id || 0), newest = Math.max(0, ...ids);
-  if (s && s.fp === fp && s.convId === job.conv?.id) {
+  // a session that sat idle a long time (the computer may have slept) can hang on its old connection: start fresh
+  if (s && !s.turn && s.doneAt && Date.now() - s.doneAt > WARM_STALE) { closeSession(job.bot.id, `${job.bot.name}：待機太久，重新開始對話`); s = null; }
+  const reused = !!(s && s.fp === fp && s.convId === job.conv?.id);
+  if (reused) {
     clearTimeout(s.timer);
     // only what happened since the last turn, then the new instruction
     const fresh = job.history.filter(h => (h.id || 0) > s.lastId && !(h.who === '使用者' && h.text === job.prompt));
@@ -1247,11 +1269,15 @@ async function warmClaude(job, b, here, live) {
   }
   s.lastId = newest;
   live.ctl.kill = () => closeSession(job.bot.id, `${job.bot.name}：已停止`);
-  const res = await new Promise(done => {
-    s.turn = { done, progress: live.progress };
-    try { s.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n'); }
-    catch (e) { s.turn = null; done({ ok: false, text: '⚠ ' + e.message }); }
-  });
+  const res = await turnWithWatch(job, s, text, live);
+  s.doneAt = Date.now();
+  if (res.stalled && !job.stallRetried) {   // the AI never answered: one fresh try with the full instructions
+    job.stallRetried = true;
+    log(`⏱ ${job.bot.name}：AI 沒有回應，重新開始一次`);
+    live.progress?.('AI 沒有回應，重新開始');
+    closeSession(job.bot.id);
+    return warmClaude(job, b, here, live);
+  }
   if (sessions.get(job.bot.id) === s) {
     if (job.warm > 0) s.timer = setTimeout(() => closeSession(job.bot.id, `${job.bot.name}：待機 ${job.warm} 秒到了，AI 先休息`), job.warm * 1000);
     if (!res.ok) closeSession(job.bot.id);   // start clean after an error
