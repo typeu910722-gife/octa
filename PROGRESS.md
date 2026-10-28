@@ -144,3 +144,4 @@
 
 ## 2026-10-28 3.3.2
 - 15 分鐘上限改設定 settings.jobMax（15/30/60/120/180，預設 60）→ job.maxMin → 執行器 ctl.maxMs（spawnCli 與 agy --print-timeout）；jobs.beat（runner/progress 心跳每分鐘最多寫一次）；伺服器卡住判定改為 IFNULL(beat,started) 超過 20 分鐘或總時間超過 jobMax+5 分。test/job-time.test.mjs。
+- 修：3.3.2 第一次推送時 runEngine 內誤用不在範圍的 job（Claude 一般執行會 job is not defined），測試抓到後已取消該次桌面建置並修正再發布。

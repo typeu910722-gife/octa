@@ -914,7 +914,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       let result = null;
       r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
         '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_ALLOWED, ...(await claudeLean(useBrowser))], dir, prompt, {
-        ctl: live.ctl, quietMs: QUIET_MS, maxMs: job.maxMin ? job.maxMin * 60000 : undefined,
+        ctl: live.ctl, quietMs: QUIET_MS,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
           if (e.type === 'result') { result = e; return; }
