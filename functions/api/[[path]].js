@@ -1846,6 +1846,7 @@ async function route({ request: req, env, params }) {
           changed++;
         }
         try { changed += await weeklyReview(env, db, U); } catch { }
+        try { await approvalNag(env, db, U); } catch { }
         if (changed) await bump(db, U);
         const slots = body.slots === undefined ? 1 : +body.slots;
         const t0 = now();
@@ -2363,7 +2364,8 @@ async function route({ request: req, env, params }) {
         db.prepare("SELECT conv,bot_id,status,kind,started,progress,eng FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')").bind(U),
         db.prepare('SELECT rev, prog FROM users WHERE id=?').bind(U),
         // newest non-system message of each conversation (list previews); one indexed lookup each
-        ...convIds.map(c => db.prepare("SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1").bind(U, c))
+        // ask: the ✅待確認 line of a bot's message, so 待你核准 shows even when it is past the 140-character preview
+        ...convIds.map(c => db.prepare("SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts,CASE WHEN by_<>'me' AND instr(text,'待確認')>0 THEN substr(text,instr(text,'待確認')-(CASE WHEN substr(text,instr(text,'待確認')-1,1)=' ' THEN 2 ELSE 1 END),200) END AS ask FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1").bind(U, c))
       ]);
       const last = { results: lasts.flatMap(r => r.results) };
       const h = env.isLocal ? null : await hostInfo(db, U);
@@ -3312,6 +3314,30 @@ async function weeklyReview(env, db, U, force = false) {
   }
   if (n) await bump(db, U);
   return n;
+}
+// ✅待確認 nobody answered for 15 minutes: one more Telegram / LINE message, once per card
+// (評論：「核准框有時候沒人看到，接班人就一直卡著」). Looked at from runner/next, at most once a minute per account.
+const NAG_MS = 15 * MIN, nagLooked = new Map();
+async function pendingApprovals(db, U, olderThan = 0) {
+  const rows = (await db.prepare("SELECT m.id, m.conv, m.by_ AS by, m.text, m.ts FROM messages m WHERE m.user_id=?1 AND m.id>IFNULL((SELECT id FROM messages WHERE user_id=?1 AND ts<?2 ORDER BY id DESC LIMIT 1),0) AND m.by_ NOT IN ('me','sys') AND m.ts<=?3 AND instr(m.text,'待確認')>0 AND NOT EXISTS (SELECT 1 FROM messages x WHERE x.user_id=?1 AND x.conv=m.conv AND x.id>m.id AND (x.by_='me' OR x.by_=m.by_)) ORDER BY m.id DESC LIMIT 20")
+    .bind(U, now() - DAY, now() - olderThan).all()).results;
+  return rows.map(r => ({ ...r, act: (String(r.text).match(/^✅\s*待確認[:：]\s*(.+)$/m) || [])[1] })).filter(r => r.act);
+}
+async function approvalNag(env, db, U, force = false) {
+  if (!force && now() - (nagLooked.get(U) || 0) < MIN) return 0;
+  nagLooked.set(U, now());
+  const waiting = await pendingApprovals(db, U, NAG_MS);
+  if (!waiting.length) return 0;
+  const st = await getSettings(db, U);
+  const told = new Set(st.nagged || []), fresh = waiting.filter(r => !told.has(r.id) && !(st.mute || {})[r.conv]);
+  if (!fresh.length) return 0;
+  const { bots, groups } = await loadAll(db, U);
+  const nm = id => bots.find(b => b.id === id)?.name || groups.find(g => g.id === id)?.name || '機器人';
+  const lines = fresh.slice(0, 5).map(r => `・${nm(r.by)}${r.conv !== r.by ? `（${nm(r.conv)}）` : ''}：${clean(r.act, 120)}（等了 ${Math.round((now() - r.ts) / MIN)} 分鐘）`);
+  await sendNotify(env, st, `【OCTA】還有 ${fresh.length} 件等你核准，機器人停在這裡：\n${lines.join('\n')}\n打開 OCTA，清單最上面就是。`);
+  st.nagged = [...fresh.map(r => r.id), ...(st.nagged || [])].slice(0, 100);
+  await putSettings(db, U, st);
+  return fresh.length;
 }
 // 成果看板: one row per bot per day, added to when a chat job ends (jobs themselves are kept only 14 days)
 async function statAdd(db, env, U, job, good, tokens, web) {

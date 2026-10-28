@@ -283,6 +283,32 @@ form.in .send,form.in .clip{height:46px}
 .bw input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;color:var(--ink);font:inherit;font-size:13px}
 .bw .btn{padding:9px 12px;font-size:13px;white-space:nowrap}
 .appr{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+/* ✅待確認 card: what, who, what it touches; decided cards stay as a record */
+.apcard{margin-top:8px;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:14px;padding:10px 12px;background:var(--panel2);max-width:520px;align-self:stretch;transition:box-shadow .3s}
+.apcard.wait{border-color:color-mix(in srgb,var(--prio) 55%,var(--line));border-left-color:var(--prio);box-shadow:0 0 0 3px color-mix(in srgb,var(--prio) 14%,transparent)}
+.apcard.ok{border-left-color:var(--done)}.apcard.no{border-left-color:var(--prio)}
+.apcard.answered,.apcard.stale{border-left-color:var(--faint);opacity:.85}
+.apcard.qhit{box-shadow:0 0 0 4px color-mix(in srgb,var(--gold) 45%,transparent)}
+.aph{display:flex;gap:10px;align-items:flex-start}
+.apic{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:14px;background:var(--panel);color:var(--ink);font-weight:700}
+.apcard.ok .apic{background:var(--done);color:var(--on-done)}.apcard.no .apic{background:var(--prio);color:var(--on-prio)}
+.apt{min-width:0;display:grid;gap:1px}
+.apt small{font-size:11.5px;color:var(--prio);font-weight:600;letter-spacing:.02em}
+.apcard:not(.wait) .apt small{color:var(--mute)}
+.apt b{font-size:14.5px;font-weight:600;color:var(--ink);line-height:1.45;overflow-wrap:anywhere}
+.apkv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:8px 0 0 36px;font-size:12.5px;color:var(--ink)}
+.apkv>span:nth-child(odd){color:var(--mute)}
+.apwho{margin:4px 0 0 36px;font-size:12px;color:var(--mute)}
+.apcard .appr{margin-left:36px}
+/* top of the list: how many 核准 are waiting */
+.apbar{display:flex;align-items:center;gap:10px;width:calc(100% - 16px);margin:6px 8px 4px;padding:9px 12px;border:1px solid color-mix(in srgb,var(--prio) 50%,var(--line));border-radius:14px;background:color-mix(in srgb,var(--prio) 10%,var(--panel));color:var(--ink);text-align:left;cursor:pointer;font:inherit}
+.apbar:hover{background:color-mix(in srgb,var(--prio) 16%,var(--panel))}
+.apn{flex:none;min-width:26px;height:26px;border-radius:99px;padding:0 7px;display:grid;place-items:center;background:var(--prio);color:var(--on-prio);font-weight:700;font-size:13px}
+.apl{flex:1;min-width:0;display:grid}.apl b{font-size:13.5px;font-weight:600}.apl small{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.apbar .sa{color:var(--mute);font-size:18px}
+.need.ap{background:var(--prio)}
+.oct-n{position:absolute;left:38px;top:-4px;z-index:2;min-width:18px;height:18px;border-radius:99px;padding:0 5px;background:var(--prio);color:var(--on-prio);font:700 11px/18px var(--sans);text-align:center;font-style:normal;pointer-events:none}
+.oct-n[hidden]{display:none}
 .appr .btn{padding:7px 14px;font-size:13px}
 .appr .no{background:none;border:1px solid var(--line2);border-radius:10px;padding:7px 12px;color:var(--mute);font-size:13px}
 .appr.done{color:var(--faint);font-size:12px}
@@ -894,6 +920,10 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .bsi{background:var(--pg);border:0}
   .more3{padding:8px 12px}
   .appr{gap:8px;margin-top:8px}
+  .apcard{background:var(--pb);border-color:var(--pl);border-radius:18px;width:100%}
+  .apcard .appr,.apkv,.apwho{margin-left:0}
+  .m:not(.me) .bx:has(.apcard){width:min(86%,400px)}
+  .apbar{width:calc(100% - 24px);margin:4px 12px 6px;border-radius:16px;background:color-mix(in srgb,var(--prio) 9%,var(--pb))}
   .m:not(.me) .bx:has(.appr [data-deny]){width:min(86%,400px)}
   .appr:has([data-deny]){display:grid;grid-template-columns:1fr 1fr;align-self:stretch}
   .appr:has([data-deny]) button{width:100%;padding-inline:10px;white-space:nowrap}
@@ -1139,6 +1169,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
         <g class="fx fx-err"><path d="M51 12q3.2 5 0 7.5q-3.2-2.5 0-7.5z" fill="#7cc4ff"/></g>
       </svg>
       </button>
+      <i class="oct-n" id="octN" hidden title="待你核准"></i>
       <div class="oct-say" id="buddySay" role="status"></div>
       <div class="oct-menu" id="octMenu" hidden></div>
     </div>
@@ -1333,7 +1364,7 @@ const elapsed=t=>{const s=Math.max(0,Math.round((Date.now()-t)/1000));return Mat
 setInterval(()=>document.querySelectorAll('.el[data-since]').forEach(e=>e.textContent=elapsed(+e.dataset.since)),1000);
 const lastOf=id=>S.last.find(x=>x.conv===id);
 // a bot is waiting for you: its newest message asks for approval or a sign-in
-const needsYou=id=>{const l=lastOf(id);return !!l&&l.by!=='me'&&l.by!=='sys'&&(/✅\s*待確認/.test(l.text)||/需要使用者在電腦上登入/.test(l.text))};
+const needsYou=id=>{const l=lastOf(id);return !!l&&l.by!=='me'&&l.by!=='sys'&&(/✅\s*待確認/.test(l.ask||l.text)||/需要使用者在電腦上登入/.test(l.text))};   // ask: the ✅ line even when it is past the preview's 140 characters
 function preview(id){const ms=convMsgs(id).filter(x=>x.by!=='sys'&&!x.tmp),l=lastOf(id),m=ms.length&&(!l||ms[ms.length-1].id>=l.id)?ms[ms.length-1]:l;
   if(!m)return conv(id).task;
   const plain=m.by==='me'?m.text:m.text.replace(/```[\s\S]*?```/g,' ').replace(/^#{1,4}\s+|^\s*[-*•>]\s+|\*\*|__|`|~~/gm,'').replace(/\|/g,' ').replace(/\s+/g,' ').trim();
@@ -1385,7 +1416,38 @@ function viewImage(d,u){
     <a class="ghost" href="${u}" download="${esc(d.name)}">下載</a>${d.local?'<button type="button" class="ghost" id="lbShow">在資料夾中顯示</button>':''}<button type="button" class="btn" id="lbX">關閉</button></div></div>`;
   $('veil').hidden=false;$('lbX').onclick=closeSheet;if($('lbShow'))$('lbShow').onclick=()=>api('desktop/show-file','POST',{path:d.local}).catch(e=>toast(e.message));
   $('veil').querySelector('.lbox').onclick=e=>{if(e.target.classList.contains('lbox'))closeSheet()}}
+/* ui-pure:start — plain functions without page state; test/ui-upgrade.test.mjs loads this block on its own */
 const APPR=/^✅\s*待確認[:：]\s*(.+)$/m;
+// what became of a ✅待確認 card, read from the messages after it (評論：「核准框有時候沒人看到」「按了就結束」)
+//   wait: still needs you · ok / no: you approved / refused (at = when) · answered: you replied in words · stale: the bot moved on
+function apprDecision(m,after,who){const a=String(m?.text||'').match(APPR);if(!a)return null;const act=a[1].trim(),plan=/^照計畫/.test(act);
+  for(const x of after||[]){
+    if(x.by==='me'){const t=String(x.text||'').trim(),to=t.match(/^@(\S+)/);
+      if(to&&who&&to[1]!==who)continue;   // in a group, words for another member
+      const s=t.replace(/^@\S+\s+/,'');
+      if(/^核准[:：]/.test(s))return {state:'ok',act,plan,at:x.ts,always:/一律允許/.test(s)};
+      if(/^不要做[:：]/.test(s))return {state:'no',act,plan,at:x.ts};
+      return {state:'answered',act,plan,at:x.ts}}
+    if(x.by===m.by)return {state:'stale',act,plan,at:x.ts}}
+  return {state:'wait',act,plan}}
+// what the action will touch: the bot's own 「影響：」 line, otherwise a plain guess from the words
+const APPR_IMPACT=[[/^照計畫/,'照計畫開始做，做完會回報'],[/更新規則/,'會改寫它的規則，之後每次工作都照新規則做'],[/付款|付錢|轉帳|刷卡|扣款|購買|下單|儲值/,'會花錢，付出去就收不回來'],
+  [/刪除|刪掉|清空|移除|作廢/,'刪掉後無法復原'],[/傳送|發送|送出|傳給|寄出|回覆|發訊息|貼文|發布|公告/,'訊息會送到對方那邊，送出就收不回來'],
+  [/訂房|預訂|預約|取消|退訂|改期/,'會改到訂單或預約'],[/提交|表單|申請|報名|登記/,'會正式送出申請或表單'],[/密碼|帳號|權限/,'會動到帳號或權限']];
+function apprImpact(act,text){const own=String(text||'').match(/^\s*(?:會)?影響[:：]\s*(.+)$/m);if(own)return own[1].trim();
+  for(const [re,t] of APPR_IMPACT)if(re.test(String(act||'')))return t;return '照上面寫的去做，做完會回報'}
+// the card says it all: take the ✅ line (and an 影響 line) out of the message above it
+const apprStrip=t=>String(t||'').replace(/^✅\s*待確認[:：].*$/gm,'').replace(/^\s*(?:會)?影響[:：].*$/gm,'').replace(/\n{3,}/g,'\n\n').trim();
+// a routine's last and next run (fields from the API: last_run, last_status, last_text, next_run)
+function rtStatus(r){if(!r)return null;const st={done:'ok',error:'err',skipped:'skip'}[r.last_status]||(r.last_run?'run':'');
+  return {last:+r.last_run||0,st,next:r.enabled!==false&&+r.next_run?+r.next_run:0,text:String(r.last_text||'').slice(0,140),job:r.last_job||null}}
+// a group member right now: working (with its progress line), queued, waiting on you, or free
+function memberState(id,busy,asks){const run=(busy||[]).find(x=>x.bot_id===id&&x.status==='running');
+  if(run)return {k:'run',p:String(run.progress||'').trim()};
+  if((asks||[]).includes(id))return {k:'ask'};
+  if((busy||[]).some(x=>x.bot_id===id&&x.status==='pending'))return {k:'queue'};
+  return {k:'idle'}}
+/* ui-pure:end */
 const OPENED=new Set();
 // a failed reply: offer to send the same instruction again
 function retryHtml(m){if(!/^⚠/.test(m.text)||NEEDLOGIN.test(m.text))return '';const ms=convMsgs(m.conv);if(ms.some(x=>x.id>m.id&&!x.tmp&&x.by!=='sys'))return '';
@@ -1394,11 +1456,39 @@ const NEEDLOGIN=/需要使用者在電腦上登入|需要.{0,6}登入/;
 function loginHtml(m){const b=bot(m.by);if(!b||b.browser==='mine'||!NEEDLOGIN.test(m.text))return '';
   if(convMsgs(m.conv).some(x=>x.id>m.id&&x.by===m.by))return '';
   return `<div class="appr"><button type="button" class="btn" data-hand="${esc(m.by)}">接手</button><button type="button" class="no" data-resume="${esc(m.by)}">繼續</button><small class="hint2">機器人已停止點擊。在旁邊的即時畫面上自己登入，再按繼續。密碼不要貼到聊天裡。</small></div>`}
-function apprHtml(m){const a=m.text.match(APPR);if(!a)return '';
-  const later=convMsgs(m.conv).some(x=>x.id>m.id&&(x.by==='me'||x.by===m.by));
-  if(later)return '';
-  if(/^照計畫/.test(a[1].trim()))return `<div class="appr"><button type="button" class="btn" data-approve="${m.id}">照做</button><button type="button" class="no" data-revise="${m.id}" data-plan="1">修改</button></div>`;   // 📋計畫: run it as written, or say what to change
-  return `<div class="appr"><button type="button" class="btn" data-approve="${m.id}">核准（只這次）</button><button type="button" class="no" data-always="${m.id}">一律允許</button><button type="button" class="no" data-revise="${m.id}">修改</button><button type="button" class="no" data-deny="${m.id}">拒絕</button></div>`}
+/* ✅待確認 as one clear card: what will be done, by whom, what it touches; once decided it says who decided and when */
+function apprHtml(m){if(!APPR.test(m.text||''))return '';
+  const ms=convMsgs(m.conv||cur),i=ms.findIndex(x=>x.id===m.id),after=i<0?[]:ms.slice(i+1).filter(x=>x.by!=='sys');
+  const d=apprDecision(m,after,nameOf(m.by));if(!d)return '';
+  const who=esc(nameOf(m.by)),me=S.nick?`<span data-u>${esc(S.nick)}</span>`:'<span>你</span>';
+  const head=(ic,lab)=>`<div class="aph"><span class="apic" aria-hidden="true">${ic}</span><span class="apt"><small>${lab}</small><b data-u>${esc(d.plan?I18N.t('照計畫執行'):d.act)}</b></span></div>`;
+  if(d.state!=='wait'){const when=d.at?hm(d.at):'';
+    const line={ok:`${me} · <span>${when}</span> <span>${d.plan?'同意照做':'核准'}</span>${d.always?' · <span>以後一律允許</span>':''}`,no:`${me} · <span>${when}</span> <span>拒絕</span>`,
+      answered:`${me} · <span>${when}</span> <span>用訊息回覆了</span>`,stale:`<span data-u>${who}</span> · <span>${when}</span> <span>又傳了新訊息，這張不用再處理</span>`}[d.state];
+    const lab={ok:d.plan?'已同意':'已核准',no:'已拒絕',answered:'已回覆',stale:'已略過'}[d.state];
+    return `<div class="apcard ${d.state}" data-ap="${m.id}">${head({ok:'✓',no:'✕',answered:'↩',stale:'–'}[d.state],lab)}<div class="apwho">${line}</div></div>`}
+  const btns=d.plan?`<button type="button" class="btn" data-approve="${m.id}">照做</button><button type="button" class="no" data-revise="${m.id}" data-plan="1">修改</button>`   // 📋計畫: run it as written, or say what to change
+    :`<button type="button" class="btn" data-approve="${m.id}">核准（只這次）</button><button type="button" class="no" data-always="${m.id}">一律允許</button><button type="button" class="no" data-revise="${m.id}">修改</button><button type="button" class="no" data-deny="${m.id}">拒絕</button>`;
+  return `<div class="apcard wait" data-ap="${m.id}" role="group" aria-label="待你核准">${head('✅','待你核准')}
+    <div class="apkv"><span>誰要做</span><b data-u>${who}</b><span>會影響</span><span>${esc(apprImpact(d.act,m.text))}</span></div>
+    <div class="appr">${btns}</div></div>`}
+const apprWait=id=>{const l=lastOf(id);return !!l&&l.by!=='me'&&l.by!=='sys'&&(APPR.test(l.ask||'')||APPR.test(l.text||''))};
+const apprConvs=()=>[...S.bots,...S.groups].filter(x=>apprWait(x.id));
+// you asked to go there (a tap): open the chat and bring its waiting card into view
+function goAsk(id){if(id!==cur)openConv(id);const show=()=>{const c=[...document.querySelectorAll('#msgs .apcard.wait')].pop();if(c){c.scrollIntoView({block:'center',behavior:'smooth'});c.classList.add('qhit');setTimeout(()=>c.classList.remove('qhit'),1400)}return !!c};
+  if(!show())setTimeout(show,500)}
+/* 核准 nobody looked at for 15 minutes: one more notice on this device (Telegram / LINE are sent by the server) */
+const NAG_MS=15*60000;
+function apprNag(){if(!S.loaded||$('app').hidden)return;let seen=[];try{seen=JSON.parse(localStorage.getItem('octa_nag')||'[]')}catch(e){}
+  const t=Date.now();let changed=false;
+  for(const x of apprConvs()){const l=lastOf(x.id);if(!l||t-(l.ts||0)<NAG_MS||seen.includes(l.id)||(S.mute||{})[x.id])continue;seen.push(l.id);changed=true;
+    const act=((l.ask||l.text||'').match(APPR)||[])[1]||'',who=isG(x.id)?nameOf(l.by)+' · '+x.name:x.name;
+    if(!document.hidden&&cur&&x.id!==cur)showHint(x.id,'ask','g:'+l.id);
+    if(notiOn()&&'Notification' in window&&Notification.permission==='granted'){
+      try{const n=new Notification('OCTA · '+I18N.t('還在等你核准'),{body:who+'：'+act.slice(0,160),icon:'/icon.png?v=octopus2',tag:'octa-ap-'+l.id,requireInteraction:true});
+        n.onclick=()=>{window.focus();window.octaDesktop?.show?.();goAsk(x.id);n.close()}}catch(e){}}}
+  if(changed)try{localStorage.setItem('octa_nag',JSON.stringify(seen.slice(-200)))}catch(e){}}
+setInterval(apprNag,60000);
 function fmt(t){return esc(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/@([^\s@，。、]+)/g,'<span class="at">@$1</span>')}
 /* bot replies: a small, safe Markdown subset (everything is escaped first) */
 function inl(t){return esc(t)
@@ -1441,7 +1531,11 @@ function render(scroll){
   else if(!S.bots.length)h+=`<div class="empty">還沒有機器人。按「＋ 機器人」，取個名字，然後直接跟它說要做什麼。</div>`;
   const q=($('q')?.value||'').trim().toLowerCase(),hit=x=>!q||x.name.toLowerCase().includes(q)||(x.task||'').toLowerCase().includes(q);
   const pins=S.pins||[],pinned=id=>pins.includes(id);
-  const tag=id=>needsYou(id)?'<i class="need">待你處理</i>':cur!==id&&unread(id)?`<i class="ub">${unread(id)}</i>`:'';
+  const tag=id=>apprWait(id)?'<i class="need ap">待你核准</i>':needsYou(id)?'<i class="need">待你處理</i>':cur!==id&&unread(id)?`<i class="ub">${unread(id)}</i>`:'';
+  // everything waiting for your 核准, at the top of the list: one tap goes to the next one
+  const aps=S.loaded?apprConvs():[];
+  if(aps.length){const go=aps.find(x=>x.id!==cur)||aps[0];
+    h+=`<button type="button" class="apbar" data-apgo="${esc(go.id)}"><span class="apn">${aps.length}</span><span class="apl"><b>件待你核准</b><small data-u>${esc(aps.map(x=>x.name).join('、'))}</small></span><span class="sa" aria-hidden="true">›</span></button>`}
   const gItem=g=>`<div class="iw" draggable="true" data-drag="${g.id}" data-dragname="${esc(g.name)}" data-dropbot="${g.id}"><button class="item ${cur===g.id?'on':''}" data-id="${g.id}"><span class="av grp">${g.members.length}${gStack(g)}${busyIn(g.id).length?'<i class="dot"></i>':''}</span><span class="t" data-u><b>${esc(g.name)}</b><small>${esc(preview(g.id))}</small></span><span class="tm">${listTime(g.id)}</span>${tag(g.id)}</button><button class="more" data-more="${g.id}" aria-label="更多">⋯</button></div>`;
   const bItem=b=>`<div class="iw" draggable="true" data-drag="${b.id}" data-dragname="${esc(b.name)}" data-dropbot="${b.id}"><button class="item ${cur===b.id?'on':''}" data-id="${b.id}"><span class="av" data-u>${avOf(b.id)}${S.busy.some(x=>x.bot_id===b.id&&x.status==='running')?'<i class="dot"></i>':''}</span><span class="t" data-u><b>${esc(b.name)}</b><small>${esc(preview(b.id))}</small></span><span class="tm">${listTime(b.id)}</span>${tag(b.id)}</button><button class="more" data-more="${b.id}" aria-label="更多">⋯</button></div>`;
   const sect=(f,title)=>{const gs=S.groups.filter(g=>(g.folder||null)===f&&hit(g)&&!pinned(g.id)),bs=S.bots.filter(b=>(b.folder||null)===f&&hit(b)&&!pinned(b.id));
@@ -1455,7 +1549,7 @@ function render(scroll){
   if(q&&!h.includes('class="iw"'))h+=`<div class="empty">找不到「${esc(q)}」</div>`;
   if(!q&&(S.codeTasks||[]).length)h+=`<div class="sec"><span>程式任務</span></div>`+(S.codeTasks||[]).map(t=>`<button type="button" class="item" data-code="${esc(t.id)}"><span class="av">{}</span><span class="t" data-u><b>${esc(t.title)}</b><small>${esc(t.status)} · ${esc(t.engine)}${t.model?' / '+esc(t.model):''}</small></span></button>`).join('');
   setHTML($('list'),h);
-  const tot=[...S.bots,...S.groups].reduce((a,x)=>a+(x.id===cur&&!document.hidden?0:unread(x.id)),0);document.title=(tot?`(${tot}) `:'')+'OCTA｜奧克塔';
+  const tot=[...S.bots,...S.groups].reduce((a,x)=>a+(x.id===cur&&!document.hidden?0:unread(x.id)),0);document.title=(aps.length?`✅${aps.length} `:'')+(tot?`(${tot}) `:'')+'OCTA｜奧克塔';
   const c=cur&&conv(cur);
   ['ph','task','msgs','f','note','sendTo'].forEach(k=>$(k).hidden=!c);if(!c)$('offb').hidden=true;$('blank').hidden=!!c;
   if(!c)setHTML($('blank'),!S.loaded?'':S.bots.length?'選一個人，直接跟他說。檔案丟進來就會附上，文字拖進輸入框就會貼上。':`<div class="guidecard"><div>還沒有機器人。取個名字，然後直接跟它說要做什麼。</div><button class="btn" onclick="openGuide()">開始設定</button></div>`);
@@ -1491,7 +1585,7 @@ function render(scroll){
     if(m.by==='sys')return `<div class="sys">${esc(m.text)}<span class="ts">${hm(m.ts)}</span></div>`;
     if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}${rk}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
-    return `<div class="m${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(optText(m))}${filesHtml(m.files)}</div>${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
+    return `<div class="m${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}${(()=>{const body=APPR.test(m.text)?apprStrip(optText(m)):optText(m);return body||(m.files||[]).length?`<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(body)}${filesHtml(m.files)}</div>`:''})()}${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
   // a date line whenever the day changes, like a phone's message app
   const bs=backFor(cur,mc);   // 幕後: bot-to-bot requests, folded where they happened
   // runs: messages from the same sender a few minutes apart (the phone shows the name once, the time and face at the end)
@@ -1514,6 +1608,7 @@ $('list').onclick=e=>{
   const mo=e.target.closest('[data-more]');if(mo){e.stopPropagation();itemMenu(mo,mo.dataset.more);return}
   const fo=e.target.closest('[data-folder]');if(fo){e.stopPropagation();folderMenu(fo,fo.dataset.folder);return}
   const ct=e.target.closest('[data-code]');if(ct){openCode(ct.dataset.code);return}
+  const ag=e.target.closest('[data-apgo]');if(ag){goAsk(ag.dataset.apgo);return}
   const it=e.target.closest('.item');if(!it)return;openConv(it.dataset.id)};
 let draggingId='',draggingMsg=null,dragDepth=0;
 function clearDrop(){$('list').querySelectorAll('.dragging,.over').forEach(n=>{n.classList.remove('dragging','over');n.removeAttribute('data-hint')})}
@@ -1742,12 +1837,12 @@ $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).th
   const ob=e.target.closest('[data-openb]');if(ob){ob.disabled=true;openBrowser(ob.dataset.openb);return}
   const im=e.target.closest('img[data-file]');if(im)openFile(im.dataset.file);
   const fc=e.target.closest('[data-open-file]');if(fc)openFile(fc.dataset.openFile);
-  const dn=e.target.closest('[data-deny]');if(dn){const m=convMsgs(cur).find(x=>String(x.id)===dn.dataset.deny);if(m){dn.disabled=true;sendMsg((isG(cur)?'@'+nameOf(m.by)+' ':'')+'不要做：'+m.text.match(APPR)[1]+'。這件事先停下，不用再問。')}return}
+  const dn=e.target.closest('[data-deny]');if(dn){const m=convMsgs(cur).find(x=>String(x.id)===dn.dataset.deny);if(m){dn.closest('.apcard')?.querySelectorAll('button').forEach(b=>b.disabled=true);sendMsg((isG(cur)?'@'+nameOf(m.by)+' ':'')+'不要做：'+m.text.match(APPR)[1]+'。這件事先停下，不用再問。')}return}
   const al=e.target.closest('[data-always]');if(al){const m=convMsgs(cur).find(x=>String(x.id)===al.dataset.always);if(m)alwaysSheet(m);return}
   const ap=e.target.closest('[data-approve]'),rv=e.target.closest('[data-revise]');
   if(ap||rv){const m=convMsgs(cur).find(x=>x.id==(ap||rv).dataset[ap?'approve':'revise']);if(!m)return;
     const at=isG(cur)?'@'+nameOf(m.by)+' ':'';
-    if(ap){ap.disabled=true;sendMsg(at+'核准：'+m.text.match(APPR)[1])}
+    if(ap){ap.closest('.apcard')?.querySelectorAll('button').forEach(b=>b.disabled=true);sendMsg(at+'核准：'+m.text.match(APPR)[1])}   // one press: the card turns into 已核准 right away
     else{$('msg').value=at+(rv.dataset.plan?I18N.t('計畫要改：'):'');$('msg').focus()}}};
 let atSel=0;
 // "/" at the start: built-in actions, saved instructions and the bot's skills
@@ -3050,6 +3145,7 @@ function buddySync(){
   const el=$('buddy');if(!el)return;
   const show=buddyOn()&&!$('app').hidden&&!!(cur&&conv(cur))&&(innerWidth>760||$('app').classList.contains('chat'));
   el.hidden=!show;if(!show){$('octMenu').hidden=true;return}
+  const na=apprConvs().length;$('octN').hidden=!na;$('octN').textContent=na?String(na):'';   // how many 核准 are waiting, on his head
   // a bot finished (or got stuck) since last time: hop and say so
   const running=new Set(S.busy.filter(x=>x.status==='running').map(x=>x.bot_id));
   if(OCT.busy)for(const id of OCT.busy)if(!running.has(id)){const l=lastOf(id),nm=nameOf(id);
@@ -3071,14 +3167,14 @@ function octMenu(){
   const unreadList=[...S.bots,...S.groups].filter(x=>x.id!==cur&&unread(x.id));
   const row=(id,sub)=>`<button type="button" class="om-it" data-go="${id}"><span class="av" data-u>${isG(id)?conv(id).members.length:avOf(id)}</span><span data-u>${esc(conv(id)?.name||nameOf(id))}</span><small data-u>${esc(sub||'')}</small></button>`;
   box.innerHTML=`<div class="om-hd"><b>小八</b><small>${run.length?run.length+' 件工作中':'大家都有空'}</small></div>
-    ${asks.length?`<div class="om-sec">等你回覆</div>${asks.map(x=>row(x.id,'待你處理')).join('')}`:''}
+    ${asks.length?`<div class="om-sec">等你回覆</div>${asks.map(x=>row(x.id,apprWait(x.id)?'待你核准':'待你處理')).join('')}`:''}
     <div class="om-sec">正在工作</div>${run.length?run.map(x=>row(x.bot_id,x.status==='running'?(x.progress||'處理中'):'排隊中')).join(''):'<div class="om-empty">目前沒有機器人在工作</div>'}
     ${unreadList.length?`<div class="om-sec">有新訊息</div>${unreadList.slice(0,5).map(x=>row(x.id,unread(x.id)+' 則')).join('')}`:''}
     <div class="om-sec">快速動作</div>
     ${isBot?`<button type="button" class="om-it" data-act="sum"><span class="em">📝</span>整理這段對話的重點</button><button type="button" class="om-it" data-act="next"><span class="em">👉</span>接下來該做什麼？</button><button type="button" class="om-it" data-act="what"><span class="em">🧭</span>你會做哪些事？</button>`:''}
     <button type="button" class="om-it" data-act="new"><span class="em">🤖</span>新機器人</button>
     <button type="button" class="om-it" data-act="hide"><span class="em">🙈</span>先把小八藏起來</button>`;
-  box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{box.hidden=true;openConv(b.dataset.go)});
+  box.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{box.hidden=true;apprWait(b.dataset.go)?goAsk(b.dataset.go):openConv(b.dataset.go)});
   const say={sum:'用三到五句話整理我們這段對話的重點，還沒做完的事也列出來。',next:'根據目前的對話，接下來最該做的三件事是什麼？',what:'用幾句話告訴我你現在能幫我做哪些事、需要我給你什麼。'};
   box.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{box.hidden=true;$('octHit').setAttribute('aria-expanded','false');const a=b.dataset.act;
     if(say[a]){sendMsg(say[a]);octMood('work','交給它了！',2500)}
