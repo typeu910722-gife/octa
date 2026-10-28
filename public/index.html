@@ -1693,8 +1693,8 @@ $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).th
   const rt=e.target.closest('[data-retry]');if(rt){const ms=convMsgs(cur),i=ms.findIndex(x=>String(x.id)===rt.dataset.retry);
     const last=ms.slice(0,i).reverse().find(x=>x.by==='me');if(!last){toast(I18N.t('找不到上一則指示'));return}
     rt.disabled=true;sendMsg(last.text==='（附件）'?'':last.text,(last.files||[]).map(f=>f.id),last.files||[]);return}
-  const rs=e.target.closest('[data-resume]');if(rs){rs.disabled=true;api('handoff','POST',{bot:rs.dataset.resume,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作');return}   // the earlier instruction is already in the chat, don't send it again
-  const hd=e.target.closest('[data-hand]');if(hd){api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(err=>toast(err.message));return}
+  const rs=e.target.closest('[data-resume]');if(rs){rs.disabled=true;window.octaDesktop?.control?.(rs.dataset.resume,false);api('handoff','POST',{bot:rs.dataset.resume,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作');return}   // the earlier instruction is already in the chat, don't send it again
+  const hd=e.target.closest('[data-hand]');if(hd){window.octaDesktop?.control?.(hd.dataset.hand,true);api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(err=>toast(err.message));return}
   const ob=e.target.closest('[data-openb]');if(ob){ob.disabled=true;openBrowser(ob.dataset.openb);return}
   const im=e.target.closest('img[data-file]');if(im)openFile(im.dataset.file);
   const fc=e.target.closest('[data-open-file]');if(fc)openFile(fc.dataset.openFile);
@@ -2053,10 +2053,18 @@ async function pollLive(){
   $('stHold').hidden=!d.handed;
 }
 setInterval(()=>{if((TOKEN||CFG.local)&&!$('app').hidden)pollLive()},1500);
+// desktop: the switch under the bot's browser. 取得控制權 = 接手 (the bot stops clicking), 僅觀看 = 繼續.
+// Going back to watching only asks the bot to carry on when it was in the middle of something (or waiting for a sign-in).
+const HAND_BUSY=new Set();
+const handWaits=id=>{const last=convMsgs(id).filter(x=>x.by===id&&!x.tmp).at(-1);return !!last&&(NEEDLOGIN.test(last.text||'')||/我先停手/.test(last.text||''))};
 window.octaDesktop?.onStage?.(d=>{
   if(!d?.bot)return;
-  if(d.act==='hand')api('handoff','POST',{bot:d.bot,on:true}).then(()=>toast('已接手，機器人停止點擊')).catch(e=>toast(e.message));
-  if(d.act==='go'){api('handoff','POST',{bot:d.bot,on:false}).catch(()=>{});api('messages','POST',{conv:d.bot,text:'登入好了，繼續'}).then(()=>refresh()).catch(e=>toast(e.message))}
+  if(d.act==='hand'){if(busyIn(d.bot).some(x=>x.status==='running'))HAND_BUSY.add(d.bot);
+    api('handoff','POST',{bot:d.bot,on:true}).then(()=>toast(I18N.t('已取得控制權，機器人先暫停'))).catch(e=>toast(e.message))}
+  if(d.act==='go'){const resume=HAND_BUSY.delete(d.bot)||handWaits(d.bot);
+    api('handoff','POST',{bot:d.bot,on:false}).catch(()=>{});
+    if(resume)api('messages','POST',{conv:d.bot,text:'登入好了，繼續'}).then(()=>refresh()).catch(e=>toast(e.message));
+    else toast(I18N.t('已交還，機器人可以繼續操作'))}
 });
 // desktop: the bot's browser is a view above this page. It steps aside while a dialog is open,
 // and the newest messages stay clear of its corner card.

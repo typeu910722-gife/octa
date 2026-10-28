@@ -1147,3 +1147,7 @@ T.update({
  '程式專案': ('Code projects', 'コードプロジェクト'),
  '程式任務': ('Coding tasks', 'コーディングタスク'),
 })
+T.update({
+ '已取得控制權，機器人先暫停': ('You have control. The bot is paused.', '操作を引き継ぎました。ボットは一時停止中です'),
+ '已交還，機器人可以繼續操作': ('Handed back. The bot can carry on.', '操作を戻しました。ボットが続行できます'),
+})

@@ -186,3 +186,63 @@ test('a hidden browser does not take space', () => {
   assert.equal(lay.page, null);
   assert.equal(lay.chrome, null);
 });
+
+test('watch only lays a shield exactly over the opened page; take control removes it', async () => {
+  const { CONTROL_ROW, shieldFor, wheelDelta, scrollScript, userFlagScript, controlStage } = await import('../desktop/embed-layout.mjs');
+  const watch = embedFrames(1920, 1000, 'open', null, { tabs: 2 });
+  assert.deepEqual(watch.shield, watch.page);
+  // the switch row sits under the page, inside the panel frame
+  assert.equal(watch.page.y + watch.page.height + CONTROL_ROW + PANEL_EDGE, watch.box.y + watch.box.height);
+  const mine = embedFrames(1920, 1000, 'open', null, { tabs: 2, control: true });
+  assert.equal(mine.shield, null);
+  assert.deepEqual(mine.page, watch.page);
+  // no shield for a corner card, a hidden browser or one stepped aside for a dialog
+  assert.equal(embedFrames(1920, 1000, 'thumb').shield, undefined);
+  assert.equal(embedFrames(1920, 1000, 'open', null, { covered: true }).shield, undefined);
+  assert.equal(shieldFor('thumb', { x: 0, y: 0, width: 10, height: 10 }, false), null);
+  assert.equal(shieldFor('open', null, false), null);
+  // wheel turns become pixels, capped
+  assert.deepEqual(wheelDelta({ deltaX: 0, deltaY: 3, deltaMode: 1 }), { dx: 0, dy: 120 });
+  assert.deepEqual(wheelDelta({ deltaX: 0, deltaY: 1, deltaMode: 2 }, 600), { dx: 0, dy: 600 });
+  assert.deepEqual(wheelDelta({ deltaX: -99999, deltaY: 'x' }), { dx: -4000, dy: 0 });
+  const js = scrollScript(10.4, 'bad', 0, 120);
+  assert.match(js, /\(10,0,0,120\)$/);
+  assert.doesNotThrow(() => new Function(js));
+  assert.match(userFlagScript(true), /window\.__octaUser=true/);
+  assert.equal(userFlagScript(false), 'window.__octaUser=false');
+  assert.equal(controlStage(true), 'hand');
+  assert.equal(controlStage(false), 'go');
+});
+
+test('the switch under the page replaces the old take-over / continue buttons', () => {
+  const html = readFileSync(new URL('../desktop/browser-chrome.html', import.meta.url), 'utf8');
+  assert.match(html, /👁 僅觀看/);
+  assert.match(html, /取得控制權/);
+  assert.match(html, /data-ctl="watch" aria-checked="true"/);
+  assert.match(html, /paintControl\(!!d\.control\)/);
+  assert.doesNotMatch(html, /id="hand"|id="goOn"/);
+  assert.match(html, /height: 40px/);
+  const pre = readFileSync(new URL('../desktop/browser-preload.cjs', import.meta.url), 'utf8');
+  assert.match(pre, /octa:browser-control/);
+  assert.match(pre, /octa:browser-wheel/);
+  assert.doesNotMatch(pre, /octa:browser-hand|octa:browser-continue/);
+  const shield = readFileSync(new URL('../desktop/browser-shield.html', import.meta.url), 'utf8');
+  assert.match(shield, /background: transparent/);
+  assert.match(shield, /api\(\)\?\.wheel\?\.\(a\)/);
+  assert.match(shield, /addEventListener\('keydown', e => \{ e\.preventDefault\(\)/);
+  const main = readFileSync(new URL('../desktop/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /browser-shield\.html/);
+  assert.match(main, /placeShield\(bucket, page \? frames\.shield : null\)/);
+  assert.match(main, /control: !!bucket\.control, covered \}\);/);
+  assert.match(main, /dot: thumbDot\(\), control: !!bucket\.control, url:/);
+  assert.match(main, /act: controlStage\(next\)/);
+  assert.match(main, /handle\('octa:control'/);
+  assert.match(main, /control: false, shield: null/);
+  // the page's live cursor ignores the person's mouse while they have control
+  const runner = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /const mine = \(\) => \{ if \(!window\.__octaUser\) return false;/);
+  assert.match(runner, /addEventListener\('mousemove', e => \{ if \(!mine\(\)\) move/);
+  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  assert.match(page, /octaDesktop\?\.control\?\.\(hd\.dataset\.hand,true\)/);
+  assert.match(page, /const resume=HAND_BUSY\.delete\(d\.bot\)\|\|handWaits\(d\.bot\)/);
+});
