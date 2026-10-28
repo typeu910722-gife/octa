@@ -141,6 +141,12 @@ test('a 待確認 card knows when it is decided, by whom and when', () => {
   // in a group, words for another member leave the card waiting; words for this bot decide it
   assert.equal(apprDecision(ask, [{ by: 'me', text: '@乙 你先查', ts: 9 }], '甲').state, 'wait');
   assert.equal(apprDecision(ask, [{ by: 'me', text: '@甲 核准：把 3 筆回覆傳給客人', ts: 9 }], '甲').state, 'ok');
+  // OCTA's own cards: 核准 or 不用了
+  const own = { id: 7, by: 'b1', text: '✅待確認：建立排程：早上整理｜08:00｜整理房號' };
+  assert.equal(apprDecision(own, []).state, 'wait');
+  assert.equal(apprDecision(own, [{ by: 'me', text: '不用了：建立排程：早上整理｜08:00｜整理房號', ts: 3 }]).state, 'no');
+  assert.equal(pure.apprImpact('記住規則：連假不算', ''), '會寫進它的規則，之後每次工作都照做');
+  assert.match(page, /apprOwn\(d\.act\)\?`<button type="button" class="btn" data-approve="\$\{m\.id\}">核准<\/button><button type="button" class="no" data-deny="\$\{m\.id\}">不用了<\/button>`/);
   // the plan card
   assert.equal(apprDecision({ id: 1, by: 'b1', text: '📋計畫\n1. 查\n✅待確認：照計畫執行' }, []).plan, true);
   assert.equal(apprDecision({ id: 1, by: 'b1', text: '沒有要確認的事' }, []), null);
@@ -187,6 +193,23 @@ test('the list knows about a 待確認 past the 140-character preview', async ()
   assert.equal(st2.last.find(x => x.conv === b).ask, null);
 });
 
+test('a group keeps showing its open 核准 after someone else speaks', async () => {
+  const t = await setup();
+  const a = await t.bot('甲'), b = await t.bot('乙');
+  const g = (await call(t.db, 'POST', 'groups', { token: t.token, body: { name: '房務', task: '', members: [a, b] } })).data.id;
+  const ask = t.msg(g, a, '整理好了\n✅待確認：把房號表貼到群組公告').lastInsertRowid;
+  t.msg(g, 'me', '@乙 你先查補助');
+  t.msg(g, b, '好，我來查');
+  let st = (await call(t.db, 'GET', 'state', { token: t.token })).data;
+  assert.equal(st.last.find(x => x.conv === g).ask, null, 'the last message alone says nothing');
+  assert.equal(st.gask[g].id, Number(ask));
+  assert.equal(st.gask[g].by, a);
+  assert.match(st.gask[g].ask, /^✅待確認：把房號表貼到群組公告$/);
+  t.msg(g, 'me', '@甲 核准：把房號表貼到群組公告');
+  st = (await call(t.db, 'GET', 'state', { token: t.token })).data;
+  assert.equal(st.gask[g], undefined);
+});
+
 test('a 核准 left 15 minutes gets one more Telegram message, once', async () => {
   const t = await setup();
   const a = await t.bot('房號快遞員'), c = await t.bot('補助小獵人'), d = await t.bot('Eroom整備員');
@@ -230,4 +253,40 @@ test('a muted chat or a card the bot moved past is not nagged', async () => {
   globalThis.fetch = async (url, opts) => { sent.push(opts.body); return new Response('{}', { status: 200 }); };
   try { await t.next(); } finally { globalThis.fetch = real; }
   assert.equal(sent.length, 0);
+});
+
+/* ---------- 4. 排程看得到有沒有跑 ---------- */
+test('each routine shows its last run, ✓/✗, the next run and the last result', () => {
+  const { rtStatus } = pure;
+  assert.deepEqual(rtStatus({ enabled: true, last_run: 100, last_status: 'done', last_job: 9, last_text: '整理了 12 筆', next_run: 200 }), { last: 100, st: 'ok', next: 200, text: '整理了 12 筆', job: 9 });
+  assert.equal(rtStatus({ enabled: true, last_run: 100, last_status: 'error' }).st, 'err');
+  assert.equal(rtStatus({ enabled: true, last_run: 100, last_status: 'skipped' }).st, 'skip');
+  assert.equal(rtStatus({ enabled: true, last_run: 100, last_status: null }).st, 'run', 'fired, no result yet: 執行中');
+  assert.equal(rtStatus({ enabled: false, next_run: 200 }).next, 0, 'a paused routine has no next run');
+  assert.equal(rtStatus({ enabled: true, last_text: 'x'.repeat(300) }).text.length, 140);
+  // an older server without the fields: nothing extra on screen
+  const line = fnSrc('rtLine');
+  assert.match(line, /'last_run' in r\|\|'next_run' in r/);
+  assert.match(line, /上次/); assert.match(line, /下次/); assert.match(line, /還沒跑過/);
+  assert.match(fnSrc('renderRoutines'), /\$\{rtLine\(r\)\}/, 'task settings list');
+  assert.match(fnSrc('rForm'), /\$\{rtLast\(r\)\}/, 'opening one shows the last result');
+  assert.match(fnSrc('openSched'), /schedList\(\)/, '設定 → 例行任務排程 lists every routine');
+  assert.match(fnSrc('schedList'), /<details class="rsd/);
+  assert.doesNotMatch(page, /\.fired\b/, 'the page no longer reads routines.fired');
+});
+
+/* ---------- 5. 群組裡看得到誰在做什麼 ---------- */
+test('a group shows what each member is doing now', () => {
+  const { memberState } = pure;
+  const busy = [{ bot_id: 'a', status: 'running', progress: '正在讀取補助公告' }, { bot_id: 'b', status: 'pending' }];
+  assert.deepEqual(memberState('a', busy, []), { k: 'run', p: '正在讀取補助公告' });
+  assert.deepEqual(memberState('b', busy, []), { k: 'queue' });
+  assert.deepEqual(memberState('c', busy, ['c']), { k: 'ask' });
+  assert.deepEqual(memberState('d', busy, []), { k: 'idle' });
+  assert.match(page, /<div class="gmem" id="gmem" hidden/);
+  assert.match(fnSrc('paintMembers'), /memberState\(id,S\.busy,asks\)/);
+  assert.match(page, /GM_LABEL=\{run:'工作中',queue:'排隊中',ask:'等你核准',idle:'待命'\}/);
+  assert.match(fnSrc('render'), /paintMembers\(c,g\)/);
+  // the phone shows the strip too (the task line is hidden there)
+  assert.match(page, /\n\s+\.gmem\{margin:6px 0 0;/);
 });
