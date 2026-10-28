@@ -296,7 +296,16 @@ form.in .send,form.in .clip{height:46px}
 .followbar{display:none;align-items:center;gap:8px;margin:0 20px 6px;padding:8px 10px;border-radius:12px;background:var(--panel);color:var(--ink);font-size:13px}
 .followbar:not([hidden]){display:flex}
 .followbar span{flex:1;min-width:0}
-.followbar button{border:0;background:var(--gold);color:#1a1408;border-radius:999px;padding:6px 10px;font:inherit}
+.followbar button{border:0;background:var(--gold);color:var(--on-gold);border-radius:999px;padding:6px 10px;font:inherit}
+.followbar button.fx{background:none;color:var(--mute);font-size:18px;line-height:1;padding:4px 8px}
+.followbar b{font-weight:600}
+/* 傳給：always says who gets what you type */
+.sendto{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:none;margin:6px 22px -4px;font-size:12px;color:var(--mute);min-width:0}
+.sendto[hidden]{display:none}
+.sendto b{color:var(--ink);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
+.sendto .stm{color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.av.xs{width:18px;height:18px;font-size:10px;border-width:1px;flex:none}
+.av.xs .emo{font-size:12px;animation:none}
 .stage{display:none;flex-direction:column;gap:8px;margin:0 20px 8px;padding:10px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
 .stage:not([hidden]){display:flex}
 .stage .sthd{display:flex;flex-direction:column;min-width:0}
@@ -903,6 +912,8 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   .replybar button{width:36px;height:36px;font-size:20px;border-radius:50%}
   .att{padding:6px max(12px,env(safe-area-inset-left,0px)) 0}
   .followbar{margin:6px 12px 0;background:var(--pg)}
+  .sendto{justify-content:flex-start;margin:6px max(18px,env(safe-area-inset-right,0px)) -2px max(18px,env(safe-area-inset-left,0px));font-size:calc(12.5px * var(--fz))}
+  .sendto .av.xs{background:var(--pg);border:0}
   .stage{margin:6px 12px 0;border:0;background:var(--pg);border-radius:18px;padding:10px}
   .stage img{max-height:34vh;background:var(--pb)}
   .stage .stact button{min-height:40px;padding:8px 16px}
@@ -1090,13 +1101,14 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
     <div class="atpop" id="atpop" hidden></div>
     <div class="att" id="att"></div>
     <div class="replybar" id="replybar" hidden><div class="rq"><b id="replyWho"></b><span id="replyBit"></span></div><button type="button" id="replyx" aria-label="取消回覆">×</button></div>
-    <div class="followbar" id="followbar" hidden><span id="followBit"></span><button type="button" id="followGo">改看這則對話</button></div>
+    <div class="followbar" id="followbar" hidden role="status"><span id="followBit"></span><button type="button" id="followGo">過去看看</button><button type="button" class="fx" id="followX" aria-label="關閉提示">×</button></div>
     <aside class="stage" id="stage" hidden>
       <div class="sthd"><b id="stTitle">瀏覽器</b><span id="stUrl"></span></div>
       <img id="stPic" alt="主機上這個機器人的瀏覽器">
       <div class="stact"><button type="button" class="btn" id="stHand">接手</button><button type="button" id="stGo">繼續</button></div>
       <p class="hold" id="stHold" hidden>接手中，機器人已停止點擊和打字</p>
     </aside>
+    <div class="sendto" id="sendTo" hidden></div>
     <form class="in" id="f" hidden><button type="button" class="clip" id="clip" aria-label="附加檔案">＋</button><input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.docx" hidden><textarea id="msg" rows="1" placeholder="輸入指示…"></textarea><button type="button" class="clip" id="mic" aria-label="語音輸入" hidden>🎙</button><button class="send" aria-label="送出"><span class="sl">送出</span><span class="sa2" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span></button></form>
     <div class="note" id="note" hidden></div>
     <div class="oct" id="buddy" hidden data-mood="idle">
@@ -1254,8 +1266,8 @@ async function refresh(){
     Object.assign(S,{me:d.me,prog:d.prog||0,bots:d.bots,groups:d.groups,folders:d.folders,routines:d.routines,busy:d.busy,runnerOnline:d.runnerOnline,engines:d.engines,
       last:d.last,ur:d.ur,rev:d.rev,host:d.host,computers:d.computers,sched:d.sched,quick:d.quick||{},allow:d.allow||{},warm:d.warm??120,tokens:d.tokens||{},models:d.models||{},pins:d.pins||[],mute:d.mute||{},memory:d.memory||{},facts:d.facts||{},manuals:d.manuals||{},review:d.review!==false,skills:d.skills||{},nsk:d.nsk||{},shareBrowser:d.shareBrowser!==false,nick:d.nick||""});
     if(cur&&!conv(cur))cur=null;
+    // another device looking at another chat never moves this screen: at most a small hint you can tap
     if(d.focus?.conv&&d.focus.dev&&d.focus.dev!==myDev&&conv(d.focus.conv))followRemote(d.focus);
-    else if(cur&&conv(cur)&&d.focus?.conv!==cur)publishFocus(cur);
     if(cur)await loadMsgs(cur,'new');
     if(prevTop!==null)notifyNew(prevTop);
     S.loaded=true;
@@ -1334,7 +1346,8 @@ function notifyNew(prevTop){
   for(const c of convs){const l=lastOf(c),cv=conv(c);if(!l||!cv||l.by==='me'||l.by==='sys'||(S.mute||{})[c])continue;
     const looking=c===cur&&!document.hidden;if(looking)continue;
     const who=isG(c)?nameOf(l.by)+' · '+cv.name:cv.name;
-    if(!document.hidden)toast(who+'：'+l.text.slice(0,40));
+    // a chat is open: a small hint you can tap (the screen itself never moves); none open: the usual toast
+    if(!document.hidden){if(cur&&conv(cur))showHint(c,needsYou(c)?'ask':'new','n:'+c+':'+l.id);else toast(who+'：'+l.text.slice(0,40))}
     if(notiOn()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||c!==cur)){
       try{const n=new Notification('OCTA · '+who,{body:l.text.replace(/\s+/g,' ').slice(0,180),icon:'/icon.png?v=octopus2',tag:'octa-'+c});
         n.onclick=()=>{window.focus();window.octaDesktop?.show?.();openConv(c);n.close()}}catch(e){}}}}
@@ -1436,7 +1449,7 @@ function render(scroll){
   setHTML($('list'),h);
   const tot=[...S.bots,...S.groups].reduce((a,x)=>a+(x.id===cur&&!document.hidden?0:unread(x.id)),0);document.title=(tot?`(${tot}) `:'')+'OCTA｜奧克塔';
   const c=cur&&conv(cur);
-  ['ph','task','msgs','f','note'].forEach(k=>$(k).hidden=!c);if(!c)$('offb').hidden=true;$('blank').hidden=!!c;
+  ['ph','task','msgs','f','note','sendTo'].forEach(k=>$(k).hidden=!c);if(!c)$('offb').hidden=true;$('blank').hidden=!!c;
   if(!c)setHTML($('blank'),!S.loaded?'':S.bots.length?'選一個人，直接跟他說。檔案丟進來就會附上，文字拖進輸入框就會貼上。':`<div class="guidecard"><div>還沒有機器人。取個名字，然後直接跟它說要做什麼。</div><button class="btn" onclick="openGuide()">開始設定</button></div>`);
   if(!c){$('mention').innerHTML='';$('quick').innerHTML='';$('quick')._h='';paintReply();buddySync();return}
   const g=isG(cur);
@@ -1460,6 +1473,7 @@ function render(scroll){
   const qk=(S.quick||{})[cur]||[];
   setHTML($('quick'),qk.length?qk.map((q,i)=>`<button type="button" data-q="${i}" title="${esc(q)}" data-u>⚡ ${esc(q.length>24?q.slice(0,24)+'…':q)}</button>`).join(''):'');
   $('mention').innerHTML=g?c.members.map(id=>bot(id)?`<button data-at="${esc(bot(id).name)}" data-u>@${esc(bot(id).name)}</button>`:'').join(''):'';
+  paintTo();
   const box=$('msgs'),atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<120;
   const switched=box._conv!==cur;box._conv=cur;
   const mc=MSG[cur];
@@ -1602,17 +1616,30 @@ function focusBrowser(){
   const paneOn=!matchMedia('(max-width:760px)').matches||$('app').classList.contains('chat');
   const id=paneOn&&cur&&bot(cur)?cur:'';
   window.octaDesktop?.focusBot?.(id)?.catch?.(()=>{})}
-function hideFollow(){const bar=$('followbar');if(bar)bar.hidden=true}
+/* the chat on screen changes only when you pick one. Other devices, bots that start working and new replies
+   elsewhere show a small hint (評論：「前一秒還在 A bot，下一秒就跳到 B bot，訊息容易傳錯對象」) */
+const HINT={gone:new Set(),key:''};
+function hideFollow(){const bar=$('followbar');if(bar)bar.hidden=true;HINT.key=''}
+// is something being written here? then nothing may take this chat away
+const composing=()=>!!((($('msg')&&$('msg').value)||'').trim()||pending.length||replyTo);
+function showHint(id,kind,key){const c=conv(id),bar=$('followbar');if(!c||!bar||id===cur||HINT.gone.has(key))return;
+  HINT.key=key;bar.dataset.conv=id;bar.dataset.key=key;bar.hidden=false;
+  setHTML($('followBit'),kind==='remote'?`<span>另一台裝置正在看</span> <b data-u>「${esc(c.name)}」</b>`
+    :`<b data-u>${esc(c.name)}</b> <span>${kind==='ask'?'在等你核准':'有新動態'}</span>`)}
 function followRemote(f){
-  if(!f?.conv||f.conv===cur||!conv(f.conv)){hideFollow();return}
-  const typing=((($('msg')&&$('msg').value)||'').trim())||replyTo;
-  if(typing){const bar=$('followbar');if(!bar)return;bar.hidden=false;bar.dataset.conv=f.conv;$('followBit').textContent='另一台裝置正在看「'+(conv(f.conv)?.name||'對話')+'」';return}
-  hideFollow();openConv(f.conv,{remote:true})}
+  if(!f?.conv||f.conv===cur||!conv(f.conv)||Date.now()-(f.at||0)>180000){if(String(HINT.key).startsWith('f:'))hideFollow();return}
+  showHint(f.conv,'remote','f:'+f.conv+':'+(f.at||0))}
 function publishFocus(id){if(!id||!myDev)return;api('focus','PUT',{conv:id,dev:myDev}).catch(()=>{})}
-function openConv(id,opt){saveDraft();if(replyTo&&replyTo.conv!==id)replyTo=null;cur=id;try{localStorage.setItem('ebot_cur',cur)}catch(e){}
+const PEND={};   // attachments waiting in another chat stay with that chat
+function openConv(id,opt){
+  if(opt&&opt.auto&&id!==cur&&composing()){showHint(id,'new','a:'+id);return false}   // never leave a half-written message
+  saveDraft();if(replyTo&&replyTo.conv!==id)replyTo=null;
+  if(cur&&cur!==id&&pending.length){PEND[cur]=pending;pending=[]}
+  cur=id;try{localStorage.setItem('ebot_cur',cur)}catch(e){}
   hideFollow();
   if(!$('app').classList.contains('chat'))navPush('chat');
-  pending=[];renderAtt();loadDraft();render(true);$('app').classList.add('chat');
+  if(PEND[id]){pending=PEND[id];delete PEND[id]}
+  renderAtt();loadDraft();render(true);$('app').classList.add('chat');
   focusBrowser();
   loadMsgs(id,MSG[id]?.loaded?'new':'first').then(()=>{if(cur===id)render(true)}).catch(()=>{});
   if(!opt||!opt.remote)publishFocus(id);
@@ -1620,8 +1647,16 @@ function openConv(id,opt){saveDraft();if(replyTo&&replyTo.conv!==id)replyTo=null
 const draftKey=()=>'octa_draft_'+cur;
 function saveDraft(){if(!cur)return;try{const v=$('msg').value;v?localStorage.setItem(draftKey(),v):localStorage.removeItem(draftKey())}catch(e){}}
 function loadDraft(){let v='';try{v=localStorage.getItem(draftKey())||''}catch(e){}$('msg').value=v;grow()}
+/* 傳給：the chat (and, in a group, the @members) that gets what is in the box. Shown on the computer and the phone. */
+const TO={id:'',prev:'',at:0};
+function sendTargets(id,text){const c=conv(id);if(!c)return null;if(!isG(id))return {c,names:[]};
+  const v=String(text||'');return {c,names:c.members.map(bot).filter(b=>b&&v.includes('@'+b.name)).map(b=>b.name)}}
+function paintTo(){const el=$('sendTo');if(!el)return;const t=cur&&sendTargets(cur,$('msg').value);if(!t){el.hidden=true;return}
+  if(TO.id!==cur){TO.prev=TO.id;TO.id=cur;TO.at=Date.now()}
+  el.hidden=false;el.dataset.to=cur;$('f').dataset.to=cur;const g=isG(cur);
+  setHTML(el,`<span class="stl">傳給：</span><span class="av xs${g?' grp':''}"${g?'':' data-u'}>${g?t.c.members.length:avOf(cur)}</span><b data-u>${esc(t.c.name)}</b>${t.names.length?`<span class="stm" data-u>→ ${t.names.map(n=>'@'+esc(n)).join(' ')}</span>`:''}`)}
 function grow(){const t=$('msg');$('f').classList.toggle('empty',!t.value.trim()&&!pending.length);if(!t.offsetParent){t.style.height='';return}t.style.height='auto';t.style.height=Math.min(Math.max(t.scrollHeight,46),140)+'px'}   // hidden (phone list view): measure later
-$('msg').addEventListener('input',()=>{grow();clearTimeout(grow.t);grow.t=setTimeout(saveDraft,400);if(!$('msg').value.trim()&&!replyTo&&$('followbar')&&!$('followbar').hidden){const id=$('followbar').dataset.conv;if(id)openConv(id,{remote:true})}});
+$('msg').addEventListener('input',()=>{grow();clearTimeout(grow.t);grow.t=setTimeout(saveDraft,400);paintTo()});
 $('q').addEventListener('input',()=>render(false));
 $('q').addEventListener('keydown',e=>{if(e.key==='Enter'){const f=$('list').querySelector('.item');if(f){openConv(f.dataset.id);$('q').value='';render(false)}}if(e.key==='Escape'){$('q').value='';render(false);$('q').blur()}});
 $('jump').onclick=()=>{const b=$('msgs');b.scrollTo({top:b.scrollHeight,behavior:'smooth'});$('jump').hidden=true};
@@ -1681,7 +1716,7 @@ $('railToggle').onclick=()=>{
 $('modelBtn').onclick=()=>{if(isG(cur)){toast('模型與備援在各機器人的任務設定裡');return}sheet('b',true)};
 $('quick').onclick=e=>{const b=e.target.closest('[data-q]');if(!b)return;const q=(S.quick||{})[cur]?.[+b.dataset.q];if(!q)return;
   if(e.shiftKey||$('msg').value.trim()){const i=$('msg');i.value=(i.value?i.value+'\n':'')+q;grow();i.focus()}else sendMsg(q)};
-$('mention').onclick=e=>{const b=e.target.closest('button');if(!b)return;const i=$('msg');i.value=(i.value+' @'+b.dataset.at+' ').trimStart();i.focus()};
+$('mention').onclick=e=>{const b=e.target.closest('button');if(!b)return;const i=$('msg');i.value=(i.value+' @'+b.dataset.at+' ').trimStart();paintTo();i.focus()};
 $('msgs').onclick=e=>{if(e.target.id==='stop')api('cancel','POST',{conv:cur}).then(()=>{toast('已停止');refresh()});
   const jp=e.target.closest('[data-jump]');if(jp){const el=document.querySelector(`#msgs [data-mid="${jp.dataset.jump}"]`);if(el){el.scrollIntoView({block:'center',behavior:'smooth'});el.classList.add('qhit');setTimeout(()=>el.classList.remove('qhit'),1200)}return}
   if(e.target.id==='older'){const box=$('msgs'),h0=box.scrollHeight,id=cur;e.target.disabled=true;
@@ -1722,7 +1757,7 @@ function atRender(){const a=atList(),p=$('atpop');if(!a){p.hidden=true;return}at
   p.style.bottom=phoneUI()?Math.max(8,Math.round($('pane').getBoundingClientRect().bottom-$('f').getBoundingClientRect().top+6))+'px':'';   // right above the box, whatever is attached to it
   if(a.slash){p.innerHTML=a.list.map((x,i)=>`<button type="button" class="${i===atSel?'on':''}" data-slash="${i}"><b data-u>${esc(x.t)}</b><small data-u>${esc(x.d)}</small></button>`).join('');p.hidden=false;return}
   p.innerHTML=a.list.map((b,i)=>`<button type="button" class="${i===atSel?'on':''}" data-pick="${esc(b.name)}"><span class="av sm" data-u>${avOf(b.id)}</span><span data-u>${esc(b.name)}</span></button>`).join('');p.hidden=false}
-function atPick(name){const i=$('msg'),pos=i.selectionStart,before=i.value.slice(0,pos).replace(/@([^\s@]*)$/,'@'+name+' ');i.value=before+i.value.slice(pos);i.selectionStart=i.selectionEnd=before.length;$('atpop').hidden=true;grow();i.focus()}
+function atPick(name){const i=$('msg'),pos=i.selectionStart,before=i.value.slice(0,pos).replace(/@([^\s@]*)$/,'@'+name+' ');i.value=before+i.value.slice(pos);i.selectionStart=i.selectionEnd=before.length;$('atpop').hidden=true;grow();paintTo();i.focus()}
 $('msg').addEventListener('input',()=>{atSel=0;atRender()});
 $('msg').addEventListener('blur',()=>setTimeout(()=>$('atpop').hidden=true,150));
 $('atpop').addEventListener('mousedown',e=>{const s2=e.target.closest('[data-slash]');if(s2){e.preventDefault();runSlash(slashItems().filter(x=>x.t.toLowerCase().includes(($('msg').value.slice(1)||'').toLowerCase()))[+s2.dataset.slash]);return}
@@ -1775,17 +1810,22 @@ async function addFiles(list){for(const file of list.slice(0,Math.max(0,6-pendin
       fileCache[r.id]=Promise.resolve({name,mime,data})}   // the sent message shows the picture at once, without downloading it again
     catch(err){pending.splice(pending.indexOf(item),1);$('note').textContent=err.message}
     renderAtt()}}
-async function sendMsg(v,files=[],meta,reply){const c=cur,fs=meta||pending.filter(f=>files.includes(f.id)).map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size}));
+async function sendMsg(v,files=[],meta,reply,to){const c=to||cur,fs=meta||pending.filter(f=>files.includes(f.id)).map(f=>({id:f.id,name:f.name,mime:f.mime,size:f.size}));
   const mc=MSG[c]||(MSG[c]={list:[],more:false,loaded:false});
   mc.list.push({id:'tmp'+Date.now(),tmp:true,conv:c,by:'me',text:v||'（附件）',files:fs,ts:Date.now(),reply:reply||null});render(true);
   try{await api('messages','POST',{conv:c,text:v,files,reply:reply||undefined});refresh();return true}
   catch(err){mc.list=mc.list.filter(m=>!m.tmp);render(false);toast(err.message);return false}}
 $('f').onsubmit=async e=>{e.preventDefault();let v=$('msg').value.trim();
+  // the chat named in 傳給 when the key is pressed; if it changed a moment ago, ask for one more press
+  const to=$('f').dataset.to||cur;
+  if(!to||to!==cur||(TO.prev&&Date.now()-TO.at<700)){TO.prev='';paintTo();toast(I18N.t('傳送對象剛換了，確認「傳給」後再按一次送出'));return}
   const slash=v.match(/^\/(\S+)$/);
-  if(slash){const hit=(S.skills?.[cur]||[]).find(s=>s.name===slash[1]);if(hit)v='請執行技能「'+hit.name+'」'}
+  if(slash){const hit=(S.skills?.[to]||[]).find(s=>s.name===slash[1]);if(hit)v='請執行技能「'+hit.name+'」'}
   if(pending.some(f=>f.up))return;const files=pending.map(f=>f.id);if(!v&&!files.length)return;
-  const keep=pending,rid=replyTo&&replyTo.conv===cur?replyTo.id:null;$('msg').value='';grow();try{localStorage.removeItem(draftKey())}catch(e){}
-  const ok=await sendMsg(v,files,undefined,rid);if(ok){replyTo=null;paintReply();keep.forEach(dropUrl)}pending=ok?[]:keep;renderAtt();if(!ok){$('msg').value=v;grow()}};
+  const keep=pending,rid=replyTo&&replyTo.conv===to?replyTo.id:null;$('msg').value='';grow();try{localStorage.removeItem(draftKey())}catch(e){}
+  const ok=await sendMsg(v,files,undefined,rid,to);if(ok){replyTo=null;paintReply();keep.forEach(dropUrl)}
+  if(cur!==to){if(!ok){PEND[to]=keep;try{localStorage.setItem('octa_draft_'+to,v)}catch(x){}}return}   // you went to another chat meanwhile: the failed text waits in its own chat
+  pending=ok?[]:keep;renderAtt();if(!ok){$('msg').value=v;grow()}};
 // paste or drop files straight into the chat; dragged text lands in the box
 function insertText(text){const el=$('msg'),s=el.selectionStart??el.value.length,end=el.selectionEnd??s;
   el.value=el.value.slice(0,s)+text+el.value.slice(end);const n=s+text.length;el.focus();el.setSelectionRange(n,n);grow();saveDraft()}
@@ -1851,7 +1891,7 @@ function bindTpl(root,after){root.querySelectorAll('[data-t]').forEach(b=>b.oncl
 function closeSheet(){if(typeof stopCodePoll==='function')stopCodePoll();$('veil').hidden=true;$('veil').innerHTML='';rtEdit=null;pageBack=null}
 $('veil').onclick=e=>{if(e.target.id==='veil')closeSheet()};
 function sheet(kind,edit){
-  const g=kind==='g',c=edit?conv(cur):null;
+  const g=kind==='g',c=edit?conv(cur):null,sid=c?c.id:null;   // this sheet always saves to the chat it was opened for
   if(g&&!S.bots.length){alertSheet('先建立機器人','群組需要至少一個機器人成員。');return}
   $('veil').innerHTML=`<form class="sheet" id="sf"><h2>${edit?'任務設定':g?'新群組':'新機器人'}</h2>
   <label class="field">名稱<input id="sn" required maxlength="20" value="${c?esc(c.name):''}" placeholder="${g?'例如：退房檢查':'例如：評論員'}"></label>
@@ -1882,7 +1922,7 @@ function sheet(kind,edit){
     <p class="hmuted" style="overflow-wrap:anywhere">把這段話給你的 Grok Bot（或其他 AI）：「要把工作交給 OCTA 的${esc(c.name)}時，用 POST 傳 JSON 到 ${esc(hookUrl(r))} ，格式是 {"text":"工作內容","from":"你的名字"}。」收到後${esc(c.name)}會自動開始做，結果在這個對話裡。網址等同鑰匙，不要公開。</p>`:`<div class="row2"><button type="button" class="ghost" id="sf_hmake">產生交接網址</button></div><p class="hmuted">其他 AI 用這個網址把工作交給這個機器人，它會自動開始做。</p>`}</div>`})():''}
   ${!g&&c&&c.bpc&&c.bpc!==S.host?`<div class="field">網站登入<p class="hmuted" style="margin:4px 0">它登入過的網站存在「<span data-u>${esc(c.bpc.replace(/^desktop:/,''))}</span>」電腦的瀏覽器裡，不在目前的主機上。</p><div class="row2"><button type="button" class="ghost" id="sf_bring">把網站登入帶到主機</button><span id="sf_bmsg" class="hmuted"></span></div></div>`:''}
   <label class="field">常用指令（一行一個，會變成輸入框上方的快速按鈕）<textarea id="sf_q" maxlength="2000" style="min-height:70px" placeholder="例如：整理今天的訂單&#10;把結果寫進試算表">${esc(((S.quick||{})[c?.id]||[]).join('\n'))}</textarea></label>
-  ${edit?`<div class="field">例行任務<div class="rt" id="rt"></div></div>`:'<p>建立後可以在「任務設定」加入例行任務（每天固定時間自動執行）。</p>'}
+  ${edit?`<div class="field">例行任務<div class="rt" id="rt" data-conv="${esc(sid)}"></div></div>`:'<p>建立後可以在「任務設定」加入例行任務（每天固定時間自動執行）。</p>'}
   <div class="errmsg" id="se"></div>
   <div class="acts">${edit?'<button type="button" class="del" id="sd">刪除</button>':''}<button type="button" class="no" id="sx">取消</button><button class="btn">${edit?'儲存':'建立'}</button></div></form>`;
   $('veil').hidden=false;$('sn').focus();
@@ -1912,15 +1952,15 @@ function sheet(kind,edit){
     if(b.hasAttribute('data-up')&&row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);
     if(b.hasAttribute('data-down')&&row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row)};
   $('veil').querySelectorAll('.tpl button').forEach(b=>b.onclick=()=>{const t=$('st');t.value=(t.value?t.value+'；':'')+b.textContent});
-  if(edit)$('sd').onclick=()=>deleteConv(cur);
+  if(edit)$('sd').onclick=()=>deleteConv(sid);
   $('sf').onsubmit=async e=>{e.preventDefault();if(!g&&sheet.nameOk&&!sheet.nameOk()){$('sn').focus();return}
     const body={name:$('sn').value,task:$('st').value,folder:$('sf_f').value||null};
     if(!g){body.autonomy=$('veil').querySelector('input[name=sf_au]:checked')?.value||'report';body.avatar=sheet.av?.()||'';body.browser=$('veil').querySelector('input[name=sf_b]:checked')?.value||'own';body.engine=$('sf_e').value;body.model=$('sf_m').value.trim();body.fb=[$('sf_fb0')?.value,$('sf_fb1')?.value,$('sf_fb2')?.value].filter(Boolean);}
     if(g)body.members=[...$('veil').querySelectorAll('.picks input:checked')].map(i=>i.value);
-    try{const r=await api(edit?(g?'groups/':'bots/')+cur:(g?'groups':'bots'),edit?'PUT':'POST',body);
-      if(!edit)cur=r.id;
+    try{const r=await api(edit?(g?'groups/':'bots/')+sid:(g?'groups':'bots'),edit?'PUT':'POST',body);
+      const id=edit?sid:r.id;if(!edit)cur=r.id;
       const ql=$('sf_q').value.split('\n').map(x=>x.trim()).filter(Boolean).slice(0,12);
-      if(ql.join('\n')!==((S.quick||{})[cur]||[]).join('\n'))await api('settings','PUT',{quick:{conv:cur,list:ql}});closeSheet();await refresh();$('app').classList.add('chat');focusBrowser()}
+      if(ql.join('\n')!==((S.quick||{})[id]||[]).join('\n'))await api('settings','PUT',{quick:{conv:id,list:ql}});closeSheet();await refresh();$('app').classList.add('chat');focusBrowser()}
     catch(err){$('se').textContent=err.message}}}
 function standNow(ev,auto){return ev?`目前：開啟，每 ${ev} 分鐘巡查一次`:auto?'目前：關閉。填入指定任務後會自動開啟（每 30 分鐘巡查一次）':'目前：關閉'}
 function alertSheet(t,p){$('veil').innerHTML=`<div class="sheet"><h2>${esc(t)}</h2><p>${esc(p)}</p><div class="acts"><button class="btn" id="sx">知道了</button></div></div>`;$('veil').hidden=false;$('sx').onclick=closeSheet}
@@ -2031,6 +2071,7 @@ function setReply(m){if(!m||m.tmp)return;
   paintReply();$('msg').focus()}
 $('replyx').onclick=()=>{replyTo=null;paintReply();$('msg').focus()};
 $('followGo').onclick=()=>{const id=$('followbar').dataset.conv;if(id)openConv(id)};
+$('followX').onclick=()=>{const k=$('followbar').dataset.key;if(k)HINT.gone.add(k);hideFollow()};
 $('stHand').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:true}).then(()=>{toast('已接手，機器人停止點擊');pollLive()}).catch(e=>toast(e.message))};
 $('stGo').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作')};
 async function pollLive(){
@@ -2181,7 +2222,7 @@ function renderAsks(){const p=$('askp');if(!p)return;const list=openAsks(),key=l
     c.querySelector('.askgo').onclick=go;c.querySelectorAll('[data-aopt]').forEach(b=>b.onclick=()=>{ta.value=b.dataset.aopt;go()});ta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();go()}};
     c.querySelector('.askx').onclick=()=>{try{const g=askDismissed();g.push(+c.dataset.mid);localStorage.setItem('octa_askx',JSON.stringify(g.slice(-200)))}catch(e){}p.dataset.k='';renderAsks()};
     c.querySelector('.askto').onclick=()=>{const el=document.querySelector(`#msgs [data-mid="${c.dataset.mid}"]`);if(el)el.scrollIntoView({block:'center',behavior:'smooth'});else $('msgs').scrollTop=$('msgs').scrollHeight}})}
-function renderRoutines(){const box=$('rt');if(!box)return;const list=S.routines.filter(r=>r.conv===cur);
+function renderRoutines(){const box=$('rt');if(!box)return;const rc=box.dataset.conv||cur,list=S.routines.filter(r=>r.conv===rc);
   box.innerHTML=list.map(r=>rtEdit===r.id?rForm(r):`<div class="rrow" data-r="${r.id}" role="button" tabindex="0"><span class="t"><b data-u>${esc(r.name)}</b><small data-u>${trigText(r)}</small></span><button type="button" class="sw ${r.enabled?'on':''}" data-sw="${r.id}" aria-label="${r.enabled?'停用':'啟用'}" aria-pressed="${r.enabled}"></button></div>`).join('')
    +(rtEdit==='new'?rForm(null):`<button type="button" class="ghost" id="rtAdd" style="justify-self:start">＋ 例行任務</button>`);
   box.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async e=>{e.stopPropagation();const r=S.routines.find(x=>x.id===b.dataset.sw);
@@ -2199,7 +2240,7 @@ function renderRoutines(){const box=$('rt');if(!box)return;const list=S.routines
     const body={name:f.querySelector('[name=rn]').value,prompt:f.querySelector('[name=rp]').value,trigger:trig==='time'?'':trig,
       watch:{url:f.querySelector('[name=wurl]').value.trim(),sel:f.querySelector('[name=wsel]').value.trim(),every:+f.querySelector('[name=wevery]').value},
       times:trig!=='time'?[]:[...(+f.querySelector('[name=rev]').value?['*/'+f.querySelector('[name=rev]').value]:[]),...[...f.querySelectorAll('.times input')].map(i=>i.value).filter(Boolean)]};
-    try{let r;if(rtEdit==='new')r=await api('routines','POST',{...body,conv:cur});else r=await api('routines/'+rtEdit,'PUT',body);
+    try{let r;if(rtEdit==='new')r=await api('routines','POST',{...body,conv:rc});else r=await api('routines/'+rtEdit,'PUT',body);
       if(trig==='hook'&&r.hook){rtEdit=r.id||rtEdit;await refresh();renderRoutines();toast(I18N.t('已建立觸發網址'));return}
       rtEdit=null;await refresh();renderRoutines()}catch(err){f.querySelector('.errmsg').textContent=err.message}};
 }
@@ -2298,7 +2339,7 @@ function plusMenu(){const c=conv(cur);if(!c)return;const g=isG(cur),qk=(S.quick|
     ${qk.length?`<hr><div class="lab">常用指令</div>${qk.map((q,i)=>`<button data-a="q" data-v="${i}"><span class="ck">⚡</span><span data-u>${esc(q.length>40?q.slice(0,40)+'…':q)}</span></button>`).join('')}`:''}`,
    {file:()=>$('fileIn').click(),
     slash:()=>{const i=$('msg');if(!i.value.startsWith('/'))i.value='/'+i.value;i.focus();i.selectionStart=i.selectionEnd=1;atSel=0;grow();atRender()},
-    at:v=>{const i=$('msg');i.value=(i.value.trimEnd()+' @'+v+' ').trimStart();grow();i.focus()},
+    at:v=>{const i=$('msg');i.value=(i.value.trimEnd()+' @'+v+' ').trimStart();grow();paintTo();i.focus()},
     q:v=>{const q=qk[+v];if(!q)return;const i=$('msg');if(i.value.trim()){i.value+='\n'+q;grow();i.focus()}else sendMsg(q)}})}
 $('mMe').onclick=()=>openSettings();
 $('mQ').onclick=()=>{const b=$('qbox');b.hidden=!b.hidden;if(!b.hidden)$('q').focus();else{$('q').value='';render(false)}};
