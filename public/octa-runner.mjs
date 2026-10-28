@@ -1465,16 +1465,19 @@ const tagScript = (name, color) => `(() => { if (window.top !== window) return; 
     const lab = cur.querySelector('span'); lab.setAttribute('style', 'position:absolute;left:22px;top:20px;white-space:nowrap;background:' + C + ';color:#fff;font:600 11px/1 system-ui,sans-serif;padding:4px 7px;border-radius:999px;opacity:0;transition:opacity .2s');
     lab.textContent = N; document.documentElement.appendChild(cur);
     let idle, x = -60, y = -60; const wake = () => { cur.style.opacity = '1'; clearTimeout(idle); idle = setTimeout(() => { cur.style.opacity = '0' }, 8000); };
+    // OCTA desktop: watch only puts a shield over the page, so every mouse event here is the bot's;
+    // while the person has taken control it sets window.__octaUser and the cursor stays hidden instead of following them
+    const mine = () => { if (!window.__octaUser) return false; cur.style.opacity = '0'; return true; };
     const move = (nx, ny) => { x = nx; y = ny; cur.style.transform = 'translate(' + (x - 3) + 'px,' + (y - 2) + 'px)'; wake(); };
-    addEventListener('mousemove', e => move(e.clientX, e.clientY), true);
-    addEventListener('mousedown', e => { move(e.clientX, e.clientY);
+    addEventListener('mousemove', e => { if (!mine()) move(e.clientX, e.clientY); }, true);
+    addEventListener('mousedown', e => { if (mine()) return; move(e.clientX, e.clientY);
       const r = document.createElement('div'); r.setAttribute('style', 'position:fixed;z-index:2147483646;pointer-events:none;left:' + (e.clientX - 18) + 'px;top:' + (e.clientY - 18) + 'px;width:36px;height:36px;border-radius:50%;border:3px solid ' + C + ';transform:scale(.3);opacity:1;transition:transform .5s ease-out,opacity .5s');
       document.documentElement.appendChild(r); requestAnimationFrame(() => { r.style.transform = 'scale(1.6)'; r.style.opacity = '0'; }); setTimeout(() => r.remove(), 600);
       const t = e.target; if (t && t.style) { const o = t.style.outline, oo = t.style.outlineOffset; t.style.outline = '3px solid ' + C; t.style.outlineOffset = '2px'; setTimeout(() => { t.style.outline = o; t.style.outlineOffset = oo; }, 700); } }, true);
-    addEventListener('keydown', () => { lab.textContent = '⌨️ ' + N + ' 輸入中'; lab.style.opacity = '1'; wake();
+    addEventListener('keydown', () => { if (mine()) return; lab.textContent = '⌨️ ' + N + ' 輸入中'; lab.style.opacity = '1'; wake();
       const f = document.activeElement; if (f && f.getBoundingClientRect && x < 0) { const b = f.getBoundingClientRect(); move(b.left + 12, b.top + b.height / 2); }
       clearTimeout(lab._t); lab._t = setTimeout(() => { lab.style.opacity = '0'; lab.textContent = N; }, 900); }, true);
-    addEventListener('focusin', e => { const b = e.target.getBoundingClientRect && e.target.getBoundingClientRect(); if (b && b.width && !(x >= b.left && x <= b.right && y >= b.top && y <= b.bottom)) move(b.left + Math.min(24, b.width / 2), b.top + b.height / 2); }, true); };
+    addEventListener('focusin', e => { if (mine()) return; const b = e.target.getBoundingClientRect && e.target.getBoundingClientRect(); if (b && b.width && !(x >= b.left && x <= b.right && y >= b.top && y <= b.bottom)) move(b.left + Math.min(24, b.width / 2), b.top + b.height / 2); }, true); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', put); else put(); })()`;
 async function tagBrowser(port, name) {
   if (tags.has(port) || typeof WebSocket === 'undefined') return;
