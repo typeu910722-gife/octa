@@ -58,7 +58,7 @@ export function connectorLines(list) {
     lines.push('這個帳號還沒有接上任何連接器。Telegram、LINE 或自己的服務要先到設定的「連接器」接上。還沒接上時，公開網頁用 WebFetch，已登入的網頁用【派瀏覽】。');
     return lines;
   }
-  for (const c of list) lines.push(`- ${c.name}：可以${c.can.join('、')}${c.kind === 'http' ? '。路徑寫相對路徑，例如 /orders' : '。不用寫路徑'}`);
+  for (const c of list) lines.push(`- ${c.name}：可以${c.can.join('、')}${c.kind === 'http' ? '。路徑寫相對路徑，例如 /orders；送出的內容可以直接寫 JSON（例如 {"status":"clean"}）' : '。不用寫路徑'}`);
   lines.push('能用連接器做的事不要開瀏覽器。需要時單獨寫下面這一段，不要同時寫【回覆】：\n【連接器】\n名稱：上面其中一個\n動作：讀取或送出\n路徑：/相對路徑（只有自己的服務要）\n內容：送出的文字\n【接完】');
   lines.push('讀取可以直接做。送出、寄信、付款、刪除要先寫 ✅待確認，使用者回「核准：」之後才寫送出。同意只涵蓋那一次。同一則最多呼叫兩次。');
   return lines;
@@ -163,7 +163,10 @@ export async function runConnector(st, task, opt = {}) {
     const init = { method: task.action === '送出' ? 'POST' : 'GET', headers, redirect: 'manual', signal: AbortSignal.timeout(15000) };
     if (task.action === '送出') {
       headers['content-type'] = 'application/json';
-      init.body = JSON.stringify({ text: String(task.content || '').slice(0, 4000) });
+      // a JSON object or list goes to your own service as it is (an API call); plain words go as {"text": …}
+      const raw = String(task.content || '').slice(0, 4000).trim();
+      let json = null; if (/^[[{]/.test(raw)) { try { json = JSON.parse(raw); } catch { } }
+      init.body = json && typeof json === 'object' ? JSON.stringify(json) : JSON.stringify({ text: raw });
     }
     const r = await fetchImpl(url, init);
     if (r.status >= 300 && r.status < 400) return { ok: false, text: '這個連接器轉址了，這次沒有跟著走。' };

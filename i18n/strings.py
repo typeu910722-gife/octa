@@ -1218,3 +1218,10 @@ T.update({
  '待命': ('Free', '待機'),
  '成員現在在做什麼': ('What each member is doing', 'メンバーの現在の状況'),
 })
+# ---- 執行力: 旁聊 while a bot works, result line for send jobs ----
+T.update({
+ '⚠ 這件要傳送或上傳，但回覆沒有寫明結果（✅ 完成／⚠ 沒做成）。請它回頭確認有沒有真的送出。': ('⚠ This was a send or upload job, but the reply does not say how it ended (✅ done / ⚠ not done). Ask the bot to check that it really went out.', '⚠ 送信・アップロードの作業ですが、返信に結果（✅ 完了／⚠ 未完了）が書かれていません。本当に送れたか確認するよう頼んでください。'),
+})
+P.extend([
+ (r'^「(.+)」正在做「(.+)」，做完就接著處理這則。$', '“$1” is working on “$2”; it will handle this right after.', '「$1」は「$2」を作業中です。終わったら続けてこれを処理します。'),
+])

@@ -249,7 +249,12 @@ const localNow = (env, t = now()) => {
   const d = new Date(t + (+env.TZ_OFFSET_MIN || 0) * 60000);
   return { date: d.toISOString().slice(0, 10), hm: d.toISOString().slice(11, 16) };
 };
-const bump = (db, userId) => db.prepare('UPDATE users SET rev=rev+1 WHERE id=?').bind(userId).run();
+// 主機模式／本機: the runner and the open pages long-poll inside this same process, so a change wakes them at once
+// instead of on their next look (every 1.5 s). The cloud keeps its fixed interval: no extra D1 reads there.
+const wakers = new Set();
+export const wake = () => { const ws = [...wakers]; wakers.clear(); for (const w of ws) w(); };
+const nap = (env, ms) => (env?.isLocal || env?.hostMode) ? new Promise(r => { const f = () => { clearTimeout(t); wakers.delete(f); r(); }, t = setTimeout(f, ms); wakers.add(f); }) : sleep(ms);
+const bump = (db, userId) => db.prepare('UPDATE users SET rev=rev+1 WHERE id=?').bind(userId).run().then(r => { wake(); return r; });
 
 async function addMsg(db, userId, conv, by, text, files = null, reply = null) {
   const rid = Number.isInteger(reply) && reply > 0 ? reply : null;
@@ -290,6 +295,41 @@ async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
     const names = (bots || []).filter(b => running.some(r => r.bot_id === b.id)).map(b => b.name);
     await addMsg(db, userId, conv, 'sys', `先排隊。現在有 ${running.length} 個在工作${names.length ? '：' + names.join('、') : ''}。做完就輪到這個。`);
   }
+}
+// 旁聊: a message to a bot that is already working. The work is not interrupted: a stop goes to it (as 停止 does),
+// a change of plan waits until it is done, and anything else gets a quick reply from a side job (no browser).
+const SIDE_LIKE = '%"k":"side"%';
+const STOP_RE = /^\s*(請|先|幫我|那就|好)?\s*(停|停止|停下來?|停掉|中止|取消|算了|別做了|不要做了|不用做了|不用了|先不要)(一下|吧|啦|了|掉|它|這個|這件|目前的?|現在的?|那件)?\s*[。！!～~.…]*\s*$/i;
+const STOP_ANY = /(停止|取消|中止)(目前|現在|手上|正在)|(先|請)停下|^stop\b/i;
+const LATER_RE = /^(核准|照做|拒絕|❌)|改成|改做|改為|改用|換成|換做|改一下|重做|重來|不要做|別做|先做|先別|順便|另外再|也要|加上|多做|追加/;
+export function sideKind(text) {
+  const t = String(text || '').trim();
+  if (!t) return 'later';   // only files: they belong to the work
+  if (STOP_RE.test(t) || STOP_ANY.test(t)) return 'stop';
+  return LATER_RE.test(t) ? 'later' : 'side';
+}
+async function busyTurn(db, userId, conv, text, bot, quoted) {
+  const main = await db.prepare("SELECT id,conv,prompt FROM jobs WHERE user_id=? AND bot_id=? AND status='running' AND kind='chat' AND IFNULL(via,'') NOT LIKE ? ORDER BY id LIMIT 1").bind(userId, bot.id, SIDE_LIKE).first();
+  if (!main) return false;
+  const how = sideKind(text), what = String(main.prompt || '').replace(/\s+/g, ' ').slice(0, 30);
+  if (how === 'stop') {
+    await db.prepare("UPDATE jobs SET status='error', finished=? WHERE id=? AND status='running'").bind(now(), main.id).run();
+    await db.prepare("DELETE FROM jobs WHERE user_id=? AND conv=? AND bot_id=? AND status='pending'").bind(userId, conv, bot.id).run();
+    await addMsg(db, userId, conv, 'sys', '已停止目前的任務');
+    return true;
+  }
+  if (how === 'later') { await addMsg(db, userId, conv, 'sys', `「${bot.name}」正在做「${what}」，做完就接著處理這則。`); return false; }
+  const prompt = [quoted?.note, text].filter(Boolean).join('\n');
+  await addJob(db, userId, conv, [{ b: bot.id, p: prompt, v: { k: 'side', m: main.id } }], prompt);
+  return true;
+}
+// a send / upload job has to end with a clear result line (✅ 完成／⚠ 沒做成); a question about it does not
+const SEND_RE = /傳給|傳送|發給|發送|寄給|寄出|送出|上傳|回報給|通知/;
+const RESULT_RE = /✅\s*(完成|待確認)|⚠\s*沒做成|❓|需要使用者在電腦上登入|^⚠/m;
+export function missingResult(prompt, text) {
+  const p = String(prompt || '');
+  if (!SEND_RE.test(p) || /[？?]|嗎|有沒有/.test(p.replace(/^（例行任務「[^」]*」）/, '').slice(0, 300))) return false;
+  return !RESULT_RE.test(String(text || '')) && !passed(text);
 }
 // a second record of the same bytes, so the copy survives if the source conversation is deleted
 async function cloneFile(db, userId, fileId, conv) {
@@ -2051,7 +2091,7 @@ async function route({ request: req, env, params }) {
         if (!f.want || now() - f.want > MIN) { await db.prepare('UPDATE files SET want=? WHERE id=?').bind(now(), id).run(); await bump(db, U); }
         const t0 = now();
         while (now() - t0 < 20000) {
-          await sleep(1000);
+          await nap(env, 1000);
           f = await db.prepare('SELECT want FROM files WHERE id=?').bind(id).first();
           if (f?.want === -1) break;
         }
@@ -2114,7 +2154,7 @@ async function route({ request: req, env, params }) {
           if (u2?.host === label) return J({ job: null });   // this computer just became the host: ask again as the host
           if (r !== rev) { rev = r; const w = await pcWork(env, db, U, label, body.slots === undefined ? 1 : +body.slots); if (w) return J({ ...w, standby: true }); }
           if (!body.wait || now() - t0 > WAIT_MS) return J({ job: null, standby: true });
-          await sleep(1000);
+          await nap(env, 1000);
         }
       }
       if (!isHost && !['runner/done', 'runner/blob', 'runner/xfer', 'runner/progress'].includes(path)) {
@@ -2147,7 +2187,7 @@ async function route({ request: req, env, params }) {
             if (out) return J(out);
           }
           if (!body.wait || now() - t0 > WAIT_MS) return J({ job: null });
-          await sleep(1500);
+          await nap(env, 1500);
         }
       }
       if (path === 'runner/watches' && m === 'POST') {   // pages the host should check for changes
@@ -2172,7 +2212,7 @@ async function route({ request: req, env, params }) {
         const jr = await db.prepare("SELECT progress FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
         if (!jr) return J({ stop: true });
         if (jr.progress !== txt) {   // a heartbeat with the same text changes nothing for the screens
-          await db.batch([db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(txt, +body.id), db.prepare('UPDATE users SET prog=prog+1 WHERE id=?').bind(U)]);
+          await db.batch([db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(txt, +body.id), db.prepare('UPDATE users SET prog=prog+1 WHERE id=?').bind(U)]); wake();
         }
         const jobRow = await db.prepare('SELECT bot_id FROM jobs WHERE id=? AND user_id=?').bind(+body.id, U).first();
         const handed = jobRow && await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(jobRow.bot_id, U).first();
@@ -2518,9 +2558,13 @@ async function route({ request: req, env, params }) {
           }
           return ok();
         }
+        const side = viaOf(job)?.k === 'side';
+        // a send / upload job that does not say whether it went out; 旁聊 that needs the browser runs again after the work
+        if (!side && missingResult(job.prompt, text)) await addMsg(db, U, job.conv, 'sys', '⚠ 這件要傳送或上傳，但回覆沒有寫明結果（✅ 完成／⚠ 沒做成）。請它回頭確認有沒有真的送出。');
+        if (side && body.later) { await addJob(db, U, job.conv, [job.bot_id], job.prompt, job.depth); await bump(db, U); }
         // the bot stopped halfway ("還沒完成…"): one automatic follow-up, then it has to stop
         const round = +((job.prompt.match(/^（自動接續 (\d+)）/) || [])[1] || 0);
-        if (round < 1 && !passed(text) && /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) && !LOGIN_WAIT.test(text) && classifyModelFailure(text) !== 'quota' && classifyModelFailure(text) !== 'rate_limit') {
+        if (!side && round < 1 && !passed(text) && /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) && !LOGIN_WAIT.test(text) && classifyModelFailure(text) !== 'quota' && classifyModelFailure(text) !== 'rate_limit') {
           const orig = job.prompt.replace(/^（自動接續 \d+）[\s\S]*?原本的指示：/, '');
           await addMsg(db, U, job.conv, 'sys', '還沒做完，請它接著把剩下的做完…');
           await addJob(db, U, job.conv, [{ b: job.bot_id, p: `（自動接續 ${round + 1}）上一則沒做完。只補還沒做的那一步。如果要登入，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下。不要把同一句再寫一遍，也不要編畫面上沒有的房號或姓名。\n原本的指示：${orig}` }, ...JSON.parse(job.chain)], orig, job.depth, job.routine);
@@ -2642,7 +2686,7 @@ async function route({ request: req, env, params }) {
       for (; ;) {
         const u = await db.prepare('SELECT rev, prog FROM users WHERE id=?').bind(U).first(), rev = u?.rev ?? 0, prog = u?.prog ?? 0;
         if (rev !== have || (haveP !== null && prog !== haveP) || now() - t0 > WAIT_MS) return J({ rev, prog });
-        await sleep(1500);
+        await nap(env, 1500);
       }
     }
     if (path === 'busy' && m === 'GET') {   // just what is running now (progress lines), without reloading everything
@@ -3066,6 +3110,7 @@ async function route({ request: req, env, params }) {
         await addMsg(db, U, conv, 'sys', done.length ? `已更新規則：${done.join('；').slice(0, 300)}` : '規則沒有變更（建議的內容已經有了）');
         return ok();
       }
+      if (bot && await busyTurn(db, U, conv, text, bot, quoted)) return ok();
       await enqueueTurn(db, U, conv, text, bot, group, bots, quoted);
       return ok();
     }
@@ -3411,10 +3456,11 @@ async function nextWork(env, db, U, slots, label = null) {
   const pull = files.filter(f => f.loc === 'pc').map(f => ({ id: f.id, path: f.path }));
   let job = null;
   if (slots > 0) {
-    // one task per bot at a time; showing its browser on screen ('open') never waits
+    // one task per bot at a time; showing its browser on screen ('open') never waits; a 旁聊 runs beside the work (one at a time)
     const j = await db.prepare(`SELECT * FROM jobs j WHERE user_id=? AND status='pending' AND (j.pc IS NULL OR j.pc=?)
-      AND (j.kind='open' OR NOT EXISTS (SELECT 1 FROM jobs r WHERE r.user_id=j.user_id AND r.bot_id=j.bot_id AND r.status='running' AND r.kind<>'open'))
-      ORDER BY (j.kind='open') DESC, id LIMIT 1`).bind(U, label || '').first();
+      AND (j.kind='open' OR NOT EXISTS (SELECT 1 FROM jobs r WHERE r.user_id=j.user_id AND r.bot_id=j.bot_id AND r.status='running' AND r.kind<>'open'
+        AND (IFNULL(j.via,'') LIKE ?3) = (IFNULL(r.via,'') LIKE ?3)))
+      ORDER BY (j.kind='open') DESC, id LIMIT 1`).bind(U, label || '', SIDE_LIKE).first();
     if (j) {
       const claimed = await db.prepare("UPDATE jobs SET status='running', started=? WHERE id=? AND status='pending'").bind(now(), j.id).run();
       if (claimed.meta.changes) { await bump(db, U); job = await jobPayload(env, db, U, j); }
@@ -3474,7 +3520,11 @@ async function jobPayload(env, db, U, job) {
     for (const m of (st.manuals || {})[bot.id] || []) if (mem.manuals.some(x => x.name === m.name)) m.used = (+m.used || 0) + 1;
     await putSettings(db, U, st);
   }
+  // 旁聊: what the bot is busy with right now. Once that work is over, this is an ordinary turn.
+  const sv = viaOf(job), main = sv?.k === 'side' && await db.prepare("SELECT prompt,progress FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+sv.m || 0, U).first();
+  if (sv?.k === 'side' && !main) await db.prepare('UPDATE jobs SET via=NULL WHERE id=?').bind(job.id).run();
   return {
+    side: main ? { doing: String(main.prompt || '').replace(/\s+/g, ' ').slice(0, 200), progress: main.progress || '' } : null,
     id: job.id, kind: job.kind, url: job.url, prompt: job.kind === 'chat' && /例行|排程|定時|刪|停用|暫停|取消/.test(job.prompt || '') ? job.prompt + ROUTINE_SELF : job.prompt, usageToday, warm: WARM.includes(+st.warm) ? +st.warm : 120, allowed: (st.allow || {})[bot.id] || [], ...mem, skills: (st.skills || {})[bot.id] || [],
     nskills: (st.nskills || {})[bot.id] || null,
     routines: (await db.prepare('SELECT name,times,enabled FROM routines WHERE user_id=? AND conv IN (?,?)').bind(U, job.conv, bot.id).all()).results.map(r => ({ name: r.name, times: JSON.parse(r.times), enabled: !!r.enabled })),
