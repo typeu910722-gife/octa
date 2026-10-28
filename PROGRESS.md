@@ -138,3 +138,6 @@
 - 排程與記憶：routines.prompt 必填、routines.last_run/last_status/last_job/last_text、jobs.routine、next_run、routineTarget（內容寫貼到群組→在群組跑）、splitTaskSchedules（📝 時間句搬到例行任務）、tidyOnce 一次性整理（✅待確認：整理排程）、scheduleAsk/correctionAsk 補救待確認（建立排程／記住規則，ownApproval 直接處理）。
 - 執行：旁聊（busyTurn/sideKind，jobs.via k=side，不打斷主工作）、API 優先、自行登入一輪＋loginHints/hideSecrets、結果行（missingResult 提醒）、findUploads＋MCP --allow-unrestricted-file-access、群組補位 prompt、本機模式 bump 即時喚醒（送出→拿到工作 767ms→4ms）、執行器背景回報額度。Claude 主回合 allowedTools 加 Bash。
 - 未實測：真實 AI 是否照新規則、自行登入實際網站、Windows 旁聊並行、tidyOnce 首次會發幾則。
+
+## 2026-10-28 3.3.1
+- 20:09 實機：OCTA 無法啟動 ERR_ADDRESS_IN_USE (-147) loading 127.0.0.1:17777。查到整台電腦 TIME_WAIT 15.5 萬（443 埠 9.5 萬），Honeygain 同時開 3196 條連線 → 臨時埠用光，OCTA 連自己的本機頁都開不了。修：main.mjs loadLocal() 遇暫時性連線錯誤以 1→30 秒退避重試最多 12 次並顯示說明，不再跳錯誤框。根因在 Honeygain，需使用者決定是否暫停／限制。

@@ -139,8 +139,24 @@ function showWindow() {
 }
 const showSplash = () => win.loadFile(join(here, 'splash.html'));
 
+// The page is on this computer, but opening it still needs a free local port. When another program uses up the
+// computer's connections (thousands left waiting to close), Chromium fails with ERR_ADDRESS_IN_USE: wait and try
+// again instead of giving up with an error box.
+const TRANSIENT_LOAD = /ERR_ADDRESS_IN_USE|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_TIMED_OUT|ERR_INSUFFICIENT_RESOURCES|ERR_NETWORK_CHANGED/;
+export function loadRetryDelay(tries) { return Math.min(30000, 1000 * 2 ** Math.min(tries, 5)); }
+async function loadLocal() {
+  for (let tries = 0; ; tries++) {
+    try { await win.loadURL(server.url); return; }
+    catch (e) {
+      if (!TRANSIENT_LOAD.test(String(e)) || tries >= 12 || !win || win.isDestroyed()) throw e;
+      logError('load-retry', e);
+      progress(60, /ADDRESS_IN_USE|INSUFFICIENT/.test(String(e)) ? '電腦的網路連線被其他程式占滿了，等一下再試…' : '等本機服務準備好…');
+      await new Promise(r => setTimeout(r, loadRetryDelay(tries)));
+    }
+  }
+}
 async function loadMain() {
-  if (cfg.mode === 'local' || cfg.mode === 'host') { await win.loadURL(server.url); return; }   // 主機模式: the data is here, no detour through the cloud
+  if (cfg.mode === 'local' || cfg.mode === 'host') { await loadLocal(); return; }   // 主機模式: the data is here, no detour through the cloud
   progress(70, '連線到 OCTA 雲端…');
   try { await win.loadURL(CLOUD); }
   catch (e) { if (!String(e).includes('ERR_ABORTED')) logError('cloud', e); }
