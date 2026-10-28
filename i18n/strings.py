@@ -1151,3 +1151,12 @@ T.update({
  '已取得控制權，機器人先暫停': ('You have control. The bot is paused.', '操作を引き継ぎました。ボットは一時停止中です'),
  '已交還，機器人可以繼續操作': ('Handed back. The bot can carry on.', '操作を戻しました。ボットが続行できます'),
 })
+T.update({
+ '每次要做什麼（必填）': ('What to do each time (required)', '毎回やること（必須）'),
+ '例如：整理今天的入住名單，貼到這個對話': ("e.g. Put together today's check-in list and post it in this chat", '例：今日のチェックイン一覧をまとめて、この会話に投稿する'),
+ '每個排程有自己的說明，執行時只照這段做，不會再回去讀指定任務。時間只在這裡設定。': ("Each routine has its own instructions. It follows only these when it runs and doesn't fall back on the bot's task. Times are set only here.", '定期タスクごとに専用の指示があり、実行時はこの指示だけに従います（担当タスクには戻りません）。時刻はここでだけ設定します。'),
+ '請寫這個例行任務每次要做什麼': ('Write what this routine should do each time', 'この定期タスクで毎回やることを書いてください'),
+ '請寫這個例行任務每次要做什麼（每個排程有自己的說明，不會再回去讀指定任務）': ("Write what this routine should do each time (each routine has its own instructions and doesn't fall back on the bot's task)", 'この定期タスクで毎回やることを書いてください（定期タスクごとに専用の指示があり、担当タスクには戻りません）'),
+ '⏰ 時間請寫在例行任務：這裡只寫工作內容，排程時間（每天幾點、每隔多久）寫在這裡不會執行。': ('⏰ Put times in Routines: write only the work here. Schedule times (daily at…, every…) written here are not run.', '⏰ 時刻は定期タスクに：ここには仕事の内容だけを書きます。ここに書いたスケジュール（毎日何時・何分ごと）は実行されません。'),
+ '不用了': ('No thanks', '結構です'),
+})

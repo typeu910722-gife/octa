@@ -1376,6 +1376,7 @@ function loginHtml(m){const b=bot(m.by);if(!b||b.browser==='mine'||!NEEDLOGIN.te
 function apprHtml(m){const a=m.text.match(APPR);if(!a)return '';
   const later=convMsgs(m.conv).some(x=>x.id>m.id&&(x.by==='me'||x.by===m.by));
   if(later)return '';
+  if(/^(建立排程|記住規則|整理排程)[:：]/.test(a[1].trim()))return `<div class="appr"><button type="button" class="btn" data-approve="${m.id}">核准</button><button type="button" class="no" data-deny="${m.id}">不用了</button></div>`;   // OCTA's own offers: done on 核准, nothing to always-allow
   if(/^照計畫/.test(a[1].trim()))return `<div class="appr"><button type="button" class="btn" data-approve="${m.id}">照做</button><button type="button" class="no" data-revise="${m.id}" data-plan="1">修改</button></div>`;   // 📋計畫: run it as written, or say what to change
   return `<div class="appr"><button type="button" class="btn" data-approve="${m.id}">核准（只這次）</button><button type="button" class="no" data-always="${m.id}">一律允許</button><button type="button" class="no" data-revise="${m.id}">修改</button><button type="button" class="no" data-deny="${m.id}">拒絕</button></div>`}
 function fmt(t){return esc(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/@([^\s@，。、]+)/g,'<span class="at">@$1</span>')}
@@ -1858,6 +1859,7 @@ function sheet(kind,edit){
   ${!g&&c&&/[\s\u3000]/.test(c.name)?'<p class="hmuted">名稱有空格，群組裡 @ 不到它，建議改名</p>':''}
   ${g?`<div class="field">成員（由上到下依序執行，用 ↑↓ 調整順序）<div class="picks" id="picks">${(c?[...c.members.filter(bot),...S.bots.map(b=>b.id).filter(x=>!c.members.includes(x))]:S.bots.map(b=>b.id)).map(id=>{const b=bot(id);return `<label class="pick"><input type="checkbox" value="${b.id}" ${!c||c.members.includes(b.id)?'checked':''}><span class="av sm" data-u>${avOf(b.id)}</span><span data-u style="flex:1">${esc(b.name)}</span><button type="button" class="mv" data-up aria-label="往上">↑</button><button type="button" class="mv" data-down aria-label="往下">↓</button></label>`}).join('')}</div></div>`:''}
   <label class="field">${g?'協作規則（選填）':'指定任務（選填）'}<textarea id="st" maxlength="4000" placeholder="${g?'可以不填：成員依上面的順序輪流做；也可以寫誰先做、做完交給誰':'可以先不填：建立後直接傳訊息告訴它要做什麼，它會自己整理成指定任務'}">${c?esc(c.task):''}</textarea></label>
+  ${g?'':'<p class="hmuted" style="margin-top:-6px">⏰ 時間請寫在例行任務：這裡只寫工作內容，排程時間（每天幾點、每隔多久）寫在這裡不會執行。</p>'}
   ${g?'':`<div class="tpl">${TPL.map(t=>`<button type="button">${t}</button>`).join('')}</div>`}
   ${g?'':`<div class="field">頭貼<div class="emos" id="sf_av" data-u>${['',...EMOJIS].map(e=>`<button type="button" class="emo-b${(c?.avatar||'')===e?' on':''}" data-emo="${e}" aria-label="${e||'文字'}">${e||esc((($('sn')?.value)||c?.name||'字').slice(0,1))}</button>`).join('')}<input id="sf_avc" class="emo-in" maxlength="8" placeholder="其他" value="${c?.avatar&&!EMOJIS.includes(c.avatar)?esc(c.avatar):''}" aria-label="自訂 Emoji"></div></div>
   <div class="field">瀏覽器<div class="bchoice" id="sf_b">
@@ -2196,6 +2198,7 @@ function renderRoutines(){const box=$('rt');if(!box)return;const list=S.routines
   const tw=f.querySelector('[name=rtrig]'),showTrig=()=>{f.querySelectorAll('[data-tr]').forEach(x=>x.hidden=x.dataset.tr!==tw.value)};tw.onchange=showTrig;showTrig();
   f.querySelectorAll('[data-copyhook]').forEach(b=>b.onclick=()=>navigator.clipboard?.writeText(b.dataset.copyhook).then(()=>toast(I18N.t('已複製'))).catch(()=>{}));
   f.querySelector('[data-save]').onclick=async()=>{const trig=tw.value;
+    if(!f.querySelector('[name=rp]').value.trim()){f.querySelector('.errmsg').textContent=I18N.t('請寫這個例行任務每次要做什麼');f.querySelector('[name=rp]').focus();return}
     const body={name:f.querySelector('[name=rn]').value,prompt:f.querySelector('[name=rp]').value,trigger:trig==='time'?'':trig,
       watch:{url:f.querySelector('[name=wurl]').value.trim(),sel:f.querySelector('[name=wsel]').value.trim(),every:+f.querySelector('[name=wevery]').value},
       times:trig!=='time'?[]:[...(+f.querySelector('[name=rev]').value?['*/'+f.querySelector('[name=rev]').value]:[]),...[...f.querySelectorAll('.times input')].map(i=>i.value).filter(Boolean)]};
@@ -2213,7 +2216,8 @@ function rForm(r){const tr=r?.hook?'hook':r?.watch?'watch':'time';return `<div c
     <p class="hmuted">LINE 官方帳號：到 LINE Developers → 你的 Messaging API channel → Webhook URL 貼上這個網址並開啟「Use webhook」，客人一傳訊息就會觸發，訊息內容會交給機器人。其他服務（Google 表單、Zapier、IFTTT）用 POST 呼叫這個網址即可。網址等同鑰匙，不要公開。</p>`:'<p class="hmuted">儲存後會產生一個專屬的觸發網址。</p>'}</div>
   <div data-tr="time" class="rt"><label class="field">每隔一段時間做一次（例如巡訊息）<select name="rev">${EVERY.map(n=>`<option value="${n}" ${(r?.times||[]).includes('*/'+n)?'selected':''}>${n?everyText(n):I18N.t('不用')}</option>`).join('')}</select></label>
   <div class="field">每天固定的時間（可以不填）<div class="times">${(r?r.times.filter(t=>!t.startsWith('*/')):['08:00']).map(t=>`<input type="time" value="${t}">`).join('')}<button type="button" data-add>＋ 時間</button></div></div></div>
-  <label class="field">要做什麼（選填，空白就執行指定任務）<textarea name="rp" maxlength="2000" style="min-height:70px">${r?esc(r.prompt||''):''}</textarea></label>
+  <label class="field">每次要做什麼（必填）<textarea name="rp" maxlength="2000" style="min-height:70px" placeholder="例如：整理今天的入住名單，貼到這個對話">${r?esc(r.prompt||''):''}</textarea></label>
+  <p class="hmuted">每個排程有自己的說明，執行時只照這段做，不會再回去讀指定任務。時間只在這裡設定。</p>
   <div class="errmsg"></div>
   <div class="acts">${r?'<button type="button" class="del" data-del>刪除</button>':''}<button type="button" class="no" data-cancel>取消</button><button type="button" class="btn" data-save>${r?'儲存':'加入'}</button></div></div>`}
 
