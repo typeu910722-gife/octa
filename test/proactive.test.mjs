@@ -319,7 +319,7 @@ test('web app: autonomy choice, standby status, plan buttons and the folded 幕�
   assert.match(page, /body\.autonomy=\$\('veil'\)\.querySelector\('input\[name=sf_au\]:checked'\)/);
   assert.match(page, /id="sf_standnow"/);
   assert.match(page, />照做<\/button>/);
-  assert.match(page, /if\(\/\^照計畫\/\.test\(a\[1\]\.trim\(\)\)\)/);
+  assert.match(page, /plan=\/\^照計畫\/\.test\(act\)/);   // 📋計畫 card (apprDecision since the approval-card upgrade)
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const backSrc = page.slice(page.indexOf('function backHtml'), page.indexOf("$('msgs').addEventListener('toggle'"));
   const standSrc = page.slice(page.indexOf('function standNow'), page.indexOf('\n', page.indexOf('function standNow')));

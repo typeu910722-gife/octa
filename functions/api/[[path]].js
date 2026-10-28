@@ -2133,6 +2133,7 @@ async function route({ request: req, env, params }) {
         }
         try { changed += await weeklyReview(env, db, U); } catch { }
         try { changed += await tidyOnce(env, db, U); } catch { }
+        try { await approvalNag(env, db, U); } catch { }
         if (changed) await bump(db, U);
         const slots = body.slots === undefined ? 1 : +body.slots;
         const t0 = now();
@@ -2658,9 +2659,13 @@ async function route({ request: req, env, params }) {
         db.prepare("SELECT conv,bot_id,status,kind,started,progress,eng FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')").bind(U),
         db.prepare('SELECT rev, prog FROM users WHERE id=?').bind(U),
         // newest non-system message of each conversation (list previews); one indexed lookup each
-        ...convIds.map(c => db.prepare("SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1").bind(U, c))
+        // ask: the ✅待確認 line of a bot's message, so 待你核准 shows even when it is past the 140-character preview
+        ...convIds.map(c => db.prepare("SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts,CASE WHEN by_<>'me' AND instr(text,'待確認')>0 THEN substr(text,instr(text,'待確認')-(CASE WHEN substr(text,instr(text,'待確認')-1,1)=' ' THEN 2 ELSE 1 END),200) END AS ask FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1").bind(U, c))
       ]);
       const last = { results: lasts.flatMap(r => r.results) };
+      // groups: the newest open ✅待確認 even when someone spoke after it (≤30 rows per group)
+      const gq = all.groups.length ? await db.batch(all.groups.map(g => db.prepare("SELECT id,by_,text,ts FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 30").bind(U, g.id))) : [];
+      const gask = Object.fromEntries(all.groups.map((g, i) => [g.id, groupAsk(gq[i].results, all.bots)]).filter(([, v]) => v));
       const h = env.isLocal ? null : await hostInfo(db, U);
       const st = await getSettings(db, U);
       const { date } = localNow(env), dayStart = Date.parse(date + 'T00:00:00Z') - (+env.TZ_OFFSET_MIN || 0) * 60000;
@@ -2674,7 +2679,7 @@ async function route({ request: req, env, params }) {
         engines: h ? h.engines : JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || 'null'),
         runnerOnline: env.runnerOnline ? env.runnerOnline() : (h ? h.online : true),
         host: h ? h.hostLabel : 'local', computers: h ? h.runners.length : 1, shareBrowser: st.shareBrowser !== false, nick: st.nick || '', sched: st.sched === 'cloud' ? 'cloud' : 'pc', quick: st.quick || {}, allow: st.allow || {}, pins: st.pins || [], mute: st.mute || {}, memory: st.memory || {}, facts: st.facts || {}, manuals: st.manuals || {}, review: st.review !== false, skills: st.skills || {}, nsk: Object.fromEntries(Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])), warm: WARM.includes(+st.warm) ? +st.warm : 120, models: h ? h.models : st._models || null,
-        focus: st.focus?.conv ? { conv: st.focus.conv, dev: st.focus.dev || '', at: st.focus.at || 0 } : null,
+        focus: st.focus?.conv ? { conv: st.focus.conv, dev: st.focus.dev || '', at: st.focus.at || 0 } : null, gask,
         ...all, routines: routinesOut(env, all.routines), last: last.results, ur: ur.results.map(r => [r.conv, r.id]), busy: busy.results
       });
     }
@@ -3622,6 +3627,56 @@ async function weeklyReview(env, db, U, force = false) {
   }
   if (n) await bump(db, U);
   return n;
+}
+// ✅待確認 nobody answered for 15 minutes: one more Telegram / LINE message, once per card
+// (評論：「核准框有時候沒人看到，接班人就一直卡著」). Looked at from runner/next, at most once a minute per account.
+const NAG_MS = 15 * MIN, nagLooked = new Map();
+const APPR_LINE = /^✅\s*待確認[:：]\s*(.+)$/m;
+// is this ✅待確認 still open? Your reply closes it (in a group only when it isn't @ another member), and so does the bot moving on.
+export function apprOpen(m, later, who) {
+  for (const x of later) {
+    if (x.by_ === m.by_) return false;
+    if (x.by_ === 'me') { const to = String(x.text || '').trim().match(/^@(\S+)/); if (to && who && to[1] !== who) continue; return false; }
+  }
+  return true;
+}
+async function pendingApprovals(db, U, olderThan = 0) {
+  const rows = (await db.prepare("SELECT m.id, m.conv, m.by_, m.text, m.ts FROM messages m WHERE m.user_id=?1 AND m.id>IFNULL((SELECT id FROM messages WHERE user_id=?1 AND ts<?2 ORDER BY id DESC LIMIT 1),0) AND m.by_ NOT IN ('me','sys') AND m.ts<=?3 AND instr(m.text,'待確認')>0 ORDER BY m.id DESC LIMIT 20")
+    .bind(U, now() - DAY, now() - olderThan).all()).results.filter(r => APPR_LINE.test(r.text));
+  if (!rows.length) return [];
+  const { bots } = await loadAll(db, U);
+  const out = [];
+  for (const r of rows) {
+    const later = (await db.prepare("SELECT by_, text FROM messages WHERE user_id=? AND conv=? AND id>? AND by_<>'sys' ORDER BY id LIMIT 30").bind(U, r.conv, r.id).all()).results;
+    if (apprOpen(r, later, bots.find(b => b.id === r.by_)?.name)) out.push({ ...r, by: r.by_, act: r.text.match(APPR_LINE)[1] });
+  }
+  return out;
+}
+// a group's newest open ✅待確認 among its last 30 messages (the list preview only sees the very last message)
+function groupAsk(rows, bots) {
+  const asc = rows.slice().reverse();
+  for (let i = asc.length - 1; i >= 0; i--) {
+    const m = asc[i];
+    if (m.by_ === 'me' || !APPR_LINE.test(m.text || '')) continue;
+    if (apprOpen(m, asc.slice(i + 1), bots.find(b => b.id === m.by_)?.name)) return { id: m.id, by: m.by_, ts: m.ts, ask: m.text.match(APPR_LINE)[0] };
+  }
+  return null;
+}
+async function approvalNag(env, db, U, force = false) {
+  if (!force && now() - (nagLooked.get(U) || 0) < MIN) return 0;
+  nagLooked.set(U, now());
+  const waiting = await pendingApprovals(db, U, NAG_MS);
+  if (!waiting.length) return 0;
+  const st = await getSettings(db, U);
+  const told = new Set(st.nagged || []), fresh = waiting.filter(r => !told.has(r.id) && !(st.mute || {})[r.conv]);
+  if (!fresh.length) return 0;
+  const { bots, groups } = await loadAll(db, U);
+  const nm = id => bots.find(b => b.id === id)?.name || groups.find(g => g.id === id)?.name || '機器人';
+  const lines = fresh.slice(0, 5).map(r => `・${nm(r.by)}${r.conv !== r.by ? `（${nm(r.conv)}）` : ''}：${clean(r.act, 120)}（等了 ${Math.round((now() - r.ts) / MIN)} 分鐘）`);
+  await sendNotify(env, st, `【OCTA】還有 ${fresh.length} 件等你核准，機器人停在這裡：\n${lines.join('\n')}\n打開 OCTA，清單最上面就是。`);
+  st.nagged = [...fresh.map(r => r.id), ...(st.nagged || [])].slice(0, 100);
+  await putSettings(db, U, st);
+  return fresh.length;
 }
 // 成果看板: one row per bot per day, added to when a chat job ends (jobs themselves are kept only 14 days)
 async function statAdd(db, env, U, job, good, tokens, web) {
