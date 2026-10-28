@@ -127,3 +127,8 @@
 - 前端：hostOffline 頂部提示 5→10→30→60 秒退避；設定→電腦與主機 搬移／改回按鈕。
 - 修 schema.sql retry_of 行逗號寫在註解裡（新庫的 via 被吃成型別名稱）。
 - 未實測：Electron IPC 搬移流程、真實 cloudflared、Worker→trycloudflare、手機畫面。待 D1 額度重置（台灣 08:00）後在使用者電腦實際搬移。風險：quick tunnel 網址會變（心跳 10 分重註冊）、Workers 免費每日 10 萬請求。
+
+## 2026-10-28 3.2.1
+- 主機模式已在使用者電腦生效（08:43 搬移、備份 ebot.backup-20261028-004314.sqlite），雲端 08:42 後無新資料。
+- 瀏覽器「僅觀看｜取得控制權」：透明擋板 WebContentsView（browser-shield.html）蓋頁面，滾輪由主程序程式捲動；控制時各分頁設 window.__octaUser=true，tagScript 隱藏游標；取得控制＝接手（hand）、回僅觀看＝繼續（go，只在需要時送繼續訊息）；工具列接手/繼續按鈕移除。xvfb＋Electron 以 XTest 實測擋板與游標；完整 main.mjs 未實跑。
+- 已知：桌面重開後面板預設僅觀看，但伺服器若仍記接手中會不一致。
