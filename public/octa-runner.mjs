@@ -249,7 +249,7 @@ const MEM_LIMIT = { rule: 3000, fact: 3000, manual: 3000 };
 const fitNewest = (list, chars) => { const out = []; let n = 0; for (let i = list.length - 1; i >= 0; i--) { const v = String(list[i] || ''); if (!v || n + v.length > chars) break; n += v.length; out.unshift(v); } return out; };
 export function memoryLines(job) {
   const out = [], rules = fitNewest(job.memory || [], MEM_LIMIT.rule), facts = fitNewest(job.facts || [], MEM_LIMIT.fact);
-  if (rules.length) out.push('', '你的規則（之前被糾正或學到的做法，照著做）：', ...rules.map(m => '- ' + m));
+  if (rules.length) out.push('', '你的規則（之前被糾正或學到的做法，照著做；跟指定任務裡的舊寫法衝突時，以規則為準）：', ...rules.map(m => '- ' + m));
   if (facts.length) out.push('', '你記得的事實（固定的名單、網址、帳號名稱等資料；重要決定前仍要到來源確認最新狀況）：', ...facts.map(m => '- ' + m));
   return [...out, ...manualLines(job)];
 }
@@ -265,12 +265,26 @@ export function memoryHowTo() {
     '- 成功做完一件多步驟的工作（例如用瀏覽器操作，步驟有 3 步以上）而且以後還會再做時，在回覆最後單獨一行寫「📘手冊：名稱｜步驟1 → 步驟2 → 步驟3」（名稱用看得出是什麼工作的幾個字，例如「下載訂房報表」；步驟寫去哪裡、點什麼、怎麼判斷），下次做類似的事會提供給你。沒做完、失敗或只做一兩步的不要寫。'
   ];
 }
+// 排程只有一份: a routine run follows that routine's own instruction; the standing task is background and its times don't count
+const timesSaid = ts => (ts || []).map(t => (String(t).startsWith('*/') ? `每 ${String(t).slice(2)} 分鐘` : '每天 ' + t)).join('、');
+export function routineLines(job) {
+  const r = job.routine;
+  if (!r) return [];
+  return [`這一則是例行任務「${r.name}」${r.times?.length ? `（排程：${timesSaid(r.times)}）` : ''}。照這個例行任務自己的指示做（就是下面「現在請處理這則指示」那段）；指定任務只當背景，不要因為指定任務裡寫了別的工作或別的時間就多做、少做或改時間。排程時間以例行任務為準，指定任務裡寫的時間不算。${r.own ? '' : '這個例行任務還沒有寫自己的指示：只做指定任務裡跟這個時間有關的那一件事，做完在回覆最後建議一句這個例行任務該寫的指示。'}`];
+}
+// this turn has to end with the marker: a schedule the user asked for, a correction to keep as a rule
+export function mustMarkLines(job) {
+  const out = [];
+  if (job.schedAsk) out.push('這則是排程請求（每天／每週／每隔…幾點做…）：這一輪就直接在回覆最後寫「⏰例行任務：名稱｜時間｜每次要做的事」建立好，再用一句話告訴使用者排好了（例如「好，每天 15:30 我會把房況貼到群組」）。不要叫他去任務設定，也不要只寫進 📝任務更新。例行任務只有每天固定時間和每隔一段時間；每週幾的，時間照寫，要做的事寫「只在週X做，其他天只回（略過）」。');
+  if (job.correction) out.push('這則是在糾正你或立新規則：這一輪一定要在回覆最後單獨一行寫「📌記住：具體規則」（寫清楚什麼情況、要怎麼做，例如「📌記住：住宿 10/26-27 算住兩晚，續住不用掃」），並在回覆裡用一句話確認「記住了：…」。規則優先於指定任務裡相衝突的舊寫法；舊寫法要改就一起寫 📝任務更新。');
+  return out;
+}
 export const GROUP_HISTORY = 14;
 export function buildPrompt(job, here) {
   const lines = [
     `你是 OCTA（奧克塔）裡的機器人「${job.bot.name}」，在使用者自己的電腦上執行。`,
     callUser(job),
-    job.bot.task ? `你的指定任務（長期本業，不是能力上限）：${job.bot.task}` : '你還沒有指定任務：只做使用者這次交代的事，做完就停，不要自己找事做，也不要把共用資料、分區資料或同事的工作當成你的。使用者說明要你長期負責什麼時，再用📝任務更新記下來。',
+    job.bot.task ? (job.routine ? `你的指定任務（背景參考；這次是例行任務，以例行任務的指示和時間為準）：${job.bot.task}` : `你的指定任務（長期本業，不是能力上限）：${job.bot.task}`) : '你還沒有指定任務：只做使用者這次交代的事，做完就停，不要自己找事做，也不要把共用資料、分區資料或同事的工作當成你的。使用者說明要你長期負責什麼時，再用📝任務更新記下來。',
     /^新機器人\d*$/.test(job.bot.name) ? '- 你的名字是暫定的。使用者第一次說明要你做什麼時，幫自己取一個 2 到 6 個字、看得出工作的名字，前面加一個合適的 emoji，在回覆最後單獨一行寫「📛名稱：emoji 名字」（例如「📛名稱：🎮 遊戲員」）。只寫一次。' : '',
     '- 共用資料、分區資料、網站筆記和同事清單只是背景參考：只用跟你的指定任務或這次指示有關的部分，無關的忽略，回覆裡也不要提。不要在回覆裡引用規則編號或內部說明。',
     ...studioAim()
@@ -311,6 +325,7 @@ export function buildPrompt(job, here) {
     ...autonomyRules(job),
     '- 指定任務太簡短或模糊時（只有幾個字），根據你看到的實際情況推斷完整的工作內容，用 📝任務更新 寫出來，並提出合適的例行任務。',
     '- 記住長期有用的事：使用者說了穩定的偏好、規則或重要事實（例如「回覆客人要用敬語」「302 房冷氣壞了」），在回覆最後加一行「📌記住：一句話」。一次性的事不要記。',
+    '- 被糾正一次就更新規則：使用者說「不對／不是／應該／以後／記得／不要再／每次都／規則是…」這類糾正或立規則的話，這一輪一定要寫「📌記住：具體規則」，並在回覆裡用一句話確認「記住了：…」；不用等使用者再說一次。規則優先於指定任務裡相衝突的舊寫法。',
     '- 存成技能：使用者說「把這個流程存起來／存成技能」，或同一套步驟你已經做順了，在回覆最後寫「🧩技能：技能名稱」，換行後條列每個步驟（去哪裡、點什麼、怎麼判斷、輸出什麼），最後一行寫「🧩結束」。',
     ...memoryHowTo(),
     '',
@@ -340,8 +355,8 @@ export function buildPrompt(job, here) {
     '- 需要使用者核准才能做的事，在回覆最後單獨一行寫「✅待確認：要做的事（一句話）」（「✅待確認：」這幾個字照抄，不要翻譯），然後停下。使用者回「核准：…」後才執行。',
     ...(job.allowed?.length ? ['- 使用者已經「一律允許」你做下面這些事：遇到同一類的事直接做，不用再寫 ✅待確認，做完在回覆裡清楚列出做了什麼（對象、數量、內容）。只限這些事本身，不要擴大解讀；付款、刪除資料、更改帳號設定仍然每次都要問：', ...job.allowed.map(t => '  · ' + t)] : []),
     '- 只回報實際完成的事，做不到就直說。',
-    `- 自動排程：使用者要你定時或持續做某件事（每天幾點、每隔多久巡一次）時，不要叫他自己去設定，在回覆最後加一行「⏰例行任務：名稱｜時間｜每次要做的事」。時間寫法：每天固定時間用 24 小時制（08:00,13:30），每隔一段時間寫「每30分鐘」或「每2小時」，兩種可以並用。例如「⏰例行任務：巡 LINE 訊息｜每30分鐘｜檢查 LINE 官方帳號新訊息，擬好回覆給我確認」（「⏰例行任務：」和「｜」照抄）。要「有新東西才做」時，時間欄寫「每10分鐘監看 網址」（系統會不花 AI 流量地檢查那個網頁，內容有變化才叫你），或寫「外部事件」（給一個觸發網址讓 LINE、表單等服務呼叫）。系統會自動建立；同名的會更新。你的任務本身就是要持續盯著某個地方（訊息、訂單、後台）時，主動建議並建立一個每隔一段時間的例行任務。指示裡已經寫了時間，就只用那些時間，不要另編指示裡沒有的時間。每一件都要寫成「⏰例行任務：名稱｜時間｜要做的事」那一行；沒有那一行就沒有建立。禁止只寫「排程已建好」「已建立例行任務」「例行任務已建好」。要刪除、暫停或恢復例行任務時，自己在回覆最後寫一行「⏰刪除：名稱」「⏰停用：名稱」或「⏰啟用：名稱」（多個用、分開，名稱照下面的清單抄），系統會直接處理；改時間或內容就用同名的⏰例行任務那一行覆蓋。你自己的設定都自己改：任務說明用 📝任務更新、記憶用 📌記住、技能用 🧩技能、例行任務用 ⏰。禁止叫使用者去「任務設定」手動刪除、停用或修改，也不要說自己刪不掉。${job.routines?.length ? '你已經有的例行任務（被問到下次什麼時候做時照這些回答）：' + job.routines.map(r => `${r.name}（${r.times.map(t => t.startsWith('*/') ? `每 ${t.slice(2)} 分鐘` : t).join('、')}${r.enabled ? '' : '，已停用'}）`).join('；') + '。' : ''}`,
-    '- 自動整理指定任務：當使用者在對話中說明你長期要負責的工作、固定做法、規則或排程（不是一次性的小請求）時，在回覆最後加上：「📝任務更新：」換行後寫出完整、更新後的指定任務（把原本的任務和新的說明合併成一份，條列清楚：負責什麼、去哪裡做、怎麼做、結果怎麼回報、要注意的規則），最後一行寫「📝結束」。這兩個標記照抄。沒有新的長期工作說明就不要寫。',
+    `- 自動排程：使用者要你定時或持續做某件事（每天幾點、每隔多久巡一次）時，這一輪就自己排好，不要叫他自己去設定，在回覆最後加一行「⏰例行任務：名稱｜時間｜每次要做的事」。時間寫法：每天固定時間用 24 小時制（08:00,13:30），每隔一段時間寫「每30分鐘」或「每2小時」，兩種可以並用。例如「⏰例行任務：巡 LINE 訊息｜每30分鐘｜檢查 LINE 官方帳號新訊息，擬好回覆給我確認」（「⏰例行任務：」和「｜」照抄）。要「有新東西才做」時，時間欄寫「每10分鐘監看 網址」（系統會不花 AI 流量地檢查那個網頁，內容有變化才叫你），或寫「外部事件」（給一個觸發網址讓 LINE、表單等服務呼叫）。系統會自動建立；同名的會更新。你的任務本身就是要持續盯著某個地方（訊息、訂單、後台）時，主動建議並建立一個每隔一段時間的例行任務。指示裡已經寫了時間，就只用那些時間，不要另編指示裡沒有的時間。每一件都要寫成「⏰例行任務：名稱｜時間｜要做的事」那一行；沒有那一行就沒有建立。禁止只寫「排程已建好」「已建立例行任務」「例行任務已建好」。要刪除、暫停或恢復例行任務時，自己在回覆最後寫一行「⏰刪除：名稱」「⏰停用：名稱」或「⏰啟用：名稱」（多個用、分開，名稱照下面的清單抄），系統會直接處理；改時間或內容就用同名的⏰例行任務那一行覆蓋。你自己的設定都自己改：任務說明用 📝任務更新、記憶用 📌記住、技能用 🧩技能、例行任務用 ⏰。禁止叫使用者去「任務設定」手動刪除、停用或修改，也不要說自己刪不掉。排程時間只寫在 ⏰例行任務 一個地方，每個例行任務的「要做的事」要寫完整（它執行時只看這段，不會回去讀指定任務）。${job.routines?.length ? '你已經有的例行任務（被問到下次什麼時候做時照這些回答）：' + job.routines.map(r => `${r.name}（${r.times.map(t => t.startsWith('*/') ? `每 ${t.slice(2)} 分鐘` : t).join('、')}${r.enabled ? '' : '，已停用'}）`).join('；') + '。' : ''}`,
+    '- 自動整理指定任務：當使用者在對話中說明你長期要負責的工作、固定做法、規則或排程（不是一次性的小請求）時，在回覆最後加上：「📝任務更新：」換行後寫出完整、更新後的指定任務（把原本的任務和新的說明合併成一份，條列清楚：負責什麼、去哪裡做、怎麼做、結果怎麼回報、要注意的規則），最後一行寫「📝結束」。指定任務裡不要寫排程時間（每天幾點、每隔多久）：時間只寫在 ⏰例行任務，指定任務裡的時間句系統會搬走。這兩個標記照抄。沒有新的長期工作說明就不要寫。',
     '- 回覆最後一行可以寫「📍 目前頁面：網址」。不用自己截圖，執行器會拍畫面。',
     '',
     '對話紀錄（舊到新）：'
@@ -355,7 +370,7 @@ export function buildPrompt(job, here) {
     lines.push(`【${h.who}】${quote}${t}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : ''));
   });
   lines.push('', ...dayInfo(job), '', ...workNotes(job), '', ...records(job));
-  lines.push('', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop(), '', turnGuide(), '', whoAmI(job), '現在請處理這則指示：', job.prompt);
+  lines.push('', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop(), '', turnGuide(), '', ...routineLines(job), ...mustMarkLines(job), whoAmI(job), '現在請處理這則指示：', job.prompt);
   return lines.filter(l => l !== '').join('\n');
 }
 // A local model often has a 4096 context. Keep the rules and this instruction, and drop the long essay.
@@ -378,7 +393,8 @@ export function buildLocalPrompt(job, here) {
     job.backup ? '你是在其他 AI 沒有額度時代替它把這件工作做完。該查的頁面要查，該記的要記。不要因為自己是備援就少做。' : '',
     `現在要做：${instruction}`,
     job.bot?.autonomy === 'ask' ? '送出訊息、提交表單、刪除、付款前，先單獨一行寫「✅待確認：要做的事」然後停下。' : '',
-    task ? `指定任務：${task}` : '',
+    task ? `指定任務${job.routine ? '（背景參考，這次以例行任務為準，指定任務裡的時間不算）' : ''}：${task}` : '',
+    ...mustMarkLines(job),
     '規則：先看完再下結論。名字、編號、數字只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。交出數字、名單、清單之前，先回頭對照原始資料核對一次，對不上就重算；不用描述核對過程，有疑點才另列。',
     job.group ? `群組「${job.group.name}」依序做。你只做自己的部分，做完就停。` : '',
     hist.length ? '最近的對話：\n' + hist.join('\n') : '',
@@ -1332,7 +1348,7 @@ async function warmClaude(job, b, here, live) {
     // only what happened since the last turn, then the new instruction
     const fresh = job.history.filter(h => (h.id || 0) > s.lastId && !(h.who === '使用者' && h.text === job.prompt));
     text = [fresh.length ? '（上次之後的新對話）\n' + fresh.map(h => `【${h.who}】${h.text}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : '')).join('\n') : '',
-      dayInfo(job).join('\n'), workNotes(job).join('\n'), records(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'), workLoop().join('\n'), studioAim().join('\n'), turnGuide(), whoAmI(job), manualLines(job).join('\n').trim(), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
+      dayInfo(job).join('\n'), workNotes(job).join('\n'), records(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'), workLoop().join('\n'), studioAim().join('\n'), turnGuide(), routineLines(job).join('\n'), mustMarkLines(job).join('\n'), whoAmI(job), manualLines(job).join('\n').trim(), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
     log(`⚡ ${job.bot.name}：AI 待機中，直接接續`);
   } else {
     if (s) closeSession(job.bot.id);

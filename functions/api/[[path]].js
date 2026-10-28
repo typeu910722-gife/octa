@@ -163,6 +163,88 @@ function applySchedules(plans, prompt, reply) {
   }
   return plans;
 }
+// ---------- 排程只寫一份: schedule sentences in what the user says, and in a standing task ----------
+const CN_DIGIT = { 零: 0, 〇: 0, 一: 1, 二: 2, 兩: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+const cnNum = v => {
+  v = String(v || '').trim();
+  if (/^\d+$/.test(v)) return +v;
+  if (!v.includes('十')) return v.length === 1 && v in CN_DIGIT ? CN_DIGIT[v] : NaN;
+  const [a, b] = v.split('十');
+  return (a ? CN_DIGIT[a] ?? NaN : 1) * 10 + (b ? CN_DIGIT[b] ?? NaN : 0);
+};
+// "下午3點半" / "早上八點" / "晚上 9 點 15 分" → "15:30" / "08:00" / "21:15"; other text unchanged
+export function clockWords(text) {
+  return String(text || '').replace(/(早上|上午|中午|下午|晚上|傍晚|凌晨|清晨|半夜)?\s*([0-9]{1,2}|[零〇一二兩两三四五六七八九十]{1,3})\s*[點点時](?![間间])(?:\s*(半|[0-9]{1,2}\s*分|[零〇一二兩两三四五六七八九十]{1,3}\s*分))?/g, (m, ap, h, mm) => {
+    let H = cnNum(h);
+    if (!Number.isFinite(H) || H > 24) return m;
+    if (/下午|晚上|傍晚/.test(ap || '') && H < 12) H += 12;
+    if (ap === '中午' && H < 6) H += 12;
+    if (H === 24) H = 0;
+    const M = !mm ? 0 : mm === '半' ? 30 : cnNum(mm.replace(/\s*分$/, ''));
+    if (!Number.isFinite(M) || M > 59) return m;
+    return String(H).padStart(2, '0') + ':' + String(M).padStart(2, '0');
+  });
+}
+const SCHED_WORD = /每天|每日|每晚|每早|天天|每個?(早上|晚上|中午|下午|上午)|每[週周]|每星期|每隔|每\s*\d+\s*(分鐘|分|個?小時)|每個?小時|每半小時|定時|固定/;
+const SCHED_NOT = /為什麼|為何|怎麼(沒|又|會|都)|有沒有|是不是|幾點|哪時|什麼時候|沒有?(貼|跑|做|回報|發|傳)|取消|刪除|停用|暫停|不用再|不要再|別再|[嗎呢][？?]?\s*$/;
+const NOT_START = /^\s*(前|後|以前|之前|以後|之後|左右|為止|到|至|~|～|-|—|－)/;   // "11:00 前退房", "08:00-17:00": a deadline or opening hours, not a schedule
+const WEEK = /每[週周]|每星期/;
+// the routines one sentence asks for: [{name, times, prompt}] (empty when it isn't a schedule)
+function scheduleIn(text, whole = false) {
+  const t = clockWords(text);
+  if (!SCHED_WORD.test(t)) return [];
+  const hits = clockHits(t).filter(h => !NOT_START.test(t.slice(h.end)));
+  const out = hits.length ? routinesFromClocks(t, hits) : [];
+  const em = t.match(/每\s*(\d+)\s*分(?:鐘)?|每\s*(\d+)\s*個?小時|每(?:個)?小時|每半小時/);
+  if (em) {
+    const every = em[1] ? +em[1] : em[2] ? +em[2] * 60 : /半/.test(em[0]) ? 30 : 60;
+    const times = cleanTimes(['*/' + every]);
+    if (times.length) out.push({ name: routineName(t.slice(em.index + em[0].length).replace(/^[一1]?次|^巡?一次/, '')) || clean(em[0], 40), times, prompt: clean(t, 2000) });
+  }
+  const wk = (t.match(/每[週周星期]+([一二三四五六日天](?:[、,，和及][一二三四五六日天])*)/) || [])[1];
+  return out.map(r => ({ ...r, prompt: clean((whole || out.length === 1 ? t : r.prompt) + (WEEK.test(t) && !isEvery(r.times[0]) ? `（例行任務是每天跑：只在每週${wk || '指定的那天'}做，其他天只回「（略過）」）` : ''), 2000) }));
+}
+const APPROVAL_TEXT = /^[^\n]{0,40}?(核准|不要做|計畫要改)[:：]/;   // an answer to a ✅待確認 ("@名字 核准：…"), even when the name has a space
+const stripMeta = text => String(text || '').replace(/^（這則是在回覆[\s\S]*?請針對這一則回答。）\n?/, '').replace(/^(?:@\S+\s+)+/, '').trim();
+// the user asked for something to happen on a schedule ("每天 15:30 把房況貼到群組")
+export function scheduleAsk(text) {
+  const t = stripMeta(text);
+  if (!t || APPROVAL_TEXT.test(t) || SCHED_NOT.test(clockWords(t))) return [];
+  return scheduleIn(t, true).slice(0, 6);
+}
+const CORRECT_RE = /不對|不是這樣|不是啦|不是喔|錯了|搞錯|弄錯|應該(要|是|用|先|只)?|以後|之後都|從現在起|記得|記住|不要再|別再|不准|不可以|每次都|一律|永遠|下次|規則是|我說過|說過了|跟你說過|講過/;
+// the user corrected the bot or set a rule; the text to keep as a rule candidate (null when it isn't one)
+export function correctionAsk(text) {
+  const t = stripMeta(text);
+  if (t.length < 4 || APPROVAL_TEXT.test(t) || /^（|^〔/.test(t) || !CORRECT_RE.test(t) || scheduleAsk(t).length) return null;
+  return clean(t.replace(/\s+/g, ' '), 200);
+}
+// times written in a standing task: the sentences come out, each with the routine it stands for
+export function splitTaskSchedules(task) {
+  const keep = [], moved = [];
+  for (const line of String(task || '').split('\n')) {
+    if (!line.trim()) { keep.push(line); continue; }
+    const left = [];
+    for (const part of line.split(/(?<=[。；;])/)) {
+      const found = scheduleIn(part.replace(/^[\s\-•·*]+|^\s*\d+[.)、]\s*/g, ''));
+      if (found.length) { for (const r of found) moved.push({ ...r, line: clean(part.replace(/^[\s\-•·*]+/, ''), 300) }); continue; }
+      left.push(part);
+    }
+    const rest = left.join('').replace(/[，,、；;]\s*$/, '');
+    if (rest.replace(/^[\s\-•·*\d.、)）]+/, '').trim()) keep.push(rest);
+  }
+  return { task: keep.join('\n').replace(/\n{3,}/g, '\n\n').trim(), moved };
+}
+// "⏰例行任務：名稱｜08:00,13:30 或 每30分鐘 或 每10分鐘監看 url 或 外部事件｜要做的事" (also the ✅待確認：建立排程 line)
+function routinePlan(n, t, p) {
+  const name = clean(n, 40), prompt = clean(p, 2000);
+  const wm = String(t).match(/監看\s*(https?:\/\/\S+)/), every = (String(t).match(/每\s*(\d+)\s*分/) || [])[1];
+  if (wm) return { name, times: [], prompt, trigger: 'watch', watch: { url: wm[1], every: +every || 10 } };
+  if (/外部事件|webhook/i.test(t)) return { name, times: [], prompt, trigger: 'hook' };
+  const times = cleanTimes(clockWords(String(t)).replace(/每天|每日/g, ' ').replace(/每\s*(\d+)\s*分(鐘)?/g, '*/$1').replace(/每\s*(\d+)\s*小時/g, (_, h) => '*/' + h * 60).split(/[,，、\s]+/).map(x => { if (/^\*\/\d+$/.test(x)) return x; const mm = x.match(/^(\d{1,2})[:：](\d{2})$/); return mm ? mm[1].padStart(2, '0') + ':' + mm[2] : ''; }));
+  return name && times.length && prompt ? { name, times, prompt } : null;
+}
+const timesWords = ts => ts.map(t => isEvery(t) ? `每 ${t.slice(2)} 分鐘` : '每天 ' + t).join('、');
 const localNow = (env, t = now()) => {
   const d = new Date(t + (+env.TZ_OFFSET_MIN || 0) * 60000);
   return { date: d.toISOString().slice(0, 10), hm: d.toISOString().slice(11, 16) };
@@ -174,11 +256,13 @@ async function addMsg(db, userId, conv, by, text, files = null, reply = null) {
   await db.prepare('INSERT INTO messages (user_id,conv,by_,text,files,ts,reply) VALUES (?,?,?,?,?,?,?)').bind(userId, conv, by, text, files && files.length ? JSON.stringify(files) : null, now(), rid).run();
 }
 // chain: list of bot ids (all use `prompt`) or {b, p} steps
-async function addJob(db, userId, conv, chain, prompt, depth = 0) {
+// routine: the routines.id that started this work (the chain's later steps, retries and follow-ups keep it). Returns the new job id.
+async function addJob(db, userId, conv, chain, prompt, depth = 0, routine = null) {
   const steps = chain.map(s => (typeof s === 'string' ? { b: s, p: prompt } : s));
-  if (!steps.length) return;
-  await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,via) VALUES (?,?,?,?,?,?,?,?)')
-    .bind(userId, conv, steps[0].b, JSON.stringify(steps.slice(1)), steps[0].p, now(), depth, steps[0].v ? JSON.stringify(steps[0].v) : null).run();
+  if (!steps.length) return null;
+  const r = await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,via,routine) VALUES (?,?,?,?,?,?,?,?,?)')
+    .bind(userId, conv, steps[0].b, JSON.stringify(steps.slice(1)), steps[0].p, now(), depth, steps[0].v ? JSON.stringify(steps[0].v) : null, routine || null).run();
+  return r?.meta?.last_row_id ?? null;
 }
 // a user message starts the bot (or the group's members). `text` is what was typed; an empty one still hands the files over.
 async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
@@ -323,13 +407,13 @@ async function loadAll(db, userId) {
     db.prepare('SELECT id,name,task,folder,engine,model,avatar,browser,shot_ts,shot_file,page,bpc,fb,autonomy,stood FROM bots WHERE user_id=? ORDER BY created').bind(userId),
     db.prepare('SELECT id,name,task,members,folder FROM groups_ WHERE user_id=? ORDER BY created').bind(userId),
     db.prepare('SELECT id,name,notes FROM folders WHERE user_id=? ORDER BY created').bind(userId),
-    db.prepare('SELECT id,conv,name,prompt,times,enabled,hook,watch FROM routines WHERE user_id=? ORDER BY created').bind(userId)
+    db.prepare('SELECT id,conv,name,prompt,times,enabled,hook,watch,fired,last_run,last_status,last_job,last_text FROM routines WHERE user_id=? ORDER BY created').bind(userId)
   ]);
   return {
     bots: b.results.map(x => ({ ...x, fb: fbParse(x.fb), autonomy: autonomyOk(x.autonomy), stood: !!x.stood })),
     groups: g.results.map(x => ({ ...x, members: JSON.parse(x.members) })),
     folders: f.results,
-    routines: r.results.map(x => ({ ...x, times: JSON.parse(x.times), enabled: !!x.enabled, watch: x.watch ? JSON.parse(x.watch) : null }))
+    routines: r.results.map(x => ({ ...x, times: JSON.parse(x.times), enabled: !!x.enabled, watch: x.watch ? JSON.parse(x.watch) : null, fired: JSON.parse(x.fired || '{}') }))
   };
 }
 async function getSettings(db, userId) {
@@ -457,13 +541,16 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created)',
   // 主機模式: the account's data lives on its host computer; the cloud keeps the account and forwards
   'ALTER TABLE users ADD COLUMN hmode INTEGER', 'ALTER TABLE users ADD COLUMN hurl TEXT', 'ALTER TABLE users ADD COLUMN hkey TEXT', 'ALTER TABLE users ADD COLUMN hseen INTEGER',
-  'CREATE TABLE IF NOT EXISTS host_hooks (k TEXT PRIMARY KEY, user_id TEXT NOT NULL)'
+  'CREATE TABLE IF NOT EXISTS host_hooks (k TEXT PRIMARY KEY, user_id TEXT NOT NULL)',
+  // 排程看得到有沒有跑: each routine keeps its last run, and the jobs it started point back to it
+  'ALTER TABLE routines ADD COLUMN last_run INTEGER', 'ALTER TABLE routines ADD COLUMN last_status TEXT', 'ALTER TABLE routines ADD COLUMN last_job INTEGER', 'ALTER TABLE routines ADD COLUMN last_text TEXT',
+  'ALTER TABLE jobs ADD COLUMN routine TEXT'
 ];
 const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
   try {
-    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs', "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0", 'SELECT hmode, hurl, hkey, hseen FROM users', 'SELECT k, user_id FROM host_hooks'].map(q => db.prepare(q + ' LIMIT 0')));
+    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs', "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0", 'SELECT hmode, hurl, hkey, hseen FROM users', 'SELECT k, user_id FROM host_hooks', 'SELECT last_run, last_status, last_job, last_text FROM routines', 'SELECT routine FROM jobs'].map(q => db.prepare(q + ' LIMIT 0')));
     schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
@@ -587,8 +674,193 @@ async function viaHost(req, env, path) {
 }
 
 // ---------- 例行任務 ----------
+// Each routine carries its own instruction. The standing task is background only, and times written in it don't count.
+const ROUTINE_NEEDS_PROMPT = '請寫這個例行任務每次要做什麼（每個排程有自己的說明，不會再回去讀指定任務）';
+const ROUTINE_FALLBACK = '（這個例行任務還沒寫自己的指示）照你的指定任務，做這個時間該做的事，完成後回報結果。';
+function routinePrompt(r, o = {}) {
+  const head = `（例行任務「${r.name}」${o.event ? '由事件觸發' : ''}）`;
+  const when = o.catchup ? `這是主機重開後補做的一次${o.missed?.length > 1 ? `（錯過了 ${o.missed.join('、')}，只補做一次）` : ''}。` : '';
+  const where = o.group ? `做完把結果回報在群組「${o.group}」（這則對話就是那個群組）。` : '';
+  return `${head}${when}${where}${String(r.prompt || '').trim() || ROUTINE_FALLBACK}`;
+}
+// where a routine runs and posts. A routine kept on a bot's own chat whose instruction says to report in one of
+// that bot's groups ("貼到「房務群」") runs in that group, with only that bot.
+const GROUP_POST = /群組|群裡|群內|貼到|貼在|發到|發在|傳到|回報到|回報在|報到/;
+export function routineTarget(all, r) {
+  const g = all.groups.find(x => x.id === r.conv);
+  if (g) return { conv: g.id, chain: g.members.filter(id => all.bots.some(b => b.id === id)), name: g.name };
+  const b = all.bots.find(x => x.id === r.conv);
+  if (!b) return null;
+  const p = String(r.prompt || '');
+  const hits = GROUP_POST.test(p) ? all.groups.filter(x => x.members.includes(b.id) && String(x.name || '').length >= 2 && p.includes(x.name)) : [];
+  if (hits.length === 1) return { conv: hits[0].id, chain: [b.id], name: hits[0].name };
+  return { conv: b.id, chain: [b.id], name: b.name };
+}
+// when the routine runs next (ms), from its times and what already fired today; null when off or event-only
+export function nextRun(times, fired, enabled, t = now(), tzMin = 0) {
+  if (!enabled || !Array.isArray(times) || !times.length) return null;
+  const off = (+tzMin || 0) * MIN, f = fired || {};
+  const local = new Date(t + off).toISOString(), date = local.slice(0, 10), hm = local.slice(11, 16);
+  const day0 = Date.parse(date + 'T00:00:00Z') - off;   // local midnight
+  let best = null;
+  const take = v => { if (best === null || v < best) best = v; };
+  for (const x of times) {
+    if (isEvery(x)) { const last = +f[x] || 0; take(last ? Math.max(t, last + (+x.slice(2)) * MIN) : t); continue; }
+    const mm = String(x).match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+    if (!mm) continue;
+    const at = day0 + (+mm[1] * 60 + +mm[2]) * MIN;
+    if (x > hm) take(at);
+    else if (f[x] !== date) take(t);   // due now: the next check starts it
+    else take(at + DAY);
+  }
+  return best;
+}
+// what the app gets: last_run, last_status, last_job, last_text and next_run (ms) per routine; 'fired' stays on the server
+const routinesOut = (env, list) => list.map(({ fired, ...r }) => ({ ...r, next_run: r.hook || r.watch ? null : nextRun(r.times, fired, r.enabled, now(), +env.TZ_OFFSET_MIN || 0) }));
+const routineSummary = t => clean(String(t || '').replace(/^\s*(✅\s*待確認|❓|📍).*$/gm, '').replace(/^⚠\s*/, '').replace(/\s+/g, ' '), 140);
+// the end of one run: 'done' | 'error' | 'skipped'. In a group, one member's reply ("done") isn't hidden by another's「（略過）」, and a failure stays.
+async function routineEnded(db, U, job, status, text) {
+  if (!job?.routine) return null;
+  const when = { done: "(last_status IS NULL OR last_status IN ('done','skipped'))", skipped: "(last_status IS NULL OR last_status='skipped')", error: '1=1' }[status] || '1=0';
+  await db.prepare(`UPDATE routines SET last_status=?, last_job=?, last_text=?, last_run=COALESCE(last_run, ?) WHERE id=? AND user_id=? AND ${when}`)
+    .bind(status, job.id, routineSummary(text) || null, job.started || job.created || now(), job.routine, U).run();
+  return db.prepare('SELECT * FROM routines WHERE id=? AND user_id=?').bind(job.routine, U).first();
+}
+const nextText = (env, r) => {
+  const n = r ? nextRun(JSON.parse(r.times || '[]'), JSON.parse(r.fired || '{}'), !!r.enabled, now(), +env.TZ_OFFSET_MIN || 0) : null;
+  if (!n) return '';
+  const l = localNow(env, n), today = localNow(env).date;
+  return l.date === today ? `今天 ${l.hm}` : l.date === localNow(env, now() + DAY).date ? `明天 ${l.hm}` : `${l.date.slice(5).replace('-', '/')} ${l.hm}`;
+};
 // The host computer is the clock. sched 'cloud' is the alternate: the cloud fires, and a disconnected host waits.
 // A time missed while the host was restarting is run once when it connects, and the person is told.
+// one routine with its own instruction, created or (same name in that chat) updated; says so in the chat
+async function saveRoutine(env, db, U, conv, r, quiet = false) {
+  const { date, hm } = localNow(env);
+  const fired = JSON.stringify(Object.fromEntries(r.times.filter(t => !isEvery(t) && t <= hm).map(t => [t, date])));   // times already past today start tomorrow
+  const old = await db.prepare('SELECT id FROM routines WHERE user_id=? AND conv=? AND name=?').bind(U, conv, r.name).first();
+  if (old) await db.prepare('UPDATE routines SET times=?,prompt=?,enabled=1,fired=? WHERE id=?').bind(JSON.stringify(r.times), r.prompt, fired, old.id).run();
+  else await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)').bind('r-' + uid(), U, conv, r.name, r.prompt, JSON.stringify(r.times), fired, now()).run();
+  if (!quiet) await addMsg(db, U, conv, 'sys', `已${old ? '更新' : '新增'}例行任務「${r.name}」：${timesWords(r.times)}`);
+  return old ? 'updated' : 'added';
+}
+// a bot's routines: its own chat and the groups it is in
+const routinesOfBot = async (db, U, botId) => (await db.prepare('SELECT r.id,r.conv,r.name,r.times,r.prompt,r.enabled FROM routines r LEFT JOIN groups_ g ON g.id=r.conv WHERE r.user_id=? AND (r.conv=? OR g.members LIKE ?)').bind(U, botId, '%' + JSON.stringify(botId) + '%').all()).results.map(r => ({ ...r, times: JSON.parse(r.times || '[]') }));
+// how each time sentence of a task stands against the routines: same | differ (a routine of that name has other times) | missing
+function compareSchedules(moved, routines) {
+  return moved.map(m => {
+    const fixed = m.times.filter(t => !isEvery(t));
+    const same = routines.find(r => m.times.every(t => r.times.includes(t)));
+    if (same) return { ...m, state: 'same', routine: same };
+    const named = routines.find(r => r.name === m.name || (m.name.length >= 2 && r.name.length >= 2 && (r.name.includes(m.name) || m.name.includes(r.name))));
+    if (named) return { ...m, state: 'differ', routine: named };
+    const near = fixed.length ? routines.find(r => r.times.some(t => fixed.includes(t))) : null;
+    if (near) return { ...m, state: 'same', routine: near };
+    return { ...m, state: 'missing' };
+  });
+}
+// 📝任務更新 / 整理排程: the time sentences leave the task. A missing routine is made (with that sentence as its own instruction);
+// an existing one is left as it is: the routine wins. Returns null when the task had no times.
+async function moveTaskSchedules(env, db, U, botId, conv, task) {
+  const sp = splitTaskSchedules(task);
+  if (!sp.moved.length) return null;
+  const rows = compareSchedules(sp.moved, await routinesOfBot(db, U, botId));
+  const lines = [];
+  for (const m of rows) {
+    if (m.state === 'missing') { await saveRoutine(env, db, U, botId, { name: m.name, times: m.times, prompt: m.line }, true); lines.push(`「${m.line}」→ 新增例行任務「${m.name}」（${timesWords(m.times)}）`); }
+    else lines.push(`「${m.line}」→ 已有例行任務「${m.routine.name}」（${timesWords(m.routine.times)}）${m.state === 'differ' ? '，時間不一樣，以例行任務為準' : ''}`);
+  }
+  await addMsg(db, U, conv, 'sys', `排程時間只放在例行任務：指定任務裡的時間已移出。\n${lines.join('\n')}\n要改時間，到任務設定 → 例行任務改，或直接跟它說。`);
+  return { task: sp.task, rows };
+}
+// a user's own instruction (not a routine run, a colleague, a retry note or an approval)
+const userTurn = job => !job.routine && !job.via && !/^（例行任務|^〔背景:|^同事|^（自動接續|^\S+ (問你|把工作交接給你)：/.test(job.prompt || '') && !String(job.prompt || '').startsWith(REVIEW_TAG) && !APPROVAL_TEXT.test(stripMeta(job.prompt));
+const pendingSame = (db, U, conv, line) => db.prepare('SELECT 1 AS n FROM messages WHERE user_id=? AND conv=? AND text LIKE ? AND ts>? LIMIT 1').bind(U, conv, '%' + line + '%', now() - 14 * DAY).first();
+// the user asked for a schedule but the reply wrote no ⏰ line: offer to make it with one press (nothing is made without it)
+async function scheduleRescue(db, U, job, all) {
+  const asked = scheduleAsk(job.prompt);
+  if (!asked.length) return false;
+  const have = all.routines.filter(r => r.conv === job.conv || r.conv === job.bot_id);
+  const todo = asked.filter(a => !have.some(r => a.times.every(t => r.times.includes(t))));
+  if (!todo.length) return false;
+  let n = 0;
+  for (const a of todo.slice(0, 3)) {
+    const line = `✅待確認：建立排程：${a.name}｜${a.times.map(t => isEvery(t) ? `每${t.slice(2)}分鐘` : t).join(',')}｜${a.prompt.replace(/\n+/g, ' ')}`;
+    if (await pendingSame(db, U, job.conv, line.slice(0, 60))) continue;
+    await addMsg(db, U, job.conv, job.bot_id, `你要我定時做這件事，但這次還沒建立排程。按「核准」就建立（${timesWords(a.times)}）：\n${line}`);
+    n++;
+  }
+  return n > 0;
+}
+// a correction or new rule the reply didn't save with 📌: offer it as a rule (only written when the user approves)
+async function ruleRescue(db, U, job) {
+  const rule = correctionAsk(job.prompt);
+  if (!rule) return false;
+  const st = await getSettings(db, U);
+  if (((st.memory || {})[job.bot_id] || []).some(r => r === rule || (r.length >= 8 && (r.includes(rule) || rule.includes(r))))) return false;
+  const line = `✅待確認：記住規則：${rule}`;
+  if (await pendingSame(db, U, job.conv, line.slice(0, 60))) return false;
+  await addMsg(db, U, job.conv, job.bot_id, `這聽起來是以後都要照做的規則，我這次沒有記下來。按「核准」就存成我的規則，之後每次照做：\n${line}`);
+  return true;
+}
+// 一次性整理: the bots whose standing task still has times in it, and how those stand against their routines. Nothing changes here.
+async function tidyScan(env, db, U, { post = false, bot = null } = {}) {
+  const { bots } = await loadAll(db, U), out = [];
+  for (const b of bots) {
+    if (bot && b.id !== bot) continue;
+    const sp = splitTaskSchedules(b.task);
+    if (!sp.moved.length) continue;
+    const rows = compareSchedules(sp.moved, await routinesOfBot(db, U, b.id));
+    out.push({ bot: b.id, name: b.name, items: rows.map(r => ({ line: r.line, times: r.times, state: r.state, routine: r.routine ? { id: r.routine.id, name: r.routine.name, times: r.routine.times } : null })) });
+    if (!post) continue;
+    const line = '✅待確認：整理排程：指定任務裡的時間搬到例行任務';
+    if (await db.prepare('SELECT 1 AS n FROM messages WHERE user_id=? AND conv=? AND by_=? AND text LIKE ? AND ts>? LIMIT 1').bind(U, b.id, b.id, '%' + line + '%', now() - 14 * DAY).first()) continue;
+    const says = rows.map(r => r.state === 'missing' ? `- 「${r.line}」：還沒有對應的例行任務` : r.state === 'differ' ? `- 「${r.line}」：例行任務「${r.routine.name}」是 ${timesWords(r.routine.times)}，不一致` : `- 「${r.line}」：跟例行任務「${r.routine.name}」重複`);
+    await addMsg(db, U, b.id, b.id, `我的指定任務裡還寫著排程時間，排程應該只放在例行任務一個地方：\n${says.join('\n')}\n按「核准」會把這些時間句從指定任務移掉；沒有例行任務的會建立；已經有的以例行任務為準，不會改。\n${line}`);
+  }
+  return out;
+}
+const tidyLooked = new Map();   // per isolate: the one-time check looks at most once an hour per account, and runs once
+async function tidyOnce(env, db, U) {
+  if (now() - (tidyLooked.get(U) || 0) < 60 * MIN) return 0;
+  tidyLooked.set(U, now());
+  const st = await getSettings(db, U);
+  if (st.schedTidy) return 0;
+  st.schedTidy = now(); await putSettings(db, U, st);
+  return (await tidyScan(env, db, U, { post: true })).length;
+}
+// 核准 one of OCTA's own ✅待確認 lines (建立排程, 記住規則, 整理排程): done here, no AI run. 不要做 → only noted.
+async function ownApproval(env, db, U, conv, text, bots, group) {
+  const lead = group && String(text).startsWith('@') ? mentionLine(text, bots.filter(b => group.members.includes(b.id))) : null;
+  const m = (lead ? lead.rest : stripMeta(text)).match(/^(核准|不要做)[:：]\s*(建立排程|記住規則|整理排程)[:：]\s*([\s\S]+?)(?:（以後這類事一律允許：[\s\S]*）)?(?:。這件事先停下，不用再問。)?$/);
+  if (!m) return false;
+  const [, verb, kind, spec] = m;
+  const members = group ? bots.filter(b => group.members.includes(b.id)) : bots.filter(b => b.id === conv);
+  const at = mentionsIn(text, members), named = members.find(b => at[b.id] !== undefined);
+  const asked = await db.prepare('SELECT by_ FROM messages WHERE user_id=? AND conv=? AND text LIKE ? AND ts>? ORDER BY id DESC LIMIT 1').bind(U, conv, `%✅待確認：${kind}：${spec.trim().slice(0, 40)}%`, now() - 14 * DAY).first();
+  const bot = named || members.find(b => b.id === asked?.by_);
+  if (!asked || !bot) return false;
+  if (verb === '不要做') { await addMsg(db, U, conv, 'sys', kind === '記住規則' ? '好，這條不記成規則。' : kind === '建立排程' ? '好，不建立這個排程。' : '好，指定任務先不整理。'); return true; }
+  if (kind === '記住規則') {
+    const st = await getSettings(db, U), rule = clean(spec, 300);
+    st.memory = st.memory || {}; st.memory[bot.id] = [...new Set([...(st.memory[bot.id] || []), rule])].slice(-40);
+    await putSettings(db, U, st);
+    await addMsg(db, U, conv, 'sys', `已記住：${rule.slice(0, 200)}（「${bot.name}」之後每次照做，跟指定任務衝突時以這條為準）`);
+    return true;
+  }
+  if (kind === '建立排程') {
+    const [n, t, ...p] = spec.split(/\s*[｜|]\s*/);
+    const plan = routinePlan(n, t || '', p.join('｜'));
+    if (!plan || plan.trigger) { await addMsg(db, U, conv, 'sys', '這個排程的時間看不懂，沒有建立。請直接說「每天 08:00 做…」或到任務設定 → 例行任務新增。'); return true; }
+    await saveRoutine(env, db, U, conv, plan);
+    return true;
+  }
+  const cur = await db.prepare('SELECT task FROM bots WHERE id=? AND user_id=?').bind(bot.id, U).first();
+  const moved = await moveTaskSchedules(env, db, U, bot.id, conv, cur?.task || '');
+  if (!moved) { await addMsg(db, U, conv, 'sys', `「${bot.name}」的指定任務裡已經沒有排程時間。`); return true; }
+  await db.prepare('UPDATE bots SET task=? WHERE id=? AND user_id=?').bind(moved.task, bot.id, U).run();
+  return true;
+}
 async function fireRoutines(env, db, userId, byHost) {
   const list = (await db.prepare('SELECT * FROM routines WHERE user_id=? AND enabled=1').bind(userId).all()).results;
   if (!list.length) return 0;
@@ -604,32 +876,44 @@ async function fireRoutines(env, db, userId, byHost) {
     // "every N minutes": due when N minutes passed since the last run, and the previous run is finished
     const ev = times.find(isEvery);
     if (ev && now() - (+fired[ev] || 0) >= (+ev.slice(2)) * MIN - 30000) {
-      const open = await db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND conv=? AND status IN ('pending','running') LIMIT 1").bind(userId, r.conv).first();
+      const open = await db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND (conv=? OR routine=?) AND status IN ('pending','running') LIMIT 1").bind(userId, r.conv, r.id).first();
       if (!open) due.push(ev);
     }
     if (!due.length) continue;
+    const old = { ...fired };
     due.forEach(t => (fired[t] = isEvery(t) ? now() : date));
     const upd = await db.prepare("UPDATE routines SET fired=? WHERE id=? AND IFNULL(fired,'')=IFNULL(?,'')").bind(JSON.stringify(fired), r.id, r.fired).run();
     if (!upd.meta.changes) continue;   // someone else fired it
     const t = isEvery(due[due.length - 1]) ? hm : due[due.length - 1];
     const catchup = pc && !isEvery(due[due.length - 1]) && hm >= '00:10' && t < late;
     all = all || await loadAll(db, userId);
-    const g = all.groups.find(x => x.id === r.conv), b = all.bots.find(x => x.id === r.conv);
-    if (!g && !b) continue;
+    const to = routineTarget(all, r);
+    if (!to) continue;
     // the bot is waiting for the user to sign in: don't run (and report the same thing) again until they reply
-    const lastReal = await db.prepare("SELECT by_, text FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1").bind(userId, r.conv).first();
+    const lastReal = await db.prepare("SELECT by_, text FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1").bind(userId, to.conv).first();
     if (lastReal && lastReal.by_ !== 'me' && /需要使用者在電腦上登入/.test(lastReal.text)) {
-      const last = await db.prepare('SELECT by_, text FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT 1').bind(userId, r.conv).first();
-      if (!(last?.by_ === 'sys' && last.text.startsWith('例行任務先暫停'))) { await addMsg(db, userId, r.conv, 'sys', `例行任務先暫停：「${r.name}」要等你在機器人的瀏覽器登入。登入後按「登入好了，繼續」或傳任何訊息，就會恢復。`); n++; }
+      const last = await db.prepare('SELECT by_, text FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT 1').bind(userId, to.conv).first();
+      if (!(last?.by_ === 'sys' && last.text.startsWith('例行任務先暫停'))) {
+        await addMsg(db, userId, to.conv, 'sys', `例行任務先暫停：「${r.name}」要等你在機器人的瀏覽器登入。登入後按「登入好了，繼續」或傳任何訊息，就會恢復。`);
+        await db.prepare('UPDATE routines SET last_run=?, last_status=?, last_job=NULL, last_text=? WHERE id=?').bind(now(), 'error', '等你在機器人的瀏覽器登入，這次沒有執行', r.id).run();
+        n++;
+      }
       continue;
     }
-    if (r.name !== STANDBY) await addMsg(db, userId, r.conv, 'sys', catchup ? `補做錯過的例行任務「${r.name}」（${t}）。主機剛連上，這一次會補做。` : `${t} 例行任務：${r.name}`);
-    await addJob(db, userId, r.conv, g ? g.members : [b.id], `（例行任務「${r.name}」）${catchup ? '這是主機重開後補做的一次。' : ''}${r.prompt || '請執行你的指定任務，完成後回報結果。'}`);
-    if (catchup) await sendNotify(env, st, `【OCTA】補做錯過的例行任務「${r.name}」`);
+    // times missed while the host computer was off: all of them are named, and the run is done once now
+    const missed = catchup ? due.filter(x => !isEvery(x) && x < late) : [];
+    const gap = due.filter(x => !isEvery(x) && old[x] && old[x] < localNow(env, now() - DAY).date).map(x => old[x]).sort()[0];   // whole days with no run
+    const gapNote = gap ? `（${gap} 之後有幾天主機電腦沒開，那幾次沒有做）` : '';
+    const where = to.conv !== r.conv ? `（結果貼在群組「${to.name}」）` : '';
+    if (r.name !== STANDBY || missed.length) await addMsg(db, userId, to.conv, 'sys', catchup ? `補做錯過的例行任務「${r.name}」（${missed.join('、') || t}）。那時主機電腦沒有開著，主機剛連上，這一次會補做。${gapNote}` : `${t} 例行任務：${r.name}${gapNote}${where}`);
+    if (to.conv !== r.conv && r.name !== STANDBY) await addMsg(db, userId, r.conv, 'sys', `${t} 例行任務「${r.name}」開始，結果會貼在群組「${to.name}」`);
+    const jid = await addJob(db, userId, to.conv, to.chain, routinePrompt(r, { catchup, at: t, missed, group: to.conv !== r.conv ? to.name : '' }), 0, r.id);
+    await db.prepare('UPDATE routines SET last_run=?, last_status=NULL, last_job=?, last_text=NULL WHERE id=?').bind(now(), jid, r.id).run();
+    if (catchup) await sendNotify(env, st, `【OCTA】補做錯過的例行任務「${r.name}」（${missed.join('、') || t}）`);
     if (!byHost) {
       if (hostOnline === null) hostOnline = env.isLocal ? true : (await hostInfo(db, userId)).online;
       if (!hostOnline) {
-        await addMsg(db, userId, r.conv, 'sys', '主機電腦目前離線，開機連上後就會執行');
+        await addMsg(db, userId, to.conv, 'sys', '主機電腦目前離線，開機連上後就會執行');
         await sendNotify(env, st, `【OCTA】例行任務「${r.name}」時間到了，但主機電腦離線。電腦開機連上 OCTA 後會自動執行。`);
       }
     }
@@ -656,13 +940,14 @@ function triggerFrom(body, old) {
 }
 // a routine started by an event: if an earlier event is still waiting in line, add this one to it
 async function fireEvent(env, db, r, what) {
-  const pend = await db.prepare("SELECT id,prompt FROM jobs WHERE user_id=? AND conv=? AND status='pending' AND prompt LIKE ? ORDER BY id DESC LIMIT 1").bind(r.user_id, r.conv, `（例行任務「${r.name}」%`).first();
-  if (pend) { await db.prepare('UPDATE jobs SET prompt=? WHERE id=?').bind((pend.prompt + '\n\n（又來一個事件）\n' + what).slice(0, 20000), pend.id).run(); await bump(db, r.user_id); return 'merged'; }
   const all = await loadAll(db, r.user_id);
-  const g = all.groups.find(x => x.id === r.conv), b = all.bots.find(x => x.id === r.conv);
-  if (!g && !b) return 'gone';
-  await addMsg(db, r.user_id, r.conv, 'sys', /交接的工作：/.test(what) ? `⚡ ${what.slice(0, 300)}` : `⚡ 事件觸發：${r.name}`);
-  await addJob(db, r.user_id, r.conv, g ? g.members : [b.id], `（例行任務「${r.name}」由事件觸發）${r.prompt || '請執行你的指定任務，完成後回報結果。'}\n\n事件內容：\n${what}`.slice(0, 20000));
+  const to = routineTarget(all, r);
+  if (!to) return 'gone';
+  const pend = await db.prepare("SELECT id,prompt FROM jobs WHERE user_id=? AND conv=? AND status='pending' AND prompt LIKE ? ORDER BY id DESC LIMIT 1").bind(r.user_id, to.conv, `（例行任務「${r.name}」%`).first();
+  if (pend) { await db.prepare('UPDATE jobs SET prompt=? WHERE id=?').bind((pend.prompt + '\n\n（又來一個事件）\n' + what).slice(0, 20000), pend.id).run(); await bump(db, r.user_id); return 'merged'; }
+  await addMsg(db, r.user_id, to.conv, 'sys', /交接的工作：/.test(what) ? `⚡ ${what.slice(0, 300)}` : `⚡ 事件觸發：${r.name}`);
+  const jid = await addJob(db, r.user_id, to.conv, to.chain, `${routinePrompt(r, { event: true, group: to.conv !== r.conv ? to.name : '' })}\n\n事件內容：\n${what}`.slice(0, 20000), 0, r.id);
+  await db.prepare('UPDATE routines SET last_run=?, last_status=NULL, last_job=?, last_text=NULL WHERE id=?').bind(now(), jid, r.id).run();
   await bump(db, r.user_id);
   return 'fired';
 }
@@ -692,7 +977,7 @@ const coachGuide = (base, coach) => `你是 OCTA 機器人們的教練「${coach
 3. POST ${base}/ask {"to":"<id>","text":"要它做的事或問題"} → 它會開始做，回傳 {"job":編號}。加 "feedback":true 表示這是你對它上一個成果的回饋，它會修正並記下教訓。
 4. GET ${base}/job/<編號>?wait=25 → {"status":"pending|running|done|error","replies":[它的回覆]}。wait 最多等 25 秒，沒好就再查一次。
 5. POST ${base}/teach {"to":"<id>","remember":["要它永遠記住的事"],"skill":{"name":"技能名","steps":"一步一步的做法"},"task":"新的任務說明（會取代舊的，可省略）"} → 直接寫進它的記憶／技能／任務。
-5b. POST ${base}/routine {"to":"<id>","name":"例行任務名","op":"add|delete|disable|enable","times":["07:55","*/30"],"prompt":"每次要做的事"} → 幫它新增、修改、刪除或暫停例行任務（GET bot/<id> 的 routines 看現有的）。
+5b. POST ${base}/routine {"to":"<id>","name":"例行任務名","op":"add|delete|disable|enable","times":["07:55","*/30"],"prompt":"每次要做的事（必填，每個例行任務有自己的說明）"} → 幫它新增、修改、刪除或暫停例行任務（GET bot/<id> 的 routines 看現有的）。
 6. POST ${base}/hire {"name":"接班人名字","task":"它負責的工作，寫清楚步驟與標準","remember":["交接重點"],"avatar":"🤖"} → 建立新的 OCTA 機器人，回傳 {"id":...}。
 7. GET ${base}/inbox?since=<上次看到的訊息編號> → 機器人們的新回覆（含 asks=true 的提問）。定時查這裡就能跟進；有人問問題就用 ask 回答它。
 帶人的方法：先 ask 讓它實際做一次 → 用 job 看結果 → 錯了就 ask 加 feedback 指出哪裡錯、正確答案是什麼 → 穩定的做法用 teach 寫成 remember 或 skill。不要替它編造資料，也不要要求它付款、刪除或對外發訊息而不經使用者同意。`;
@@ -782,6 +1067,7 @@ async function coachApi(env, db, path, m, body, url, pathQuery, rawBody) {
       const times = cleanTimes((Array.isArray(body.times) ? body.times : String(body.times || '').split(/[,，、\s]+/)).map(x => String(x).trim()));
       if (!times.length) return err('times 要有時間，例如 ["08:00","*/30"]');
       const prompt = clean(body.prompt, 2000), { date, hm } = localNow(env);
+      if (!prompt && !String(old?.prompt || '').trim()) return err('prompt 要寫：' + ROUTINE_NEEDS_PROMPT);
       const fired = JSON.stringify(Object.fromEntries(times.filter(x => !isEvery(x) && x <= hm).map(x => [x, date])));
       if (old) await db.prepare('UPDATE routines SET times=?,prompt=?,enabled=1,fired=? WHERE id=?').bind(JSON.stringify(times), prompt || old.prompt, fired, old.id).run();
       else await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)').bind('r-' + uid(), U, conv, name, prompt, JSON.stringify(times), fired, now()).run();
@@ -1846,6 +2132,7 @@ async function route({ request: req, env, params }) {
           changed++;
         }
         try { changed += await weeklyReview(env, db, U); } catch { }
+        try { changed += await tidyOnce(env, db, U); } catch { }
         if (changed) await bump(db, U);
         const slots = body.slots === undefined ? 1 : +body.slots;
         const t0 = now();
@@ -1992,7 +2279,7 @@ async function route({ request: req, env, params }) {
               if (!once.meta.changes) return ok();   // the same result was reported twice
               // the second try on the same model carries the reason and asks for another way
               const nextPrompt = decision.action === 'retry' ? retryPrompt(job.prompt, nextTries, fk, raw) : stripRetryNote(job.prompt);
-              await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via) VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, nextPrompt, now(), job.depth || 0, nextEng, nextTries, job.id, job.via || null).run();
+              await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, nextPrompt, now(), job.depth || 0, nextEng, nextTries, job.id, job.via || null, job.routine || null).run();
               const note = decision.action === 'switch'
                 ? `「${b.name}」的 ${lab(chain[index])} ${why}，改由 ${lab(nextEng)} 接手。已完成的對話會保留，不會重做已完成的步驟。`
                 : `「${b.name}」的 ${lab(current)} ${decision.reason === 'rate_limit' ? '被限流，同一個模型再試一次' : '暫時故障，同一個模型再試一次'}（第 ${nextTries} 次）。`;
@@ -2009,7 +2296,7 @@ async function route({ request: req, env, params }) {
               if (['execution', 'tool'].includes(decision.reason) && autoRetryable(fail.kind, raw) && n <= MAX_AUTO_RETRY) {
                 const once = await db.prepare("UPDATE jobs SET status='error', finished=?, result=?, err_kind=?, err_msg=? WHERE id=? AND status='running'").bind(now(), clean(raw, 500), fail.kind, fail.msg, job.id).run();
                 if (!once.meta.changes) return ok();   // the same result was reported twice
-                await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via) VALUES (?,?,?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, retryPrompt(job.prompt, n, fail.kind, raw), now(), job.depth || 0, job.eng || null, n, job.id, job.via || null).run();
+                await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').bind(U, job.conv, job.bot_id, job.chain, retryPrompt(job.prompt, n, fail.kind, raw), now(), job.depth || 0, job.eng || null, n, job.id, job.via || null, job.routine || null).run();
                 await addMsg(db, U, job.conv, 'sys', `「${b.name}」這次沒做成（${FAIL_KINDS[fail.kind].label}），自動重試第 ${n} 次${n >= MAX_AUTO_RETRY ? '，這次會換一種方法' : ''}…`);
                 await bump(db, U);
                 return ok();
@@ -2100,11 +2387,8 @@ async function route({ request: req, env, params }) {
         }
         if (good && job.kind === 'chat') {
           text = text.replace(/^\s*⏰\s*例行任務[:：]\s*(.+?)\s*[｜|]\s*(.+?)\s*[｜|]\s*(.+)$/gm, (_, n, t, p) => {
-            const wm = String(t).match(/監看\s*(https?:\/\/\S+)/), every = (String(t).match(/每\s*(\d+)\s*分/) || [])[1];
-            if (wm) { plans.push({ name: clean(n, 40), times: [], prompt: clean(p, 2000), trigger: 'watch', watch: { url: wm[1], every: +every || 10 } }); return ''; }
-            if (/外部事件|webhook/i.test(t)) { plans.push({ name: clean(n, 40), times: [], prompt: clean(p, 2000), trigger: 'hook' }); return ''; }
-            const times = cleanTimes(String(t).replace(/每\s*(\d+)\s*分(鐘)?/g, '*/$1').replace(/每\s*(\d+)\s*小時/g, (_, h) => '*/' + h * 60).split(/[,，、\s]+/).map(x => { if (/^\*\/\d+$/.test(x)) return x; const mm = x.match(/^(\d{1,2})[:：](\d{2})$/); return mm ? mm[1].padStart(2, '0') + ':' + mm[2] : ''; }));
-            if (clean(n, 40) && times.length) plans.push({ name: clean(n, 40), times, prompt: clean(p, 2000) });
+            const plan = routinePlan(n, t, p);
+            if (plan) plans.push(plan);
             return '';
           }).trim() || '（已設定例行任務）';
           applySchedules(plans, job.prompt, text);
@@ -2137,6 +2421,14 @@ async function route({ request: req, env, params }) {
           shown = text.split('\n').filter(l => { const ml = mentionLine(l, mates); return !(ml && privateAsk(ml.rest, job.prompt)); }).join('\n').trim();
         }
         if (shown && !(quiet && passed(shown) && !outs.length)) await addMsg(db, U, job.conv, job.bot_id, shown, outs);
+        if (job.routine && job.kind === 'chat') {   // 排程看得到有沒有跑: this run's result goes on the routine
+          const st0 = !good || body.stopped || LOGIN_WAIT.test(text) ? 'error' : passed(text) && !outs.length ? 'skipped' : 'done';
+          const rr = await routineEnded(db, U, job, st0, body.stopped ? '使用者按了停止' : text);
+          if (rr && st0 === 'error' && !body.stopped) {
+            const nx = nextText(env, rr);
+            await addMsg(db, U, job.conv, 'sys', `⚠ 例行任務「${rr.name}」這次沒有完成${fail ? `（${(FAIL_KINDS[fail.kind] || FAIL_KINDS.unknown).label}）` : LOGIN_WAIT.test(text) ? '（要先登入）' : ''}。${nx ? `下次 ${nx} 會再執行；` : ''}要現在重做，按上面的「↻ 重試」或直接叫它做。`);
+          }
+        }
         if (remember.length || skillsNew.length || sitesNew.length || factsNew.length || manualsNew.length) {
           const st = await getSettings(db, U);
           if (factsNew.length) { st.facts = st.facts || {}; st.facts[job.bot_id] = [...new Set([...(st.facts[job.bot_id] || []), ...factsNew])].slice(-60); }
@@ -2157,14 +2449,7 @@ async function route({ request: req, env, params }) {
           else await db.prepare("INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created,hook,watch) VALUES (?,?,?,?,?,'[]',1,'{}',?,?,?)").bind('r-' + uid(), U, job.conv, r.name, r.prompt, now(), trig.hook, trig.watch).run();
           await addMsg(db, U, job.conv, 'sys', r.trigger === 'watch' ? `已設定例行任務「${r.name}」：網頁 ${r.watch.url} 有變化時開始（每 ${r.watch.every || 10} 分鐘檢查）` : `已設定例行任務「${r.name}」：外部事件觸發。觸發網址在任務設定 → 例行任務裡`);
         }
-        for (const r of plans.filter(x => !x.trigger).slice(0, 12)) {
-          const { date, hm } = localNow(env);
-          const fired = JSON.stringify(Object.fromEntries(r.times.filter(t => !isEvery(t) && t <= hm).map(t => [t, date])));   // times already past today start tomorrow
-          const old = await db.prepare('SELECT id FROM routines WHERE user_id=? AND conv=? AND name=?').bind(U, job.conv, r.name).first();
-          if (old) await db.prepare('UPDATE routines SET times=?,prompt=?,enabled=1,fired=? WHERE id=?').bind(JSON.stringify(r.times), r.prompt, fired, old.id).run();
-          else await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)').bind('r-' + uid(), U, job.conv, r.name, r.prompt, JSON.stringify(r.times), fired, now()).run();
-          await addMsg(db, U, job.conv, 'sys', `已${old ? '更新' : '新增'}例行任務「${r.name}」：${r.times.map(t => isEvery(t) ? `每 ${t.slice(2)} 分鐘` : '每天 ' + t).join('、')}`);
-        }
+        for (const r of plans.filter(x => !x.trigger).slice(0, 12)) await saveRoutine(env, db, U, job.conv, r);
         if (routineOps.length) {
           const mine = (await db.prepare('SELECT id,name,enabled FROM routines WHERE user_id=? AND conv IN (?,?)').bind(U, job.conv, job.bot_id).all()).results;
           const done = [], miss = [];
@@ -2182,9 +2467,19 @@ async function route({ request: req, env, params }) {
           if (miss.length) await addMsg(db, U, job.conv, 'sys', `找不到這些例行任務，沒有變更：${miss.join('、')}`);
         }
         if (claimedBuilt && !plans.length) await addMsg(db, U, job.conv, 'sys', '這次回覆說排程已建好，但沒有寫出可以建立的時間，所以沒有新增例行任務。');
+        // 自己排時間 / 被糾正就記規則: the user asked for a schedule or set a rule, and the reply didn't do it → one-click ✅待確認
+        if (good && job.kind === 'chat' && userTurn(job)) {
+          const all3 = await loadAll(db, U), grp3 = all3.groups.find(g => g.id === job.conv), self3 = all3.bots.find(b => b.id === job.bot_id);
+          const forMe = !grp3 || (self3 && mentionsIn(job.prompt, [self3])[self3.id] !== undefined) || (grp3.members[0] === job.bot_id && !Object.keys(mentionsIn(job.prompt, all3.bots.filter(b => grp3.members.includes(b.id)))).length);
+          if (forMe && !plans.length && !routineOps.length) await scheduleRescue(db, U, job, all3);
+          if (forMe && !remember.length && !factsNew.length) await ruleRescue(db, U, job);
+        }
         if (learned && learned.length >= 4) {
           const cur = await db.prepare('SELECT task FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first();
-          if (cur && cur.task !== learned) {
+          // 排程只寫一份: times in the new standing task move to routines (made when missing; an existing one wins)
+          const moved = await moveTaskSchedules(env, db, U, job.bot_id, job.conv, learned);
+          if (moved) learned = moved.task;
+          if (cur && cur.task !== learned && learned.length >= 2) {
             await db.prepare('UPDATE bots SET task=? WHERE id=? AND user_id=?').bind(learned, job.bot_id, U).run();
             await addMsg(db, U, job.conv, 'sys', `已自動更新「${(await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人'}」的指定任務，可在任務設定修改`);
             if (!String(cur.task || '').trim()) await autoStandby(db, U, job.bot_id);
@@ -2211,7 +2506,7 @@ async function route({ request: req, env, params }) {
           const asker = bgF && (await db.prepare('SELECT id FROM bots WHERE id=? AND user_id=?').bind(bgF[1], U).first());
           const me2 = (await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '同事';
           if (asker) { await addMsg(db, U, (via?.c && (await db.prepare('SELECT 1 AS n FROM groups_ WHERE id=? AND user_id=?').bind(via.c, U).first()) ? via.c : asker.id), 'sys', `🔁 「${me2}」沒能完成${bgF[2] === 'ask' ? '回覆' : '交辦'}：${text.slice(0, 300)}`); await bump(db, U); }
-          else if (via?.k === 'ask' && JSON.parse(job.chain).length) { await addJob(db, U, job.conv, JSON.parse(job.chain), job.prompt, job.depth); await bump(db, U); }
+          else if (via?.k === 'ask' && JSON.parse(job.chain).length) { await addJob(db, U, job.conv, JSON.parse(job.chain), job.prompt, job.depth, job.routine); await bump(db, U); }
         }
         if (!good || job.kind !== 'chat') return ok();
         // Two replies in a row are stuck on the same sign-in: stop the chain and say so once.
@@ -2227,7 +2522,7 @@ async function route({ request: req, env, params }) {
         if (round < 1 && !passed(text) && /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) && !LOGIN_WAIT.test(text) && classifyModelFailure(text) !== 'quota' && classifyModelFailure(text) !== 'rate_limit') {
           const orig = job.prompt.replace(/^（自動接續 \d+）[\s\S]*?原本的指示：/, '');
           await addMsg(db, U, job.conv, 'sys', '還沒做完，請它接著把剩下的做完…');
-          await addJob(db, U, job.conv, [{ b: job.bot_id, p: `（自動接續 ${round + 1}）上一則沒做完。只補還沒做的那一步。如果要登入，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下。不要把同一句再寫一遍，也不要編畫面上沒有的房號或姓名。\n原本的指示：${orig}` }, ...JSON.parse(job.chain)], orig, job.depth);
+          await addJob(db, U, job.conv, [{ b: job.bot_id, p: `（自動接續 ${round + 1}）上一則沒做完。只補還沒做的那一步。如果要登入，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下。不要把同一句再寫一遍，也不要編畫面上沒有的房號或姓名。\n原本的指示：${orig}` }, ...JSON.parse(job.chain)], orig, job.depth, job.routine);
           await bump(db, U);
           return ok();
         }
@@ -2278,7 +2573,7 @@ async function route({ request: req, env, params }) {
         if (gives.some(g => g.p)) rest = [...handed, ...rest.filter(s => !gives.some(g => g.p && g.b === s.b))];
         if (asks.length) rest = [...asks, { b: self.id, p: `同事已在上面回覆你的問題，請根據回覆繼續完成原本的指示：${job.prompt}` }, ...rest];
         if (gives.length || from) await bump(db, U);
-        await addJob(db, U, job.conv, rest, job.prompt, job.depth + (asks.length || handed.length ? 1 : 0));
+        await addJob(db, U, job.conv, rest, job.prompt, job.depth + (asks.length || handed.length ? 1 : 0), job.routine);
         return ok();
       }
       if (path === 'runner/shot' && m === 'POST') {   // the screenshot stays on the computer; only where it is goes up
@@ -2380,7 +2675,7 @@ async function route({ request: req, env, params }) {
         runnerOnline: env.runnerOnline ? env.runnerOnline() : (h ? h.online : true),
         host: h ? h.hostLabel : 'local', computers: h ? h.runners.length : 1, shareBrowser: st.shareBrowser !== false, nick: st.nick || '', sched: st.sched === 'cloud' ? 'cloud' : 'pc', quick: st.quick || {}, allow: st.allow || {}, pins: st.pins || [], mute: st.mute || {}, memory: st.memory || {}, facts: st.facts || {}, manuals: st.manuals || {}, review: st.review !== false, skills: st.skills || {}, nsk: Object.fromEntries(Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])), warm: WARM.includes(+st.warm) ? +st.warm : 120, models: h ? h.models : st._models || null,
         focus: st.focus?.conv ? { conv: st.focus.conv, dev: st.focus.dev || '', at: st.focus.at || 0 } : null,
-        ...all, last: last.results, ur: ur.results.map(r => [r.conv, r.id]), busy: busy.results
+        ...all, routines: routinesOut(env, all.routines), last: last.results, ur: ur.results.map(r => [r.conv, r.id]), busy: busy.results
       });
     }
     if (path === 'messages' && m === 'GET') {   // one conversation, 50 at a time
@@ -2675,6 +2970,11 @@ async function route({ request: req, env, params }) {
       }
     }
 
+    // 一次性整理: times still written in standing tasks vs the routines. GET only lists; POST posts the ✅待確認 to each bot (or {bot}).
+    if (path === 'schedules/tidy' && (m === 'GET' || m === 'POST')) {
+      const list = await tidyScan(env, db, U, { post: m === 'POST', bot: clean(m === 'GET' ? url.searchParams.get('bot') : body.bot, 64) || null });
+      return m === 'POST' ? ok({ bots: list }) : J({ bots: list });
+    }
     // routines (例行任務)
     if (path === 'routines' && m === 'POST') {
       const { bots, groups } = await loadAll(db, U);
@@ -2682,6 +2982,7 @@ async function route({ request: req, env, params }) {
       if (!bots.some(b => b.id === conv) && !groups.some(g => g.id === conv)) return err('找不到對話', 404);
       let trig; try { trig = triggerFrom(body); } catch (e) { return err(e.message); }
       if (!name || (!times.length && !trig.hook && !trig.watch)) return err('名稱和時間（或觸發方式）都要填');
+      if (!clean(body.prompt, 2000)) return err(ROUTINE_NEEDS_PROMPT);   // 每個排程有自己的說明: no falling back on the standing task
       const { date, hm } = localNow(env);   // times already past today start tomorrow
       const fired = Object.fromEntries(times.filter(t => !isEvery(t) && t <= hm).map(t => [t, date]));
       const id = 'r-' + uid();
@@ -2700,13 +3001,16 @@ async function route({ request: req, env, params }) {
         if (body.trigger !== undefined) { try { trig = triggerFrom(body, r); } catch (e) { return err(e.message); } }
         if (!name || (!times.length && !trig.hook && !trig.watch)) return err('名稱和時間（或觸發方式）都要填');
         const enabled = body.enabled === undefined ? r.enabled : body.enabled ? 1 : 0;
+        const prompt = body.prompt === undefined ? r.prompt : clean(body.prompt, 2000);
+        // an edit, or turning on an old routine that has no instruction of its own, needs one; turning it off never does
+        if (!String(prompt || '').trim() && (body.prompt !== undefined || body.name !== undefined || body.times || (enabled && !r.enabled))) return err(ROUTINE_NEEDS_PROMPT);
         let fired = r.fired;
         if (enabled && !r.enabled || body.times) {   // turning on or changing times: don't fire times already past today
           const { date, hm } = localNow(env);
           fired = JSON.stringify(Object.fromEntries(times.filter(t => !isEvery(t) && t <= hm).map(t => [t, date])));
         }
         await db.prepare('UPDATE routines SET name=?,prompt=?,times=?,enabled=?,fired=?,hook=?,watch=?,wstate=? WHERE id=?')
-          .bind(name, body.prompt === undefined ? r.prompt : clean(body.prompt, 2000), JSON.stringify(times), enabled, fired, trig.hook, trig.watch, trig.watch === r.watch ? r.wstate : null, id).run();
+          .bind(name, prompt, JSON.stringify(times), enabled, fired, trig.hook, trig.watch, trig.watch === r.watch ? r.wstate : null, id).run();
         return ok({ hook: trig.hook });
       }
       if (m === 'DELETE') {
@@ -2747,6 +3051,7 @@ async function route({ request: req, env, params }) {
         }
       }
       await addMsg(db, U, conv, 'me', text || '（附件）', files, quoted?.id || null);
+      if (await ownApproval(env, db, U, conv, text, bots, group)) return ok();
       // 核准 a 每週自我檢討 suggestion: write the rules directly, no AI run needed
       const ru = bot && text.match(/^核准[:：]\s*更新規則[:：]\s*([\s\S]+)$/);
       if (ru && (await db.prepare("SELECT 1 AS n FROM messages WHERE user_id=? AND conv=? AND by_=? AND text LIKE '%✅待確認：更新規則%' AND ts>? LIMIT 1").bind(U, conv, bot.id, now() - 14 * DAY).first())) {
@@ -3154,6 +3459,7 @@ async function jobPayload(env, db, U, job) {
     const sp = st.spent || {}, list = [bot.engine + (bot.model ? '|' + bot.model : ''), ...bot.fb];
     if (sp[list[0]] > now()) { const alt = list.find(x => !(sp[x] > now())); if (alt) { job.eng = alt; await db.prepare('UPDATE jobs SET eng=? WHERE id=?').bind(alt, job.id).run(); } }
   }
+  const rt = job.routine ? await db.prepare('SELECT name,times,prompt FROM routines WHERE id=? AND user_id=?').bind(job.routine, U).first() : null;
   const { date } = localNow(env);   // how many jobs this AI already ran today, so the bot can tell the user
   const dayStart = Date.parse(date + 'T00:00:00Z') - (+env.TZ_OFFSET_MIN || 0) * 60000;
   const usageToday = (await db.prepare("SELECT COUNT(*) AS n FROM jobs j JOIN bots b ON b.id=j.bot_id WHERE j.user_id=? AND j.kind='chat' AND j.created>=? AND IFNULL(b.engine,'claude')=?").bind(U, dayStart, bot.engine || 'claude').first())?.n ?? null;
@@ -3167,6 +3473,10 @@ async function jobPayload(env, db, U, job) {
     id: job.id, kind: job.kind, url: job.url, prompt: job.kind === 'chat' && /例行|排程|定時|刪|停用|暫停|取消/.test(job.prompt || '') ? job.prompt + ROUTINE_SELF : job.prompt, usageToday, warm: WARM.includes(+st.warm) ? +st.warm : 120, allowed: (st.allow || {})[bot.id] || [], ...mem, skills: (st.skills || {})[bot.id] || [],
     nskills: (st.nskills || {})[bot.id] || null,
     routines: (await db.prepare('SELECT name,times,enabled FROM routines WHERE user_id=? AND conv IN (?,?)').bind(U, job.conv, bot.id).all()).results.map(r => ({ name: r.name, times: JSON.parse(r.times), enabled: !!r.enabled })),
+    // a routine run: its own instruction leads, the standing task is background, and its times are the only times
+    routine: rt ? { name: rt.name, times: JSON.parse(rt.times || '[]'), own: !!String(rt.prompt || '').trim() } : null,
+    schedAsk: job.kind === 'chat' && userTurn(job) && scheduleAsk(job.prompt).length > 0,   // "每天 15:30 …": set the routine up this turn
+    correction: job.kind === 'chat' && userTurn(job) && !!correctionAsk(job.prompt),        // a correction: save a 📌 rule this turn
     routeTries: +job.tries || 0,
     canAsk: job.depth < MAX_ASK_DEPTH,
     conv: { id: conv.id, name: conv.name },

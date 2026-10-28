@@ -79,7 +79,11 @@ CREATE TABLE IF NOT EXISTS routines (  -- 例行任務
   created INTEGER NOT NULL,
   hook TEXT,                     -- secret key: POST /api/hook/<key> starts the routine (LINE webhook, forms…)
   watch TEXT,                    -- JSON {url, sel, every}: start when this page changes
-  wstate TEXT                    -- JSON {hash, text, t}: last look at the watched page
+  wstate TEXT,                   -- JSON {hash, text, t}: last look at the watched page
+  last_run INTEGER,              -- when it last started (ms); last_status stays NULL until that run ends
+  last_status TEXT,              -- 'done' | 'error' | 'skipped' (replied only「（略過）」)
+  last_job INTEGER,              -- jobs.id of that run's last reply
+  last_text TEXT                 -- short summary of that reply (≤140 characters)
 );
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,7 +121,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   err_msg TEXT,                  -- the error text behind it (short)
   shot TEXT,                     -- files.id of the screenshot taken when it ended
   retry_of INTEGER,              -- the failed job this one tries again
-  via TEXT                       -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
+  via TEXT,                      -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
+  routine TEXT                   -- routines.id that started this job (its result updates that routine's last_*)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created);
