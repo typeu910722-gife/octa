@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>僅觀看</title>
+<style>
+  /* a clear sheet over the bot's page while you are only watching: clicks and typing stop here, the wheel still scrolls */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; cursor: default; user-select: none; }
+  #tip { position: absolute; left: 50%; bottom: 14px; transform: translate(-50%, 6px); opacity: 0; pointer-events: none;
+    background: rgba(28, 24, 20, .92); color: #f3ead3; border: 1px solid rgba(212, 175, 106, .75); border-radius: 999px;
+    padding: 6px 14px; font: 12px/1.4 "Segoe UI", "PingFang TC", sans-serif; white-space: nowrap; transition: opacity .2s, transform .2s; }
+  #tip.on { opacity: 1; transform: translate(-50%, 0); }
+  @media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
+</style>
+<body>
+  <div id="tip" role="status">👁 僅觀看中 — 要自己操作，按下方「取得控制權」</div>
+  <script>
+    const api = () => window.octaBrowser;
+    const tip = document.getElementById('tip');
+    let tipT = 0;
+    const poke = () => { tip.classList.add('on'); clearTimeout(tipT); tipT = setTimeout(() => tip.classList.remove('on'), 1800); };
+    // wheel: add up the turns and pass them on once per frame; OCTA scrolls the page with script
+    let acc = null;
+    addEventListener('wheel', e => {
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? innerHeight : 1;
+      if (!acc) { acc = { x: e.clientX, y: e.clientY, dx: 0, dy: 0 }; requestAnimationFrame(() => { const a = acc; acc = null; api()?.wheel?.(a); }); }
+      acc.x = e.clientX; acc.y = e.clientY;
+      acc.dx += (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * unit;
+      acc.dy += (e.shiftKey && !e.deltaX ? 0 : e.deltaY) * unit;
+    }, { passive: false });
+    for (const ev of ['mousedown', 'pointerdown', 'dblclick', 'contextmenu', 'auxclick', 'dragstart'])
+      addEventListener(ev, e => { e.preventDefault(); if (ev === 'mousedown' || ev === 'contextmenu') poke(); }, true);
+    addEventListener('keydown', e => { e.preventDefault(); poke(); }, true);
+  </script>
+</body>

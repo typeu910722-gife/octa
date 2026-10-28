@@ -9,6 +9,8 @@ export const OPEN_BAR = 48;
 export const ENGINE_ROW = 36;
 export const TAB_ROW = 28;
 export const PANEL_EDGE = 8;
+// the "watch only | take control" switch sits in the frame right under the page, so it never covers the site
+export const CONTROL_ROW = 40;
 export const PANEL_MIN = { width: 360, height: 280 };
 
 // Where the collapsed browser card sits. `at` is the place the person dragged it to.
@@ -148,6 +150,9 @@ export function resizeBox(winW, winH, box, edge, dx, dy) {
 // thumb: a corner preview, the chat keeps the whole window. opts.dot shrinks it to a round button.
 // opts.covered: a dialog is open in the chat, so nothing is placed over it.
 // open: a side panel for this bot only. The chat stays full size underneath.
+// opts.control: the person took control of this page. Otherwise (watch only) a clear shield
+// lies exactly over the page so the person's mouse and keys never reach it; the bot's own
+// input goes straight to the page's renderer and is not stopped by it.
 export function embedFrames(w, h, mode, at, opts) {
   w = Math.max(1, Math.round(w));
   h = Math.max(1, Math.round(h));
@@ -162,18 +167,58 @@ export function embedFrames(w, h, mode, at, opts) {
     const box = sidebarBox(w, h, at);
     const edge = PANEL_EDGE;
     const bar = OPEN_BAR + ENGINE_ROW + ((opts?.tabs || 0) > 0 ? TAB_ROW : 0);
+    const page = {
+      x: box.x + edge,
+      y: box.y + bar,
+      width: Math.max(1, box.width - edge * 2),
+      height: Math.max(1, box.height - bar - CONTROL_ROW - edge)
+    };
     return {
       mode: 'open',
       main,
       box,
       chrome: { x: box.x, y: box.y, width: box.width, height: box.height },
-      page: {
-        x: box.x + edge,
-        y: box.y + bar,
-        width: Math.max(1, box.width - edge * 2),
-        height: Math.max(1, box.height - bar - edge)
-      }
+      page,
+      shield: shieldFor('open', page, opts?.control)
     };
   }
   return { mode: 'hidden', main, page: null, chrome: null };
+}
+
+// Watch only is the default. The shield is the page's exact rectangle, only while the panel is open
+// and the person has not taken control. A thumbnail's page is parked in a hidden window, so it needs none.
+export function shieldFor(mode, page, control) {
+  if (mode !== 'open' || !page || control) return null;
+  return { x: page.x, y: page.y, width: page.width, height: page.height };
+}
+
+// A wheel turn over the shield scrolls the page with script, not with an input event,
+// so the page (and the bot's live cursor) never sees the person's mouse.
+export function wheelDelta(e, pageHeight) {
+  const unit = e?.deltaMode === 1 ? 40 : e?.deltaMode === 2 ? Math.max(1, +pageHeight || 800) : 1;
+  const cap = v => Math.max(-4000, Math.min(4000, Math.round(v)));
+  return { dx: cap((+e?.deltaX || 0) * unit), dy: cap((+e?.deltaY || 0) * unit) };
+}
+// scrolls the innermost scrollable box under the pointer, or else the page itself
+export function scrollScript(x, y, dx, dy) {
+  const n = v => (Number.isFinite(+v) ? Math.round(+v) : 0);
+  return '((x,y,dx,dy)=>{let el=document.elementFromPoint(x,y);' +
+    'while(el&&el!==document.body&&el!==document.documentElement){const s=getComputedStyle(el);' +
+    'const sy=dy&&/(auto|scroll|overlay)/.test(s.overflowY)&&el.scrollHeight>el.clientHeight+1;' +
+    'const sx=dx&&/(auto|scroll|overlay)/.test(s.overflowX)&&el.scrollWidth>el.clientWidth+1;' +
+    'if(sy||sx){el.scrollBy(dx,dy);return}el=el.parentElement}' +
+    `(document.scrollingElement||document.documentElement).scrollBy(dx,dy)})(${n(x)},${n(y)},${n(dx)},${n(dy)})`;
+}
+
+// While the person has control, the bot's live cursor stays out of the way: the page's tag script
+// (public/octa-runner.mjs) checks this flag and does not follow the person's mouse.
+export function userFlagScript(on) {
+  return on
+    ? "window.__octaUser=true;try{var c=document.getElementById('__octa_cur');if(c)c.style.opacity='0'}catch(e){}"
+    : 'window.__octaUser=false';
+}
+
+// The stage message the chat page gets when the switch flips: take control = 接手 (hand), back to watching = 繼續 (go).
+export function controlStage(on) {
+  return on ? 'hand' : 'go';
 }

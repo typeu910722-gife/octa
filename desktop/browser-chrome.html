@@ -48,6 +48,19 @@
   body.dot #card { border-radius: 50%; }
   body.dot #hit, body.dot .mini, body.open .mini { display: none; }
   body.dot .dotb { display: grid; }
+  /* the switch right under the page (40px row = CONTROL_ROW in embed-layout.mjs) */
+  .ctlrow { display: none; position: absolute; left: 8px; right: 8px; bottom: 8px; height: 40px; align-items: center; justify-content: center; gap: 10px; }
+  body.open .ctlrow { display: flex; }
+  .ctl { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: #f3ead3; border: 1px solid #c4a574; box-shadow: 0 1px 6px rgba(0, 0, 0, .35); flex: none; }
+  .ctl button { all: unset; box-sizing: border-box; cursor: pointer; height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 26px; color: #3a3128; white-space: nowrap; }
+  .ctl button:hover { background: rgba(28, 24, 20, .08); }
+  .ctl button[aria-checked="true"] { background: #1c1814; color: #fff; cursor: default; }
+  .ctl button:focus-visible { outline: 2px solid #d4af6a; outline-offset: 1px; }
+  /* the switch stays centred under the page; the short note sits to its right when there is room */
+  .ctlnote { position: absolute; left: calc(50% + 100px); right: 4px; font-size: 11px; color: #e7d3a1; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 640px) { .ctlnote { display: none; } }
+  /* while you have control the frame turns brighter, so it is clear the bot has stopped */
+  body.open.mine #card { border-color: #f0c674; box-shadow: inset 0 0 0 1px #f0c674; }
 </style>
 <body>
   <div id="card">
@@ -66,8 +79,6 @@
           <input id="url" placeholder="https://" autocomplete="off" spellcheck="false" aria-label="網址">
           <button type="submit" class="tool">編輯</button>
         </form>
-        <button type="button" class="tool" id="hand">接手</button>
-        <button type="button" class="tool" id="goOn">繼續</button>
         <button type="button" class="back" id="collapse">收回</button>
       </div>
       <div class="engines" id="engines">
@@ -77,6 +88,13 @@
         <button type="button" class="tool" data-engine="firefox">Firefox</button>
         <button type="button" class="tool" data-engine="edge">Edge</button>
       </div>
+    </div>
+    <div class="ctlrow">
+      <div class="ctl" id="ctl" role="radiogroup" aria-label="誰來操作這個頁面">
+        <button type="button" role="radio" data-ctl="watch" aria-checked="true" title="只看機器人操作，滑鼠和鍵盤不會動到頁面（可以捲動）">👁 僅觀看</button>
+        <button type="button" role="radio" data-ctl="take" aria-checked="false" title="自己點擊、打字、登入；機器人會先暫停">取得控制權</button>
+      </div>
+      <span class="ctlnote" id="ctlnote">機器人操作中，你只能看和捲動</span>
     </div>
     <div class="edges" id="edges">
       <div class="edge n" data-edge="n"></div>
@@ -157,8 +175,19 @@
     document.getElementById('mini').onclick = () => api()?.dot?.(true);
     document.getElementById('dot').onclick = () => api()?.dot?.(false);
     document.getElementById('go').onsubmit = e => { e.preventDefault(); api()?.go(document.getElementById('url').value); };
-    document.getElementById('hand').onclick = () => api()?.hand();
-    document.getElementById('goOn').onclick = () => api()?.goOn();
+    // watch only | take control (Grok Bot style). The side you are on is the solid one.
+    const ctl = document.getElementById('ctl');
+    ctl.onclick = e => {
+      const b = e.target.closest('[data-ctl]');
+      if (!b || b.getAttribute('aria-checked') === 'true') return;
+      paintControl(b.dataset.ctl === 'take');
+      api()?.control?.(b.dataset.ctl === 'take');
+    };
+    function paintControl(on) {
+      document.body.classList.toggle('mine', !!on);
+      for (const b of ctl.querySelectorAll('[data-ctl]')) b.setAttribute('aria-checked', String((b.dataset.ctl === 'take') === !!on));
+      document.getElementById('ctlnote').textContent = on ? '你正在操作，機器人暫停中' : '機器人操作中，你只能看和捲動';
+    }
     document.getElementById('engines').onclick = e => {
       const b = e.target.closest('[data-engine]');
       if (b) api()?.engine(b.dataset.engine);
@@ -213,6 +242,7 @@
       if (d.name) document.getElementById('dot').title = d.name + '：展開瀏覽器預覽';
       hit.setAttribute('aria-label', d.mode === 'open' ? '收回瀏覽器' : '打開瀏覽器');
       if (d.name) name.textContent = d.name;
+      paintControl(!!d.control);
       if (d.jpeg) pic.src = 'data:image/jpeg;base64,' + d.jpeg;
       const back = document.getElementById('goBack');
       back.disabled = !d.canBack;

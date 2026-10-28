@@ -9,8 +9,10 @@ contextBridge.exposeInMainWorld('octaBrowser', {
   closeTab(i) { ipcRenderer.send('octa:browser-close', i); },
   engine(id) { ipcRenderer.send('octa:browser-engine', id); },
   go(url) { ipcRenderer.send('octa:browser-go', url); },
-  hand() { ipcRenderer.send('octa:browser-hand'); },
-  goOn() { ipcRenderer.send('octa:browser-continue'); },
+  // the switch under the page: true = take control (接手), false = back to watch only (繼續)
+  control(on) { ipcRenderer.send('octa:browser-control', !!on); },
+  // the watch-only shield passes wheel turns on so you can still scroll while only watching
+  wheel(d) { ipcRenderer.send('octa:browser-wheel', { x: +d?.x || 0, y: +d?.y || 0, dx: +d?.dx || 0, dy: +d?.dy || 0 }); },
   dragStart() { return ipcRenderer.sendSync('octa:browser-drag-start'); },
   dragBy(dx, dy, edge) { ipcRenderer.send('octa:browser-drag-by', { dx, dy, edge: edge || '' }); },
   dragEnd() { ipcRenderer.send('octa:browser-drag-end'); },

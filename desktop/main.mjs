@@ -10,7 +10,7 @@ import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmS
 import os from 'node:os';
 import { startServer } from './server.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
-import { PAGE, THUMB_RADIUS, embedFrames, freshOpen, isBlankUrl, resizeBox, sidebarBox, thumbBox } from './embed-layout.mjs';
+import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
 import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, braveDownload, chromeDownload, edgeDownload, firefoxDownload, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
 // ---------- updates (GitHub Releases) ----------
@@ -196,7 +196,7 @@ function sendFrame(bucket, extra) {
   const page = bucket.active?.webContents;
   const tabs = bucket.tabs.map((v, i) => ({ i, on: v === bucket.active, title: tabTitle(v.webContents) }));
   const engines = ENGINE_IDS.map(id => ({ id, label: ENGINE_LABEL[id], on: id === (bucket.engine || 'chrome'), state: bucket.downloading === id ? 'down' : (ownedExe(id) ? 'ready' : 'none') }));
-  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', dot: thumbDot(), url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...extra });
+  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', dot: thumbDot(), control: !!bucket.control, url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...extra });
 }
 function roundChrome(view, radius, solid) {
   if (!view) return;
@@ -237,6 +237,56 @@ function startThumbs(bucket) {
 function detachChrome(bucket) {
   stopThumbs(bucket);
   try { if (win && !win.isDestroyed() && bucket.chrome) win.contentView.removeChildView(bucket.chrome); } catch { }
+  dropShield(bucket);
+}
+// ---- watch only / take control ----
+// Watch only (the default): a clear view lies over the page. Mouse, wheel and keys from the person land on it,
+// not on the site. The bot is unaffected: its Input.dispatch* commands go through the page's own debugger
+// straight into that page's renderer, which no view on top can intercept.
+function shieldOf(bucket) {
+  if (bucket.shield && !bucket.shield.webContents.isDestroyed()) return bucket.shield;
+  const shield = new WebContentsView({ webPreferences: { preload: join(here, 'browser-preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
+  try { shield.setBackgroundColor('#00000000'); } catch { }
+  shield.webContents.loadFile(join(here, 'browser-shield.html')).catch(() => { });
+  bucket.shield = shield;
+  return shield;
+}
+function dropShield(bucket) {
+  try { if (win && !win.isDestroyed() && bucket.shield) win.contentView.removeChildView(bucket.shield); } catch { }
+}
+function placeShield(bucket, rect) {
+  if (!rect || !win || win.isDestroyed()) { dropShield(bucket); return; }
+  const shield = shieldOf(bucket);
+  raiseView(shield);
+  fitView(shield, rect, true);
+  try { shield.setBorderRadius?.(12); } catch { }
+}
+// tell the page's tag script whether the mouse it sees is the person's (control) or only the bot's
+function flagPage(bucket, wc) {
+  if (!wc || wc.isDestroyed()) return;
+  wc.executeJavaScript(userFlagScript(!!bucket.control)).catch(() => { });
+}
+function shieldBucket(sender) {
+  for (const [, bucket] of embeds) if (bucket.shield?.webContents === sender) return bucket;
+  return null;
+}
+// on = take control (the person clicks, types, signs in; the bot pauses), off = back to watch only (the bot carries on).
+// relay: also tell the chat page, which records the hand-off (接手 / 繼續) for the bot.
+function setControl(bucket, on, relay) {
+  const next = !!on;
+  if (!bucket) return false;
+  const changed = next !== !!bucket.control;
+  bucket.control = next;
+  for (const v of bucket.tabs) flagPage(bucket, v.webContents);
+  layoutEmbed();
+  const page = bucket.active?.webContents;
+  try {
+    if (next && bucket.shown === 'open' && page && !page.isDestroyed()) page.focus();
+    else if (!next && page && !page.isDestroyed() && page.isFocused?.()) bucket.shield?.webContents.focus();   // keys you were typing stop reaching the site
+  } catch { }
+  sendFrame(bucket, {});
+  if (relay && changed && win && !win.isDestroyed()) win.webContents.send('octa:stage', { bot: bucket.botId, act: controlStage(next) });
+  return next;
 }
 function raiseView(view) {
   if (!view || !win || win.isDestroyed()) return;
@@ -263,6 +313,8 @@ function placeBucket(bucket, frames) {
     fitView(page, frames.page, true);
     roundChrome(page, 12, true);
   }
+  // watch only: the shield goes on top of the page, exactly over it
+  placeShield(bucket, page ? frames.shield : null);
 }
 function holdOffscreen(bucket) {
   detachChrome(bucket);
@@ -294,7 +346,7 @@ function layoutEmbed() {
     }
     if (bucket.shown === 'open') bucket.openAt = freshOpen(bucket.openAt);
     const at = bucket.shown === 'open' ? bucket.openAt : (bucket.thumbAt || savedThumbAt());
-    const frames = embedFrames(w, h, bucket.shown, at, { tabs: bucket.tabs.length, dot: thumbDot(), covered });
+    const frames = embedFrames(w, h, bucket.shown, at, { tabs: bucket.tabs.length, dot: thumbDot(), control: !!bucket.control, covered });
     if (frames.mode === 'hidden') {
       stopThumbs(bucket);
       holdOffscreen(bucket);
@@ -421,6 +473,8 @@ async function hookPage(wc, id, bucket) {
   wc.on('did-navigate', (_e, url) => { ping(); googleBlocked(bucket, url); });
   wc.on('did-navigate-in-page', ping);
   wc.on('did-finish-load', () => { ping(); void notePage(wc, bucket); });
+  // a new page while the person has control: its live cursor must not follow the person's mouse either
+  wc.on('dom-ready', () => { if (bucket.control) flagPage(bucket, wc); });
   return id;
 }
 function pageId(bucket, wc) {
@@ -497,6 +551,7 @@ async function embedStop(port) {
   embeds.delete(port);
   detachChrome(bucket);
   try { if (bucket.chrome && !bucket.chrome.webContents.isDestroyed()) bucket.chrome.webContents.close(); } catch { }
+  try { if (bucket.shield && !bucket.shield.webContents.isDestroyed()) bucket.shield.webContents.close(); } catch { }
   for (const v of bucket.tabs) {
     try { if (win && !win.isDestroyed()) win.contentView.removeChildView(v); } catch { }
     try { bucket.host?.contentView.removeChildView(v); } catch { }
@@ -517,7 +572,7 @@ async function embedStart(bot, port) {
   const chrome = new WebContentsView({ webPreferences: { preload: join(here, 'browser-preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
   const place = savedPlace(String(bot.id || ''));
   const engine = ENGINE_IDS.includes(cfg.botEngine?.[String(bot.id || '')]) ? cfg.botEngine[String(bot.id || '')] : 'chrome';
-  const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null, engine, blocked: false, downloading: '', percent: 0, engineError: '', handed: false, engineJob: null };
+  const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null, engine, blocked: false, downloading: '', percent: 0, engineError: '', handed: false, engineJob: null, control: false, shield: null };
   dressSession(view.webContents.session, bucket);
   keepLogins(view.webContents.session);
   roundChrome(chrome, THUMB_RADIUS);
@@ -657,14 +712,23 @@ ipcMain.on('octa:browser-pick', (e, index) => {
   if (!tab || tab.webContents.isDestroyed()) return;
   focusTab(bucket, tab);
 });
-function relayStage(e, act) {
+// the switch under the page replaced the old 接手 / 繼續 buttons: take control = hand, watch only = go
+ipcMain.on('octa:browser-control', (e, on) => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);
-  if (!bucket || !win || win.isDestroyed()) return;
-  win.webContents.send('octa:stage', { bot: bucket.botId, act });
-}
-ipcMain.on('octa:browser-hand', e => relayStage(e, 'hand'));
-ipcMain.on('octa:browser-continue', e => relayStage(e, 'go'));
+  if (!bucket || bucket.dragging) return;
+  setControl(bucket, !!on, true);
+});
+// a wheel turn on the watch-only shield scrolls the page by script, so the site never gets the person's mouse
+ipcMain.on('octa:browser-wheel', (e, d) => {
+  if (!trusted(e)) return;
+  const bucket = shieldBucket(e.sender);
+  const wc = bucket?.active?.webContents;
+  if (!bucket || bucket.control || !wc || wc.isDestroyed()) return;
+  const { dx, dy } = wheelDelta({ deltaX: d?.dx, deltaY: d?.dy }, bucket.active.getBounds?.().height);
+  if (!dx && !dy) return;
+  wc.executeJavaScript(scrollScript(d?.x, d?.y, dx, dy)).catch(() => { });
+});
 ipcMain.on('octa:browser-go', (e, raw) => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);
@@ -684,6 +748,9 @@ function placeDrag(bucket) {
   try { bucket.host?.contentView.removeChildView(bucket.active); } catch { }
   try { if (!win.contentView.children.includes(bucket.active)) win.contentView.addChildView(bucket.active); } catch { }
   fitView(bucket.active, frames.page, true);
+  const rect = shieldFor('open', frames.page, bucket.control);
+  if (rect && bucket.shield) fitView(bucket.shield, rect, true);   // it moves with the page while the panel is dragged
+  else if (rect) placeShield(bucket, rect);
 }
 function panelFrom(bucket, w, h) {
   if (bucket.shown === 'open') {
@@ -871,6 +938,13 @@ handle('octa:cover', (_e, on) => {
   return covered;
 });
 handle('octa:show', () => { showWindow(); return true; });
+// the chat's own 接手 / 繼續 buttons (login card) flip this bot's browser switch too; the chat already recorded the hand-off
+handle('octa:control', (_e, id, on) => {
+  const bucket = [...embeds.values()].find(b => b.botId === String(id || ''));
+  if (!bucket) return null;
+  if (on && bucket.shown !== 'open') void embedShow(bucket.port, 'open');   // taking over to sign in: show the page to sign in on
+  return setControl(bucket, !!on, false);
+});
 handle('octa:focus-bot', (_e, id) => {
   const next = String(id || '');
   if (next === focusBotId) return focusBotId;
