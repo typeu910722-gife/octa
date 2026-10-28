@@ -132,3 +132,9 @@
 - 主機模式已在使用者電腦生效（08:43 搬移、備份 ebot.backup-20261028-004314.sqlite），雲端 08:42 後無新資料。
 - 瀏覽器「僅觀看｜取得控制權」：透明擋板 WebContentsView（browser-shield.html）蓋頁面，滾輪由主程序程式捲動；控制時各分頁設 window.__octaUser=true，tagScript 隱藏游標；取得控制＝接手（hand）、回僅觀看＝繼續（go，只在需要時送繼續訊息）；工具列接手/繼續按鈕移除。xvfb＋Electron 以 XTest 實測擋板與游標；完整 main.mjs 未實跑。
 - 已知：桌面重開後面板預設僅觀看，但伺服器若仍記接手中會不一致。
+
+## 2026-10-28 3.3.0（Grok Bot 評論逐點升級，三代理合併）
+- 介面：不自動切對話（提示條＋傳給：）、trackDirty/leaveOk 單一儲存、核准卡 apprDecision＋待核准數＋approvalNag 15 分鐘通知、例行任務 last/next 顯示、群組成員狀態列、state 加 ask/gask。
+- 排程與記憶：routines.prompt 必填、routines.last_run/last_status/last_job/last_text、jobs.routine、next_run、routineTarget（內容寫貼到群組→在群組跑）、splitTaskSchedules（📝 時間句搬到例行任務）、tidyOnce 一次性整理（✅待確認：整理排程）、scheduleAsk/correctionAsk 補救待確認（建立排程／記住規則，ownApproval 直接處理）。
+- 執行：旁聊（busyTurn/sideKind，jobs.via k=side，不打斷主工作）、API 優先、自行登入一輪＋loginHints/hideSecrets、結果行（missingResult 提醒）、findUploads＋MCP --allow-unrestricted-file-access、群組補位 prompt、本機模式 bump 即時喚醒（送出→拿到工作 767ms→4ms）、執行器背景回報額度。Claude 主回合 allowedTools 加 Bash。
+- 未實測：真實 AI 是否照新規則、自行登入實際網站、Windows 旁聊並行、tidyOnce 首次會發幾則。
