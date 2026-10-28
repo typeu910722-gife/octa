@@ -38,6 +38,7 @@
       "preload.cjs",
       "browser-preload.cjs",
       "browser-chrome.html",
+      "browser-shield.html",
       "splash.html",
       "web/**",
       "api.js",

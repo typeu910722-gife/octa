@@ -232,6 +232,9 @@ test('the switch under the page replaces the old take-over / continue buttons', 
   assert.match(shield, /addEventListener\('keydown', e => \{ e\.preventDefault\(\)/);
   const main = readFileSync(new URL('../desktop/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /browser-shield\.html/);
+  // the installer has to carry the shield page too
+  const pkg = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8'));
+  assert.ok(pkg.build.files.includes('browser-shield.html'));
   assert.match(main, /placeShield\(bucket, page \? frames\.shield : null\)/);
   assert.match(main, /control: !!bucket\.control, covered \}\);/);
   assert.match(main, /dot: thumbDot\(\), control: !!bucket\.control, url:/);
