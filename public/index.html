@@ -299,6 +299,14 @@ form.in .send,form.in .clip{height:46px}
 .followbar button{border:0;background:var(--gold);color:var(--on-gold);border-radius:999px;padding:6px 10px;font:inherit}
 .followbar button.fx{background:none;color:var(--mute);font-size:18px;line-height:1;padding:4px 8px}
 .followbar b{font-weight:600}
+/* one 儲存: the flag beside it, and the question before closing with edits */
+.dflag{color:var(--prio);font-size:12px;align-self:center;margin-right:auto;white-space:nowrap}
+.dflag[hidden]{display:none}
+.row2 .dflag{margin-right:0}
+.dguard{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:color-mix(in srgb,var(--veil) 60%,transparent);padding:16px}
+.dgbox{width:min(360px,100%);background:var(--panel2);border:1px solid var(--line);border-radius:18px;padding:18px 18px 14px;box-shadow:0 18px 40px var(--shadow);color:var(--ink)}
+.dgbox b{font-size:16px}.dgbox p{margin:6px 0 14px;color:var(--mute);font-size:13px}
+.dgbox .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin:0}
 /* 傳給：always says who gets what you type */
 .sendto{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:none;margin:6px 22px -4px;font-size:12px;color:var(--mute);min-width:0}
 .sendto[hidden]{display:none}
@@ -1682,6 +1690,7 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='n'&&!$('app').hidden&&window.octaDesktop){e.preventDefault();sheet('b')}
   if(e.altKey&&e.key.toLowerCase()==='n'&&!$('app').hidden){e.preventDefault();sheet('b')}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('app').classList.remove('chat');focusBrowser();$('qbox').hidden=false;$('q').focus();$('q').select()}
+  if(e.key==='Escape'&&document.querySelector('.dguard')){document.querySelector('.dguard').remove();return}
   if(e.key==='Escape'&&!$('veil').hidden&&!document.querySelector('.menu'))closeSheet()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cur)render(false)});
 function toast(t){let el=$('toast');if(!el){el=document.createElement('div');el.id='toast';el.className='toast';document.body.appendChild(el)}
@@ -1707,7 +1716,7 @@ document.addEventListener('touchend',e=>{if(!on)return;const pg=on==='page';on=f
 (function(){let y0=0,sh=null,dy=0;
 $('veil').addEventListener('touchstart',e=>{sh=null;if(!phoneUI())return;const s=e.target.closest('.sheet');if(!s||s.classList.contains('page')||s.scrollTop>0||e.target.closest('textarea,select'))return;sh=s;y0=e.touches[0].clientY;dy=0},{passive:true});
 $('veil').addEventListener('touchmove',e=>{if(!sh)return;dy=e.touches[0].clientY-y0;if(dy<=0||sh.scrollTop>0){sh.style.transform='';return}e.preventDefault();sh.style.transition='none';sh.style.transform=`translateY(${dy}px)`},{passive:false});
-$('veil').addEventListener('touchend',()=>{if(!sh)return;const s=sh;sh=null;s.style.transition='';if(dy>110)closeSheet();else s.style.transform=''})})();
+$('veil').addEventListener('touchend',()=>{if(!sh)return;const s=sh;sh=null;s.style.transition='';s.style.transform='';if(dy>110)closeSheet()})})();
 $('railToggle').onclick=()=>{
   if(innerWidth<=760){$('app').classList.remove('chat');focusBrowser();return}
   $('app').classList.toggle('rail-collapsed');
@@ -1888,7 +1897,31 @@ const TEMPLATES=[{k:'assistant',n:'一般助理',d:'一個機器人，什麼都�
 const tplHtml=()=>`<div class="tpls">${TEMPLATES.map(t=>`<button type="button" class="tplc" data-t="${t.k}"><b>${t.n}</b><small>${t.d}</small></button>`).join('')}</div>`;
 function bindTpl(root,after){root.querySelectorAll('[data-t]').forEach(b=>b.onclick=async()=>{b.disabled=true;
   try{await api('template','POST',{name:b.dataset.t,lang:I18N.lang});b.querySelector('small').textContent='已加入 ✓';await refresh();after&&after()}catch(e){b.disabled=false}})}
-function closeSheet(){if(typeof stopCodePoll==='function')stopCodePoll();$('veil').hidden=true;$('veil').innerHTML='';rtEdit=null;pageBack=null}
+/* one 儲存 per sheet (評論：「要先按編輯區的儲存再按視窗的儲存，只按一個就白改了」): the outer 儲存 also saves what is
+   being edited inside; unsaved edits are flagged beside it, and closing or leaving asks first */
+const DIRTY={el:null,parts:new Set(),save:null};
+function trackDirty(root,save){DIRTY.el=root;DIRTY.parts=new Set();DIRTY.save=save;
+  const mark=e=>{const t=e.target;if(!t?.closest||t.closest('[data-nodirty]'))return;markDirty(t.closest('.rform')?'rt':t.closest('#sf_madd')?'mem':'main')};
+  if(root._dm){root.removeEventListener('input',root._dm);root.removeEventListener('change',root._dm)}root._dm=mark;   // settings pages share one body
+  root.addEventListener('input',mark);root.addEventListener('change',mark);paintDirty()}
+function markDirty(part='main'){if(!DIRTY.el)return;DIRTY.parts.add(part);paintDirty()}
+function cleanDirty(part){if(part)DIRTY.parts.delete(part);else DIRTY.parts.clear();paintDirty()}
+const isDirty=()=>!!(DIRTY.el&&DIRTY.parts.size&&document.contains(DIRTY.el));
+function paintDirty(){const on=isDirty();document.querySelectorAll('[data-dirty-flag]').forEach(x=>x.hidden=!on)}
+function leaveOk(then){if(!isDirty()){DIRTY.el=null;then();return}
+  document.querySelector('.dguard')?.remove();
+  const d=document.createElement('div');d.className='dguard';
+  d.innerHTML=`<div class="dgbox" role="alertdialog" aria-modal="true"><b>還有沒儲存的變更</b><p>關掉前要先儲存嗎？</p><div class="acts"><button type="button" class="no" data-g="stay">繼續編輯</button><button type="button" class="del" data-g="drop">不儲存</button><button type="button" class="btn" data-g="save">儲存</button></div></div>`;
+  document.body.appendChild(d);d.querySelector('[data-g=save]').focus();
+  d.onclick=async e=>{const b=e.target.closest('[data-g]');if(!b&&e.target!==d)return;const k=b?b.dataset.g:'stay';
+    if(k==='stay'){d.remove();return}
+    if(k==='drop'){d.remove();DIRTY.el=null;then();return}
+    b.disabled=true;let ok=false;try{ok=await DIRTY.save?.()!==false}catch(err){toast(err.message)}
+    d.remove();if(ok){DIRTY.el=null;toast(I18N.t('已儲存 ✓'));then()}}}
+function closeSheet(force){
+  if(force!==true&&isDirty()){leaveOk(()=>closeSheet(true));if(phoneUI()&&!$('veil').hidden&&NAV[NAV.length-1]!=='sheet')navPush('sheet');return}
+  document.querySelector('.dguard')?.remove();DIRTY.el=null;
+  if(typeof stopCodePoll==='function')stopCodePoll();$('veil').hidden=true;$('veil').innerHTML='';rtEdit=null;pageBack=null}
 $('veil').onclick=e=>{if(e.target.id==='veil')closeSheet()};
 function sheet(kind,edit){
   const g=kind==='g',c=edit?conv(cur):null,sid=c?c.id:null;   // this sheet always saves to the chat it was opened for
@@ -1917,14 +1950,14 @@ function sheet(kind,edit){
   ${!g&&c?memHtml(c):''}
   ${!g&&c&&((S.skills||{})[c.id]||[]).length?`<div class="field">它會的技能（🧩，輸入 / 叫用）<div class="picks" id="sf_sk">${S.skills[c.id].map((k,i)=>`<div class="pick"><span data-u style="flex:1" title="${esc(k.steps)}">${esc(k.name)}</span><button type="button" class="mv" data-unsk="${i}" aria-label="刪除">✕</button></div>`).join('')}</div></div>`:''}
   ${!g&&c&&((S.nsk||{})[c.id]||[]).length?`<div class="field">Claude Code 技能（存在它的資料夾，會跟著帳號到任何主機）<div class="picks">${S.nsk[c.id].map(n=>`<div class="pick"><span data-u>${esc(n)}</span></div>`).join('')}</div></div>`:''}
-  ${!g&&edit?(()=>{const r=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查'),ev=r&&r.enabled?((r.times||[]).find(t=>/^\*\//.test(t))||'').slice(2):'';return `<div class="field">24 小時待命<select id="sf_stand">${[['','關閉'],['10','每 10 分鐘巡一次'],['30','每 30 分鐘巡一次'],['60','每小時巡一次']].map(([v,l])=>`<option value="${v}"${v===ev?' selected':''}>${l}</option>`).join('')}</select><p class="hmuted">開啟後它會照指定任務定時自己檢查、有事就處理，需要時在背景找其他機器人幫忙；沒事不會出聲。主機電腦要開著。</p><p class="hmuted" id="sf_standnow">${standNow(ev,!r&&!c.stood)}</p></div>`})():''}
+  ${!g&&edit?(()=>{const r=S.routines.find(x=>x.conv===c.id&&x.name==='待命巡查'),ev=r&&r.enabled?((r.times||[]).find(t=>/^\*\//.test(t))||'').slice(2):'';return `<div class="field">24 小時待命<select id="sf_stand" data-nodirty>${[['','關閉'],['10','每 10 分鐘巡一次'],['30','每 30 分鐘巡一次'],['60','每小時巡一次']].map(([v,l])=>`<option value="${v}"${v===ev?' selected':''}>${l}</option>`).join('')}</select><p class="hmuted">開啟後它會照指定任務定時自己檢查、有事就處理，需要時在背景找其他機器人幫忙；沒事不會出聲。主機電腦要開著。</p><p class="hmuted" id="sf_standnow">${standNow(ev,!r&&!c.stood)}</p></div>`})():''}
   ${!g&&edit?(()=>{const r=S.routines.find(x=>x.conv===c.id&&x.hook&&x.name==='外部交接');return `<div class="field">從其他 AI 交接工作（例如 Grok Bot）${r?`<div class="row2"><input readonly value="${esc(hookUrl(r))}" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--ink);font:inherit;font-size:12px" data-u><button type="button" class="ghost" id="sf_hcopy">複製</button></div>
     <p class="hmuted" style="overflow-wrap:anywhere">把這段話給你的 Grok Bot（或其他 AI）：「要把工作交給 OCTA 的${esc(c.name)}時，用 POST 傳 JSON 到 ${esc(hookUrl(r))} ，格式是 {"text":"工作內容","from":"你的名字"}。」收到後${esc(c.name)}會自動開始做，結果在這個對話裡。網址等同鑰匙，不要公開。</p>`:`<div class="row2"><button type="button" class="ghost" id="sf_hmake">產生交接網址</button></div><p class="hmuted">其他 AI 用這個網址把工作交給這個機器人，它會自動開始做。</p>`}</div>`})():''}
   ${!g&&c&&c.bpc&&c.bpc!==S.host?`<div class="field">網站登入<p class="hmuted" style="margin:4px 0">它登入過的網站存在「<span data-u>${esc(c.bpc.replace(/^desktop:/,''))}</span>」電腦的瀏覽器裡，不在目前的主機上。</p><div class="row2"><button type="button" class="ghost" id="sf_bring">把網站登入帶到主機</button><span id="sf_bmsg" class="hmuted"></span></div></div>`:''}
   <label class="field">常用指令（一行一個，會變成輸入框上方的快速按鈕）<textarea id="sf_q" maxlength="2000" style="min-height:70px" placeholder="例如：整理今天的訂單&#10;把結果寫進試算表">${esc(((S.quick||{})[c?.id]||[]).join('\n'))}</textarea></label>
   ${edit?`<div class="field">例行任務<div class="rt" id="rt" data-conv="${esc(sid)}"></div></div>`:'<p>建立後可以在「任務設定」加入例行任務（每天固定時間自動執行）。</p>'}
   <div class="errmsg" id="se"></div>
-  <div class="acts">${edit?'<button type="button" class="del" id="sd">刪除</button>':''}<button type="button" class="no" id="sx">取消</button><button class="btn">${edit?'儲存':'建立'}</button></div></form>`;
+  <div class="acts">${edit?'<button type="button" class="del" id="sd">刪除</button>':''}<span class="dflag" data-dirty-flag hidden>● 有未儲存的變更</span><button type="button" class="no" id="sx">取消</button><button class="btn">${edit?'儲存':'建立'}</button></div></form>`;
   $('veil').hidden=false;$('sn').focus();
   $('sx').onclick=closeSheet;
   if(!g){const nm0=c?.name||'';sheet.nameOk=()=>{const v=$('sn').value.trim(),bad=/[\s\u3000]/.test(v)&&v!==nm0;$('se').textContent=bad?I18N.t('名稱不能有空格，才能用 @ 叫它'):'';$('sn').setAttribute('aria-invalid',bad?'true':'false');return !bad};$('sn').addEventListener('input',sheet.nameOk)}   // bots are called with @名字
@@ -1950,18 +1983,27 @@ function sheet(kind,edit){
     try{await api('settings','PUT',{allow:{bot:c.id,list}});S.allow[c.id]=list;x.closest('.pick').remove();toast(I18N.t('已收回'))}catch(err){toast(err.message)}};
   if(g)$('picks').onclick=e=>{const b=e.target.closest('.mv');if(!b)return;e.preventDefault();const row=b.closest('.pick');
     if(b.hasAttribute('data-up')&&row.previousElementSibling)row.parentNode.insertBefore(row,row.previousElementSibling);
-    if(b.hasAttribute('data-down')&&row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row)};
-  $('veil').querySelectorAll('.tpl button').forEach(b=>b.onclick=()=>{const t=$('st');t.value=(t.value?t.value+'；':'')+b.textContent});
+    if(b.hasAttribute('data-down')&&row.nextElementSibling)row.parentNode.insertBefore(row.nextElementSibling,row);markDirty()};
+  $('veil').querySelectorAll('.tpl button').forEach(b=>b.onclick=()=>{const t=$('st');t.value=(t.value?t.value+'；':'')+b.textContent;markDirty()});
+  if(!g)$('sf_av').addEventListener('click',e=>{if(e.target.closest('[data-emo]'))markDirty()});
   if(edit)$('sd').onclick=()=>deleteConv(sid);
-  $('sf').onsubmit=async e=>{e.preventDefault();if(!g&&sheet.nameOk&&!sheet.nameOk()){$('sn').focus();return}
+  // one 儲存: an open 例行任務 form and a typed-but-not-added memory line are saved together with the rest
+  const saveAll=async()=>{$('se').textContent='';if(!g&&sheet.nameOk&&!sheet.nameOk()){$('sn').focus();return false}
+    const rf=$('rt')?.querySelector('.rform');if(rf&&rf._save&&!(await rf._save(true))){rf.scrollIntoView({block:'center'});return false}
+    if($('sf_mnew')?.value.trim()&&sheet.addMem&&!(await sheet.addMem()))return false;
     const body={name:$('sn').value,task:$('st').value,folder:$('sf_f').value||null};
     if(!g){body.autonomy=$('veil').querySelector('input[name=sf_au]:checked')?.value||'report';body.avatar=sheet.av?.()||'';body.browser=$('veil').querySelector('input[name=sf_b]:checked')?.value||'own';body.engine=$('sf_e').value;body.model=$('sf_m').value.trim();body.fb=[$('sf_fb0')?.value,$('sf_fb1')?.value,$('sf_fb2')?.value].filter(Boolean);}
     if(g)body.members=[...$('veil').querySelectorAll('.picks input:checked')].map(i=>i.value);
     try{const r=await api(edit?(g?'groups/':'bots/')+sid:(g?'groups':'bots'),edit?'PUT':'POST',body);
       const id=edit?sid:r.id;if(!edit)cur=r.id;
       const ql=$('sf_q').value.split('\n').map(x=>x.trim()).filter(Boolean).slice(0,12);
-      if(ql.join('\n')!==((S.quick||{})[id]||[]).join('\n'))await api('settings','PUT',{quick:{conv:id,list:ql}});closeSheet();await refresh();$('app').classList.add('chat');focusBrowser()}
-    catch(err){$('se').textContent=err.message}}}
+      if(ql.join('\n')!==((S.quick||{})[id]||[]).join('\n'))await api('settings','PUT',{quick:{conv:id,list:ql}});
+      cleanDirty();return true}
+    catch(err){$('se').textContent=err.message;return false}};
+  trackDirty($('sf'),saveAll);
+  $('sf').onsubmit=async e=>{e.preventDefault();const b=e.submitter||$('sf').querySelector('.acts .btn');if(b)b.disabled=true;
+    const ok=await saveAll();if(b)b.disabled=false;if(!ok)return;
+    closeSheet(true);toast(I18N.t(edit?'已儲存 ✓':'已建立'));await refresh();$('app').classList.add('chat');focusBrowser()}}
 function standNow(ev,auto){return ev?`目前：開啟，每 ${ev} 分鐘巡查一次`:auto?'目前：關閉。填入指定任務後會自動開啟（每 30 分鐘巡查一次）':'目前：關閉'}
 function alertSheet(t,p){$('veil').innerHTML=`<div class="sheet"><h2>${esc(t)}</h2><p>${esc(p)}</p><div class="acts"><button class="btn" id="sx">知道了</button></div></div>`;$('veil').hidden=false;$('sx').onclick=closeSheet}
 const ago=t=>{const m=Math.round((Date.now()-t)/60000),rt=new Intl.RelativeTimeFormat(I18N.lang,{numeric:'auto'});return m<60?rt.format(-m,'minute'):m<1440?rt.format(-Math.round(m/60),'hour'):rt.format(-Math.round(m/1440),'day')};
@@ -2170,12 +2212,14 @@ function folderSheet(fid,moveId){const f=fid&&S.folders.find(x=>x.id===fid);
   <p>分區用來區隔不同門市或專案。同一個分區的機器人可以互相詢問、協作；不同分區互不干擾。</p>
   <label class="field">分區名稱<input id="fn" required maxlength="20" value="${f?esc(f.name):''}" placeholder="例如：台南店、高雄店"></label>
   <label class="field">分區資料（這個分區的機器人都會讀）<textarea id="fnotes" maxlength="20000" placeholder="例如：房號清單、門鎖密碼規則、停車說明、入住訊息範本、試算表連結">${f?esc(f.notes||''):''}</textarea></label>
-  <div class="errmsg" id="fe"></div><div class="acts"><button type="button" class="no" id="sx">取消</button><button class="btn">${f?'儲存':'建立'}</button></div></form>`;
+  <div class="errmsg" id="fe"></div><div class="acts"><span class="dflag" data-dirty-flag hidden>● 有未儲存的變更</span><button type="button" class="no" id="sx">取消</button><button class="btn">${f?'儲存':'建立'}</button></div></form>`;
   $('veil').hidden=false;$('fn').focus();$('sx').onclick=closeSheet;
-  $('ff').onsubmit=async e=>{e.preventDefault();try{
-    if(f)await api('folders/'+fid,'PUT',{name:$('fn').value,notes:$('fnotes').value});
-    else{const r=await api('folders','POST',{name:$('fn').value,notes:$('fnotes').value});if(moveId)await api('move','POST',{id:moveId,folder:r.id})}
-    closeSheet();refresh()}catch(err){$('fe').textContent=err.message}}}
+  const save=async()=>{if(!$('fn').value.trim()){$('fe').textContent=I18N.t('請填分區名稱');$('fn').focus();return false}
+    try{if(f)await api('folders/'+fid,'PUT',{name:$('fn').value,notes:$('fnotes').value});
+      else{const r=await api('folders','POST',{name:$('fn').value,notes:$('fnotes').value});if(moveId)await api('move','POST',{id:moveId,folder:r.id})}
+      cleanDirty();refresh();return true}catch(err){$('fe').textContent=err.message;return false}};
+  trackDirty($('ff'),save);
+  $('ff').onsubmit=async e=>{e.preventDefault();if(await save()){closeSheet(true);toast(I18N.t(f?'已儲存 ✓':'已建立'))}}}
 $('nf').onclick=()=>{$('pmenu').hidden=true;folderSheet(null)};
 
 /* ---------- routines (例行任務) ---------- */
@@ -2227,22 +2271,27 @@ function renderRoutines(){const box=$('rt');if(!box)return;const rc=box.dataset.
    +(rtEdit==='new'?rForm(null):`<button type="button" class="ghost" id="rtAdd" style="justify-self:start">＋ 例行任務</button>`);
   box.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async e=>{e.stopPropagation();const r=S.routines.find(x=>x.id===b.dataset.sw);
     r.enabled=!r.enabled;renderRoutines();await api('routines/'+r.id,'PUT',{enabled:r.enabled}).catch(()=>{});refresh()});
-  box.querySelectorAll('.rrow').forEach(row=>row.onclick=()=>{rtEdit=row.dataset.r;renderRoutines()});
-  if($('rtAdd'))$('rtAdd').onclick=()=>{rtEdit='new';renderRoutines()};
+  // opening another one first saves the one being edited, so nothing typed there is lost
+  const openRt=async id=>{const open=box.querySelector('.rform');if(open&&open._save&&DIRTY.parts.has('rt')&&!(await open._save(true)))return;rtEdit=id;renderRoutines()};
+  box.querySelectorAll('.rrow').forEach(row=>row.onclick=()=>openRt(row.dataset.r));
+  if($('rtAdd'))$('rtAdd').onclick=()=>openRt('new');
   const f=box.querySelector('.rform');if(!f)return;
-  f.querySelector('[data-add]').onclick=()=>{const i=document.createElement('input');i.type='time';i.value='08:00';f.querySelector('.times').insertBefore(i,f.querySelector('[data-add]'))};
-  f.querySelector('[data-cancel]').onclick=()=>{rtEdit=null;renderRoutines()};
+  f.querySelector('[data-add]').onclick=()=>{const i=document.createElement('input');i.type='time';i.value='08:00';f.querySelector('.times').insertBefore(i,f.querySelector('[data-add]'));markDirty('rt')};
+  f.querySelector('[data-cancel]').onclick=()=>{rtEdit=null;cleanDirty('rt');renderRoutines()};
   const del=f.querySelector('[data-del]');if(del)del.onclick=async()=>{if(!del.dataset.sure){del.dataset.sure=1;del.textContent='再按一次刪除';return}
     await api('routines/'+rtEdit,'DELETE');rtEdit=null;await refresh();renderRoutines()};
   const tw=f.querySelector('[name=rtrig]'),showTrig=()=>{f.querySelectorAll('[data-tr]').forEach(x=>x.hidden=x.dataset.tr!==tw.value)};tw.onchange=showTrig;showTrig();
   f.querySelectorAll('[data-copyhook]').forEach(b=>b.onclick=()=>navigator.clipboard?.writeText(b.dataset.copyhook).then(()=>toast(I18N.t('已複製'))).catch(()=>{}));
-  f.querySelector('[data-save]').onclick=async()=>{const trig=tw.value;
+  // quiet: called by the sheet's own 儲存 (or by opening another routine) — save, don't redraw into a new form
+  f._save=async quiet=>{const trig=tw.value;
     const body={name:f.querySelector('[name=rn]').value,prompt:f.querySelector('[name=rp]').value,trigger:trig==='time'?'':trig,
       watch:{url:f.querySelector('[name=wurl]').value.trim(),sel:f.querySelector('[name=wsel]').value.trim(),every:+f.querySelector('[name=wevery]').value},
       times:trig!=='time'?[]:[...(+f.querySelector('[name=rev]').value?['*/'+f.querySelector('[name=rev]').value]:[]),...[...f.querySelectorAll('.times input')].map(i=>i.value).filter(Boolean)]};
     try{let r;if(rtEdit==='new')r=await api('routines','POST',{...body,conv:rc});else r=await api('routines/'+rtEdit,'PUT',body);
-      if(trig==='hook'&&r.hook){rtEdit=r.id||rtEdit;await refresh();renderRoutines();toast(I18N.t('已建立觸發網址'));return}
-      rtEdit=null;await refresh();renderRoutines()}catch(err){f.querySelector('.errmsg').textContent=err.message}};
+      cleanDirty('rt');
+      if(!quiet&&trig==='hook'&&r.hook){rtEdit=r.id||rtEdit;await refresh();renderRoutines();toast(I18N.t('已建立觸發網址'));return true}
+      rtEdit=null;await refresh();if(!quiet)renderRoutines();return true}catch(err){f.querySelector('.errmsg').textContent=err.message;return false}};
+  f.querySelector('[data-save]').onclick=async()=>{if(await f._save())toast(I18N.t('已儲存 ✓'))};
 }
 function rForm(r){const tr=r?.hook?'hook':r?.watch?'watch':'time';return `<div class="rform"><label class="field">名稱<input name="rn" maxlength="40" value="${r?esc(r.name):''}" placeholder="例如：早上整理訂單"></label>
   <label class="field">什麼時候開始<select name="rtrig"><option value="time" ${tr==='time'?'selected':''}>固定時間／每隔一段時間</option><option value="watch" ${tr==='watch'?'selected':''}>網頁有變化時（例如有新訊息、新訂單）</option><option value="hook" ${tr==='hook'?'selected':''}>外部事件（LINE、表單、Zapier 呼叫網址）</option></select></label>
@@ -2327,11 +2376,11 @@ function phoneSheet(){const s=$('veil').querySelector(':scope>.sheet');if(!s||!p
   s.classList.toggle('page',page);
   if(s.querySelector(':scope>.shd .back2'))return;
   const b=document.createElement('button');b.type='button';b.className=page?'back2 pgx':'shx';b.setAttribute('aria-label',I18N.t(page?'返回':'關閉'));b.textContent=page?'‹':'✕';
-  b.onclick=()=>pageBack?pageBack():closeSheet();
+  b.onclick=()=>pageBack?leaveOk(pageBack):closeSheet();
   const h=s.querySelector(':scope>h2');
   if(page&&h){const d=document.createElement('div');d.className='shd';h.before(d);d.append(b,h)}else s.prepend(b)}
 new MutationObserver(phoneSheet).observe($('veil'),{childList:true});
-const sheetBack=()=>{const sb=$('veil').querySelector('.sheet.page .shd .back2');return pageBack||(sb?()=>sb.click():null)};
+const sheetBack=()=>{const sb=$('veil').querySelector('.sheet.page .shd .back2');return pageBack?()=>leaveOk(pageBack):(sb?()=>sb.click():null)};
 // the + beside the box: a photo or file, @ a member, a saved instruction, or / for actions
 function plusMenu(){const c=conv(cur);if(!c)return;const g=isG(cur),qk=(S.quick||{})[cur]||[];
   popMenu($('clip'),`<button data-a="file"><span class="ck">📎</span>照片或檔案</button><button data-a="slash"><span class="ck">/</span>指令（瀏覽器、停止、歷史畫面…）</button>
@@ -2379,7 +2428,8 @@ function bindMem(c){let t='rule';
   $('sf_mt').onclick=e=>{const b=e.target.closest('[data-mt]');if(b){t=b.dataset.mt;draw()}};
   $('sf_mem').onclick=async e=>{const x=e.target.closest('[data-unmem]');if(!x)return;const list=[...memList(c,t)];list.splice(+x.dataset.unmem,1);
     try{await save(list);toast(I18N.t(t==='manual'?'已刪除':'已忘記'))}catch(err){toast(err.message)}};
-  const add=async()=>{const v=$('sf_mnew').value.trim();if(!v)return;try{await save([...memList(c,t).filter(x=>x!==v),v]);$('sf_mnew').value='';toast(I18N.t('已加入'))}catch(err){toast(err.message)}};
+  const add=async()=>{const v=$('sf_mnew').value.trim();if(!v)return true;try{await save([...memList(c,t).filter(x=>x!==v),v]);$('sf_mnew').value='';cleanDirty('mem');toast(I18N.t('已加入'));return true}catch(err){toast(err.message);return false}};
+  sheet.addMem=add;   // the sheet's 儲存 adds a line typed here but not added yet
   $('sf_mgo').onclick=add;$('sf_mnew').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();add()}};
   draw()}
 /* ---------- settings: a menu, each item opens its own page ---------- */
@@ -2413,18 +2463,19 @@ function settingsFrame(){
   <div class="sbody" id="sbody"></div></div></div>`;
   $('veil').hidden=false;$('sx').onclick=closeSheet;
   if($('lo'))$('lo').onclick=()=>{closeSheet();logoutAsk()};
-  $('veil').querySelectorAll('.snav [data-s]').forEach(b=>b.onclick=()=>{if(typeof stopCodePoll==='function')stopCodePoll();settingsGo[b.dataset.s]()})}
+  $('veil').querySelectorAll('.snav [data-s]').forEach(b=>b.onclick=()=>leaveOk(()=>{if(typeof stopCodePoll==='function')stopCodePoll();settingsGo[b.dataset.s]()}))}
 function markNav(title){const row=settingsRows().find(r=>r[2]===title);$('veil').querySelectorAll('.snav [data-s]').forEach(b=>b.classList.toggle('on',!!row&&b.dataset.s===row[0]))}
 function subSheet(title,html,opts={}){
+  DIRTY.el=null;document.querySelector('.dguard')?.remove();   // a new page: its own edits only
   if(settingsShell()&&!opts.solo){
     settingsFrame();
     $('sbody').innerHTML=`<div class="stitle">${opts.back?'<button type="button" class="back2" id="sBack" aria-label="返回">‹</button>':''}<h2>${title}</h2></div>${html}`;
     $('sbody').scrollTop=0;markNav(title);
-    if(opts.back)$('sBack').onclick=opts.back;
+    if(opts.back)$('sBack').onclick=()=>leaveOk(opts.back);
     return}
   $('veil').innerHTML=`<div class="sheet"><div class="shd"><button type="button" class="back2" id="sBack" aria-label="返回設定">‹</button><h2>${title}</h2></div>${html}
   <div class="acts"><button class="btn" id="sx">關閉</button></div></div>`;
-  $('veil').hidden=false;$('sx').onclick=closeSheet;$('sBack').onclick=()=>(opts.back||openSettings)();}
+  $('veil').hidden=false;$('sx').onclick=closeSheet;$('sBack').onclick=()=>leaveOk(()=>(opts.back||openSettings)());}
 /* appearance: the two looks, the text size, and the language */
 function openLook(){
   const theme=currentTheme(),fs=currentFsPercent();
@@ -2457,8 +2508,10 @@ const verCmp=(a,b)=>{const p=v=>String(v||'').replace(/^v/i,'').split(/[.-]/).ma
 const when=t=>t?new Date(t).toLocaleString(I18N.lang,{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 /* profile: what the bots call you */
 function openProfile(){subSheet('個人資料',`<label class="field">你的暱稱（機器人會這樣稱呼你）<input id="nick" maxlength="20" value="${esc(S.nick||'')}" placeholder="例如：Yz、阿哲" style="${field}"></label>
-  <p class="hmuted">沒填的話，機器人會直接用「你」稱呼你。規則或資料裡寫的「老闆」，機器人也會當成是你。</p><div class="row2"><button class="btn" id="nickGo">儲存</button></div>`);
-  $('nickGo').onclick=async()=>{const v=$('nick').value.trim();try{await api('settings','PUT',{nick:v});S.nick=v;toast(I18N.t('已儲存 ✓'))}catch(e){toast(e.message)}}}
+  <p class="hmuted">沒填的話，機器人會直接用「你」稱呼你。規則或資料裡寫的「老闆」，機器人也會當成是你。</p><div class="row2"><button class="btn" id="nickGo">儲存</button><span class="dflag" data-dirty-flag hidden>● 有未儲存的變更</span></div>`);
+  const save=async()=>{const v=$('nick').value.trim();try{await api('settings','PUT',{nick:v});S.nick=v;cleanDirty();return true}catch(e){toast(e.message);return false}};
+  trackDirty($('nick').closest('.sbody,.sheet'),save);
+  $('nickGo').onclick=async()=>{if(await save())toast(I18N.t('已儲存 ✓'))}}
 /* account & devices */
 async function openAccount(){
   if(CFG.host){subSheet('帳號與裝置',`<p>帳號：<b data-u>${esc(CFG.host.name||S.me)}</b></p><p>這台電腦是主機，資料存在這台電腦。登入的裝置、密碼和重設碼，請用手機或瀏覽器打開雲端版登入後管理。</p>`);return}
@@ -2580,15 +2633,16 @@ async function openNotify(){
   <label class="field">LINE Messaging API Channel Access Token<input id="lnTok" value="${esc(st.line.token||'')}" placeholder="LINE Developers 後台取得"></label>
   <label class="field">LINE 接收者 User ID<input id="lnTo" value="${esc(st.line.to||'')}" placeholder="U 開頭"></label>
   <label class="toggle">完成工作也通知<button type="button" class="sw ${st.notifyAll?'on':''}" id="nAll"></button></label>
-  <div class="row2"><button class="btn" id="sSave">儲存</button><button class="ghost" id="nTest">傳測試通知</button><span id="sMsg" style="font-size:12px;color:var(--mute)"></span></div>`);
+  <div class="row2"><button class="btn" id="sSave">儲存</button><button class="ghost" id="nTest">傳測試通知</button><span class="dflag" data-dirty-flag hidden>● 有未儲存的變更</span><span id="sMsg" style="font-size:12px;color:var(--mute)"></span></div>`);
   $('nDev').onclick=async()=>{const want=!$('nDev').classList.contains('on');
     if(want&&Notification.permission!=='granted'){const p=await Notification.requestPermission().catch(()=>'denied');if(p!=='granted'){toast(I18N.t('沒有取得通知權限'));return openNotify()}}
     try{localStorage.setItem(NOTI_KEY,want?'1':'0')}catch(e){}$('nDev').classList.toggle('on',want);
     if(want)try{new Notification('OCTA',{body:I18N.t('通知已開啟'),icon:'/icon.png?v=octopus2'})}catch(e){}};
-  $('nAll').onclick=()=>$('nAll').classList.toggle('on');
+  $('nAll').onclick=()=>{$('nAll').classList.toggle('on');markDirty()};
   const say=t=>$('sMsg').textContent=t;
-  const saveS=()=>api('settings','PUT',{notifyAll:$('nAll').classList.contains('on'),tg:{token:$('tgTok').value,chat:$('tgChat').value},line:{token:$('lnTok').value,to:$('lnTo').value}});
-  $('sSave').onclick=async()=>{try{await saveS();say(I18N.t('已儲存 ✓'))}catch(e){say(e.message)}};
+  const saveS=()=>api('settings','PUT',{notifyAll:$('nAll').classList.contains('on'),tg:{token:$('tgTok').value,chat:$('tgChat').value},line:{token:$('lnTok').value,to:$('lnTo').value}}).then(r=>{cleanDirty();return r});
+  trackDirty($('tgTok').closest('.sbody,.sheet'),async()=>{try{await saveS();say(I18N.t('已儲存 ✓'));return true}catch(e){say(e.message);return false}});
+  $('sSave').onclick=async()=>{try{await saveS();say(I18N.t('已儲存 ✓'));toast(I18N.t('已儲存 ✓'))}catch(e){say(e.message)}};
   $('nTest').onclick=async()=>{try{await saveS();const r=await api('notify/test','POST');say(I18N.t('已送出：')+r.sent.join('、'))}catch(e){say(e.message)}};
   $('tgDet').onclick=async()=>{try{await saveS();const r=await api('notify/detect','POST');$('tgChat').value=r.chat;say(I18N.t('找到 Chat ID ✓'))}catch(e){say(e.message)}}}
 async function openConnectors(){
@@ -2656,8 +2710,10 @@ async function openNotes(){
   let st={notes:''};try{st=await api('settings')}catch(e){}
   subSheet('共用資料',`<label class="field">所有機器人都會讀的固定資訊<textarea id="gNotes" maxlength="20000" style="min-height:220px" placeholder="例如：公司名稱、常用網站、聯絡方式、做事原則">${esc(st.notes)}</textarea></label>
   <p>只給某個分區的資料，請在左邊分區名稱旁的 ⋯ →「分區名稱與資料」填寫。</p>
-  <div class="row2"><button class="btn" id="gSave">儲存</button><span id="gMsg" style="font-size:12px;color:var(--mute)"></span></div>`);
-  $('gSave').onclick=async()=>{try{await api('settings','PUT',{notes:$('gNotes').value});$('gMsg').textContent=I18N.t('已儲存 ✓')}catch(e){$('gMsg').textContent=e.message}}}
+  <div class="row2"><button class="btn" id="gSave">儲存</button><span class="dflag" data-dirty-flag hidden>● 有未儲存的變更</span><span id="gMsg" style="font-size:12px;color:var(--mute)"></span></div>`);
+  const save=async()=>{try{await api('settings','PUT',{notes:$('gNotes').value});cleanDirty();$('gMsg').textContent=I18N.t('已儲存 ✓');return true}catch(e){$('gMsg').textContent=e.message;return false}};
+  trackDirty($('gNotes').closest('.sbody,.sheet'),save);
+  $('gSave').onclick=async()=>{if(await save())toast(I18N.t('已儲存 ✓'))}}
 function openTpl(){subSheet('範本',`<p>一鍵建立一組常用的機器人，之後都能改名、改任務。</p>${tplHtml()}`);bindTpl($('veil'))}
 /* version & what's new */
 let CHANGES=null;
