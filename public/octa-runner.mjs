@@ -28,7 +28,7 @@ export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
-const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+const JOB_TIMEOUT_MS = 60 * 60 * 1000;   // default 單件工作最長時間; the server sends the user's choice as job.maxMin
 const QUIET_MS = 8 * 60 * 1000;   // Claude streams an event at least every step; 8 silent minutes means a tool is stuck
 const CHUNK = 900_000;
 
@@ -800,7 +800,8 @@ export async function spawnCli(bin, args, dir, input, opts = {}) {
     const finish = r => { if (done) return; done = true; clearTimeout(timer); clearTimeout(quietTimer); clearTimeout(fallback); resolve(r); };
     const stop = why => { killed = why; killTree(); fallback = setTimeout(() => finish({ code: 1, out: decode(out), err: decode(err) + '\n' + why }), 10000); };
     if (opts.ctl) opts.ctl.kill = killTree;
-    const timer = setTimeout(() => stop('執行超過 15 分鐘，已中止。'), JOB_TIMEOUT_MS);
+    const maxMs = opts.maxMs || opts.ctl?.maxMs || JOB_TIMEOUT_MS;
+    const timer = setTimeout(() => stop(`執行超過 ${Math.round(maxMs / 60000)} 分鐘（單件工作最長時間），已中止。`), maxMs);
     // a tool that never answers (e.g. a browser page frozen by a dialog): nothing comes out for minutes
     const quiet = () => { if (!opts.quietMs) return; clearTimeout(quietTimer); quietTimer = setTimeout(() => stop(`AI 超過 ${Math.round(opts.quietMs / 60000)} 分鐘沒有任何動靜，很久沒有回應，已中止。`), opts.quietMs); };
     quiet();
@@ -886,7 +887,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       try { text = readFileSync(last, 'utf8').trim(); } catch { }
       break;
     }
-    case 'gemini': r = await spawnCli('agy', ['-p', FILE_INSTR, '--dangerously-skip-permissions', '--output-format', 'text', '--print-timeout', '15m', '--add-dir', store, ...m('--model')], dir, '', { ctl: live.ctl }); break;
+    case 'gemini': r = await spawnCli('agy', ['-p', FILE_INSTR, '--dangerously-skip-permissions', '--output-format', 'text', '--print-timeout', Math.round((live.ctl?.maxMs || JOB_TIMEOUT_MS) / 60000) + 'm', '--add-dir', store, ...m('--model')], dir, '', { ctl: live.ctl }); break;
     case 'qwen': r = await spawnCli('qwen', ['--yolo', '--include-directories', store, ...m('-m'), '-p', STDIN_INSTR], dir, prompt, { ctl: live.ctl }); break;
     case 'copilot': r = await spawnCli('copilot', ['-p', FILE_INSTR, '-s', '--allow-all-tools', '--allow-all-paths', '--no-color',
       '--additional-mcp-config', '@' + join(dir, 'copilot-mcp.json'), ...m('--model')], dir, '', { ctl: live.ctl }); break;
@@ -913,7 +914,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       let result = null;
       r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
         '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_ALLOWED, ...(await claudeLean(useBrowser))], dir, prompt, {
-        ctl: live.ctl, quietMs: QUIET_MS,
+        ctl: live.ctl, quietMs: QUIET_MS, maxMs: job.maxMin ? job.maxMin * 60000 : undefined,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
           if (e.type === 'result') { result = e; return; }
@@ -989,7 +990,7 @@ async function chatRun(job) {
   if (tabs) job.bot.tabs = tabs;
   job.eyes = eyes;
   // live progress (at most every 4 s); if the user pressed 停止, the server says so and the run is stopped
-  const ctl = {};
+  const ctl = { maxMs: job.maxMin ? job.maxMin * 60000 : undefined };   // 單件工作最長時間, for every AI tool
   let lastSent = 0, pendingText = '', timerP = null, stoppedByUser = false;
   const flush = () => { timerP = null; lastSent = Date.now(); api('runner/progress', { id: job.id, text: pendingText }).then(r => { if (r.hand && !side) { job.handed = true; log(`✋ ${job.bot.name}：使用者接手，停止點擊`); ctl.kill?.(); } if (r.stop) { stoppedByUser = true; log(`■ ${job.bot.name}：使用者按了停止`); ctl.kill?.(); } }).catch(() => { }); };
   const progress = t => { pendingText = t; if (timerP) return; const wait = Math.max(0, 4000 - (Date.now() - lastSent)); timerP = setTimeout(flush, wait); };
@@ -1304,7 +1305,7 @@ async function runGrokBot(job, live) {
   if (sent.code !== 0) return { ok: false, text: '⚠ 傳給 Grok Bot 失敗：' + ((sent.err || sent.out || '').trim().slice(-800) || '結束碼 ' + sent.code) };
   const got = [], t0 = Date.now();
   let quiet = 0;
-  while (Date.now() - t0 < JOB_TIMEOUT_MS && !stopped) {
+  while (Date.now() - t0 < (job.maxMin ? job.maxMin * 60000 : JOB_TIMEOUT_MS) && !stopped) {
     await pause(5000);
     const j = jsonOut((await runGbot(['thread', name, ...(cursor ? ['--after', String(cursor)] : []), '--json'])).out);
     if (!j) continue;

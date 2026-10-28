@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   shot TEXT,                     -- files.id of the screenshot taken when it ended
   retry_of INTEGER,              -- the failed job this one tries again
   via TEXT,                      -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
-  routine TEXT                   -- routines.id that started this job (its result updates that routine's last_*)
+  routine TEXT,                  -- routines.id that started this job (its result updates that routine's last_*)
+  beat INTEGER                   -- last heartbeat while running (a long job that keeps reporting is not stuck)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created);

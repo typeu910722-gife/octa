@@ -141,3 +141,6 @@
 
 ## 2026-10-28 3.3.1
 - 20:09 實機：OCTA 無法啟動 ERR_ADDRESS_IN_USE (-147) loading 127.0.0.1:17777。查到整台電腦 TIME_WAIT 15.5 萬（443 埠 9.5 萬），Honeygain 同時開 3196 條連線 → 臨時埠用光，OCTA 連自己的本機頁都開不了。修：main.mjs loadLocal() 遇暫時性連線錯誤以 1→30 秒退避重試最多 12 次並顯示說明，不再跳錯誤框。根因在 Honeygain，需使用者決定是否暫停／限制。
+
+## 2026-10-28 3.3.2
+- 15 分鐘上限改設定 settings.jobMax（15/30/60/120/180，預設 60）→ job.maxMin → 執行器 ctl.maxMs（spawnCli 與 agy --print-timeout）；jobs.beat（runner/progress 心跳每分鐘最多寫一次）；伺服器卡住判定改為 IFNULL(beat,started) 超過 20 分鐘或總時間超過 jobMax+5 分。test/job-time.test.mjs。

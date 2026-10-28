@@ -1225,3 +1225,9 @@ T.update({
 P.extend([
  (r'^「(.+)」正在做「(.+)」，做完就接著處理這則。$', '“$1” is working on “$2”; it will handle this right after.', '「$1」は「$2」を作業中です。終わったら続けてこれを処理します。'),
 ])
+T.update({   # 單件工作最長時間
+ 'AI 待機與工作時間': ('AI standby & job time', 'AI 待機と作業時間'),
+ '單件工作最長時間': ('Longest time for one job', '1 件の作業の最大時間'),
+ '一件工作最多做多久就中止。機器人只要還在動作、有在回報進度，就不會被提早中止；超過 8 分鐘完全沒動靜才會當成卡住。一次要讀很多頁面（例如兩館的 LINE）時可以調長。': ('How long one job may run before it is stopped. A bot that is still working and reporting progress is never stopped early; only 8 minutes with no activity at all counts as stuck. Make it longer for jobs that read many pages at once.', '1 件の作業を止めるまでの最大時間です。動いていて進捗を報告している間は途中で止めません。8 分間まったく動きがない場合だけ止まったとみなします。多くのページを一度に読む作業では長めにしてください。'),
+ '小時': ('h', '時間'),
+})

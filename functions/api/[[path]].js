@@ -16,7 +16,9 @@ const sha = async s => hex(await crypto.subtle.digest('SHA-256', enc.encode(s)))
 const randTok = () => hex(crypto.getRandomValues(new Uint8Array(24)));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const MIN = 60000, DAY = 86400000;
-const WARM = [0, 30, 60, 120, 300, 600, -1];   // AI 待機 seconds after a reply (0: off, -1: always)
+const WARM = [0, 30, 60, 120, 300, 600, -1];
+const JOB_MAX = [15, 30, 60, 120, 180];   // 單件工作最長時間 (minutes); a job still reporting is never cut short by the 20-minute silence check
+const jobMaxOk = v => (JOB_MAX.includes(+v) ? +v : 60);   // AI 待機 seconds after a reply (0: off, -1: always)
 const MAX_ASK_DEPTH = 4;          // how many times bots may hand questions to each other in one run
 const HOST_ONLINE_MS = 6 * MIN;   // the host writes a heartbeat every ~4 minutes
 const WAIT_MS = 25000;            // long-poll length
@@ -579,6 +581,8 @@ const MIGRATIONS = [
   'ALTER TABLE bots ADD COLUMN autonomy TEXT', 'ALTER TABLE bots ADD COLUMN stood INTEGER', 'ALTER TABLE jobs ADD COLUMN via TEXT',
   // D1 讀取量: today's / last-14-days job queries (token counts, 幕後, weekly review) read only their own days
   'CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created)',
+  // a running job's last heartbeat: a long job that keeps reporting is not taken for a stuck one
+  'ALTER TABLE jobs ADD COLUMN beat INTEGER',
   // 主機模式: the account's data lives on its host computer; the cloud keeps the account and forwards
   'ALTER TABLE users ADD COLUMN hmode INTEGER', 'ALTER TABLE users ADD COLUMN hurl TEXT', 'ALTER TABLE users ADD COLUMN hkey TEXT', 'ALTER TABLE users ADD COLUMN hseen INTEGER',
   'CREATE TABLE IF NOT EXISTS host_hooks (k TEXT PRIMARY KEY, user_id TEXT NOT NULL)',
@@ -590,7 +594,7 @@ const schemaReady = new WeakSet();
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
   try {
-    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs', "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0", 'SELECT hmode, hurl, hkey, hseen FROM users', 'SELECT k, user_id FROM host_hooks', 'SELECT last_run, last_status, last_job, last_text FROM routines', 'SELECT routine FROM jobs'].map(q => db.prepare(q + ' LIMIT 0')));
+    await db.batch(['SELECT want, pc FROM files', 'SELECT k FROM logins', 'SELECT progress, tokens, pc, eng, tries FROM jobs', 'SELECT hook, watch, wstate FROM routines', 'SELECT bpc, fb FROM bots', 'SELECT id, fb FROM code_tasks', 'SELECT reply FROM messages', 'SELECT handed, watch FROM live', 'SELECT prog FROM users', 'SELECT err_kind, err_msg, shot, retry_of FROM jobs', 'SELECT web FROM stats', 'SELECT autonomy, stood FROM bots', 'SELECT via FROM jobs', "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0", 'SELECT beat FROM jobs', 'SELECT hmode, hurl, hkey, hseen FROM users', 'SELECT k, user_id FROM host_hooks', 'SELECT last_run, last_status, last_job, last_text FROM routines', 'SELECT routine FROM jobs'].map(q => db.prepare(q + ' LIMIT 0')));
     schemaReady.add(db); return; } catch { }
   for (const sql of MIGRATIONS) { try { await db.prepare(sql).run(); } catch { } }
   schemaReady.add(db);
@@ -2165,9 +2169,10 @@ async function route({ request: req, env, params }) {
       if (path === 'runner/next' && m === 'POST') {
         let changed = await fireRoutines(env, db, U, true);
         // stale running jobs become errors
-        const stale = (await db.prepare("SELECT id,conv,bot_id FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND started<?) OR started<?)").bind(U, now() - 20 * MIN, now() - 3 * 3600000).all()).results;
+        const maxMin = jobMaxOk((await getSettings(db, U)).jobMax);
+        const stale = (await db.prepare("SELECT id,conv,bot_id,started,beat FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND (IFNULL(beat,started)<? OR started<?)) OR started<?)").bind(U, now() - 20 * MIN, now() - (maxMin + 5) * MIN, now() - Math.max(3 * 60, maxMin + 5) * MIN).all()).results;
         for (const s of stale) {
-          await db.prepare("UPDATE jobs SET status='error', err_kind='timeout', err_msg=? WHERE id=?").bind('執行超過 20 分鐘沒有回報，已中止', s.id).run();
+          await db.prepare("UPDATE jobs SET status='error', err_kind='timeout', err_msg=? WHERE id=?").bind(now() - (s.beat || s.started) >= 20 * MIN ? '超過 20 分鐘沒有任何回報，已中止' : `執行超過 ${maxMin} 分鐘（單件工作最長時間），已中止`, s.id).run();
           await addMsg(db, U, s.conv, s.bot_id, '⚠ 執行逾時，已中止。');
           changed++;
         }
@@ -2209,8 +2214,9 @@ async function route({ request: req, env, params }) {
       }
       if (path === 'runner/progress' && m === 'POST') {   // what the bot is doing now; also tells the computer if 停止 was pressed
         const txt = clean(body.text, 120);
-        const jr = await db.prepare("SELECT progress FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
+        const jr = await db.prepare("SELECT progress, beat FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
         if (!jr) return J({ stop: true });
+        if (now() - (jr.beat || 0) > MIN) await db.prepare('UPDATE jobs SET beat=? WHERE id=?').bind(now(), +body.id).run();   // alive (at most one write a minute)
         if (jr.progress !== txt) {   // a heartbeat with the same text changes nothing for the screens
           await db.batch([db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(txt, +body.id), db.prepare('UPDATE users SET prog=prog+1 WHERE id=?').bind(U)]); wake();
         }
@@ -3235,7 +3241,7 @@ async function route({ request: req, env, params }) {
     }
     if (path === 'settings' && m === 'GET') {
       const st = await getSettings(db, U);
-      return J({ warm: WARM.includes(+st.warm) ? +st.warm : 120, shareBrowser: st.shareBrowser !== false, notes: st.notes || '', notifyAll: !!st.notifyAll, sched: st.sched === 'cloud' ? 'cloud' : 'pc', tg: { token: mask(st.tg?.token), chat: st.tg?.chat || '' }, line: { token: mask(st.line?.token), to: st.line?.to || '' } });
+      return J({ jobMax: jobMaxOk(st.jobMax), warm: WARM.includes(+st.warm) ? +st.warm : 120, shareBrowser: st.shareBrowser !== false, notes: st.notes || '', notifyAll: !!st.notifyAll, sched: st.sched === 'cloud' ? 'cloud' : 'pc', tg: { token: mask(st.tg?.token), chat: st.tg?.chat || '' }, line: { token: mask(st.line?.token), to: st.line?.to || '' } });
     }
     if (path === 'settings' && m === 'PUT') {
       const st = await getSettings(db, U);
@@ -3244,6 +3250,7 @@ async function route({ request: req, env, params }) {
       if (body.nick !== undefined) st.nick = clean(body.nick, 20);   // what the bots call you
       if (['cloud', 'pc'].includes(body.sched)) st.sched = body.sched;
       if (body.warm !== undefined && WARM.includes(+body.warm)) st.warm = +body.warm;
+      if (body.jobMax !== undefined && JOB_MAX.includes(+body.jobMax)) st.jobMax = +body.jobMax;
       if (body.shareBrowser !== undefined) st.shareBrowser = !!body.shareBrowser;
       if (['zh-TW', 'zh-CN', 'en', 'ja'].includes(body.lang)) st.lang = body.lang;
       // per-bot extras kept with the account: 置頂, notifications, memory (📌), skills (🧩)
@@ -3525,7 +3532,7 @@ async function jobPayload(env, db, U, job) {
   if (sv?.k === 'side' && !main) await db.prepare('UPDATE jobs SET via=NULL WHERE id=?').bind(job.id).run();
   return {
     side: main ? { doing: String(main.prompt || '').replace(/\s+/g, ' ').slice(0, 200), progress: main.progress || '' } : null,
-    id: job.id, kind: job.kind, url: job.url, prompt: job.kind === 'chat' && /例行|排程|定時|刪|停用|暫停|取消/.test(job.prompt || '') ? job.prompt + ROUTINE_SELF : job.prompt, usageToday, warm: WARM.includes(+st.warm) ? +st.warm : 120, allowed: (st.allow || {})[bot.id] || [], ...mem, skills: (st.skills || {})[bot.id] || [],
+    id: job.id, kind: job.kind, url: job.url, prompt: job.kind === 'chat' && /例行|排程|定時|刪|停用|暫停|取消/.test(job.prompt || '') ? job.prompt + ROUTINE_SELF : job.prompt, usageToday, maxMin: jobMaxOk(st.jobMax), warm: WARM.includes(+st.warm) ? +st.warm : 120, allowed: (st.allow || {})[bot.id] || [], ...mem, skills: (st.skills || {})[bot.id] || [],
     nskills: (st.nskills || {})[bot.id] || null,
     routines: (await db.prepare('SELECT name,times,enabled FROM routines WHERE user_id=? AND conv IN (?,?)').bind(U, job.conv, bot.id).all()).results.map(r => ({ name: r.name, times: JSON.parse(r.times), enabled: !!r.enabled })),
     // a routine run: its own instruction leads, the standing task is background, and its times are the only times

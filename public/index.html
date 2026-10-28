@@ -2602,7 +2602,7 @@ function settingsRows(){return [
     ['acct','👤','帳號與裝置',CFG.host?esc(CFG.host.name||S.me):CFG.local?'離線模式不使用帳號':esc(S.me)],
     ['pc','🖥','電腦與主機',CFG.host?'資料存在這台電腦':S.runnerOnline?(CFG.local?'電腦在線':'主機在線'):(CFG.local?'電腦離線':'主機離線')],
     ['ai','🔌','AI 連線','連接 AI、查看剩餘流量'],
-    ['warm','⚡','AI 待機時間',warmText(S.warm??120)],
+    ['warm','⚡','AI 待機與工作時間',warmText(S.warm??120)],
     ['noti','🔔','通知','這個裝置、Telegram、LINE'],
     ['conn','🔗','連接器','Telegram、LINE 和自己的服務'],
     ['sched','⏰','例行任務排程',S.sched==='cloud'?'雲端觸發':'主機觸發'],
@@ -2825,9 +2825,12 @@ async function openConnectors(){
 const WARMS=[0,30,60,120,300,600,-1];
 function warmText(v){return v===0?I18N.t('不待機'):v===-1?I18N.t('永不（一直待機）'):v<60?v+' '+I18N.t('秒'):v/60+' '+I18N.t('分鐘')}
 async function openWarm(){let st={warm:120};try{st=await api('settings')}catch(e){}S.warm=st.warm;
-  subSheet('AI 待機時間',`<p>機器人回覆完後，讓它的 AI 保持待機多久。待機中再傳訊息會直接接著做：不用重新啟動、不用重讀整包資料，回覆快很多。待機越久越省等待時間，但會一直佔用一點電腦記憶體。</p>
+  subSheet('AI 待機與工作時間',`<p>機器人回覆完後，讓它的 AI 保持待機多久。待機中再傳訊息會直接接著做：不用重新啟動、不用重讀整包資料，回覆快很多。待機越久越省等待時間，但會一直佔用一點電腦記憶體。</p>
   <div class="bchoice">${WARMS.map(v=>`<label class="bc"><input type="radio" name="wm" value="${v}" ${st.warm===v?'checked':''}><span><b>${warmText(v)}${v===120?' '+I18N.t('（建議）'):''}</b>${v===0?`<small>${I18N.t('每則訊息都重新啟動 AI（最省記憶體，最慢）')}</small>`:v===-1?`<small>${I18N.t('一直待機，回覆最快；電腦記憶體較少時不建議')}</small>`:''}</span></label>`).join('')}</div>
-  <p class="hmuted">目前只有 Claude 支援待機；其他 AI 每次都會重新啟動。改了任務設定、共用資料或分區資料時，AI 會自動重新開始，讀到最新內容。</p>`);
+  <p class="hmuted">目前只有 Claude 支援待機；其他 AI 每次都會重新啟動。改了任務設定、共用資料或分區資料時，AI 會自動重新開始，讀到最新內容。</p>
+  <h4>單件工作最長時間</h4><p>一件工作最多做多久就中止。機器人只要還在動作、有在回報進度，就不會被提早中止；超過 8 分鐘完全沒動靜才會當成卡住。一次要讀很多頁面（例如兩館的 LINE）時可以調長。</p>
+  <label class="field"><select id="jobMax">${[15,30,60,120,180].map(v=>`<option value="${v}" ${(st.jobMax||60)===v?'selected':''}>${v<60?v+' '+I18N.t('分鐘'):v/60+' '+I18N.t('小時')}${v===60?' '+I18N.t('（建議）'):''}</option>`).join('')}</select></label>`);
+  $('jobMax').onchange=async e=>{try{await api('settings','PUT',{jobMax:+e.target.value});toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}};
   $('veil').querySelectorAll('input[name=wm]').forEach(r=>r.onchange=async()=>{try{await api('settings','PUT',{warm:+r.value});S.warm=+r.value;toast(I18N.t('已儲存 ✓'))}catch(e){toast(e.message)}})}
 /* every routine of every bot: did it run, how did it go, when is the next one; tap for the last result */
 function schedList(){const rs=S.routines.filter(r=>conv(r.conv));if(!rs.length)return '<p class="hmuted">還沒有例行任務。到機器人的「任務設定 → 例行任務」加入。</p>';
