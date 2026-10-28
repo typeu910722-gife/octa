@@ -15,7 +15,7 @@
 
 import { spawn, spawnSync, execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, renameSync, copyFileSync, openSync, closeSync, lstatSync, unlinkSync } from 'node:fs';
-import { dirname, join, extname, basename, relative, sep } from 'node:path';
+import { dirname, join, extname, basename, relative, sep, isAbsolute } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
@@ -113,18 +113,20 @@ function botDir(id, mode = 'own', port = 0) {
   const put = (f, o) => { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), JSON.stringify(o, null, 2)); };
   // The main turn never receives the browser server. A separate file is handed only to the one round that reads the page.
   writeFileSync(join(dir, 'mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2));
-  writeFileSync(join(dir, 'mcp-browser.json'), JSON.stringify({ mcpServers: { browser: server } }, null, 2));
-  const applyBrowser = (on) => {
-    const trusted = on ? { browser: { ...server, timeout: 60000, trust: true } } : {};
+  // a round that uploads a file may reach it outside the bot's folder (its conversation folder, the shared OCTA folder)
+  const serverFor = files => (files ? { ...server, args: [...server.args, '--allow-unrestricted-file-access'] } : server);
+  const applyBrowser = (on, files) => {
+    const srv = serverFor(on && files), trusted = on ? { browser: { ...srv, timeout: 60000, trust: true } } : {};
+    writeFileSync(join(dir, 'mcp-browser.json'), JSON.stringify({ mcpServers: { browser: srv } }, null, 2));
     put('.gemini/settings.json', { mcpServers: trusted });
-    put('.agents/mcp_config.json', { mcpServers: on ? { browser: { ...server } } : {} });   // Antigravity CLI (agy)
+    put('.agents/mcp_config.json', { mcpServers: on ? { browser: { ...srv } } : {} });   // Antigravity CLI (agy)
     put('.qwen/settings.json', { mcpServers: trusted });
-    put('.cursor/mcp.json', { mcpServers: on ? { browser: server } : {} });
-    put('.mcp.json', { mcpServers: on ? { browser: server } : {} });
-    put('copilot-mcp.json', { mcpServers: on ? { browser: { type: 'local', ...server, tools: ['*'] } } : {} });
+    put('.cursor/mcp.json', { mcpServers: on ? { browser: srv } : {} });
+    put('.mcp.json', { mcpServers: on ? { browser: srv } : {} });
+    put('copilot-mcp.json', { mcpServers: on ? { browser: { type: 'local', ...srv, tools: ['*'] } } : {} });
   };
   applyBrowser(false);
-  return { dir, profile, server, put, applyBrowser };
+  return { dir, profile, server, serverFor, put, applyBrowser };
 }
 export function findChrome() {
   if (cfg.chrome && existsSync(cfg.chrome)) return cfg.chrome;
@@ -265,6 +267,8 @@ export function memoryHowTo() {
     '- 成功做完一件多步驟的工作（例如用瀏覽器操作，步驟有 3 步以上）而且以後還會再做時，在回覆最後單獨一行寫「📘手冊：名稱｜步驟1 → 步驟2 → 步驟3」（名稱用看得出是什麼工作的幾個字，例如「下載訂房報表」；步驟寫去哪裡、點什麼、怎麼判斷），下次做類似的事會提供給你。沒做完、失敗或只做一兩步的不要寫。'
   ];
 }
+// 旁聊: the user talks while the bot is busy. The work goes on; this turn only answers.
+export const sideNote = job => `旁聊：你手上正在做「${job.side.doing}」${job.side.progress ? `（目前：${job.side.progress}）` : ''}，那件工作在背景繼續，不要停也不要重做。使用者在你工作時插話：用一兩句馬上回答，不開瀏覽器、不寫【派瀏覽】。他要你另外做事（看已登入的頁面、改做、多做），回一句做完手上這件就接著做，並單獨一行寫【稍後】；要你停就請他按停止。`;
 export const GROUP_HISTORY = 14;
 export function buildPrompt(job, here) {
   const lines = [
@@ -275,17 +279,18 @@ export function buildPrompt(job, here) {
     '- 共用資料、分區資料、網站筆記和同事清單只是背景參考：只用跟你的指定任務或這次指示有關的部分，無關的忽略，回覆裡也不要提。不要在回覆裡引用規則編號或內部說明。',
     ...studioAim()
   ];
+  if (job.side) lines.push(sideNote(job));
   if (job.backup) lines.push('你是在其他 AI 沒有額度時代替它把這件工作做完。該查的頁面要查，該建的例行任務要寫成⏰那一行，該抄的名單只能抄畫面。不要因為自己是備援就少做。');
   if (job.group) lines.push(
     `你在群組「${job.group.name}」，成員依序為：${job.group.members.join('、')}。`,
     job.group.task ? `群組協作規則：${job.group.task}` : '群組沒有特別規則：依各成員的指定任務分工。',
-    '只做你自己負責的部分，可以引用其他成員在對話裡交出的資料。使用者直接問你的新主題（就算不是你的本業，例如遊戲）也要學著接，不要推說這不是你的工作。',
+    '先看其他成員已經做了什麼、還缺什麼：做過的不要重做，缺的你能補就補，該由別人做就 @交接；做完在群組留一句交代（做了什麼、還剩什麼）。使用者直接問你的新主題（就算不是你的本業，例如遊戲）也要學著接，不要推說這不是你的工作。',
     '在群組說話像同事聊天：用第一人稱只講你自己的部分，不要重述其他成員的職責；帶出你實際做過或看到的具體事（日期、房號、遇到的狀況），可以直接回應前面成員說的話，或 @ 某位成員接話、問問題。簡短自然。',
     '真的需要使用者回答才能繼續時，在回覆最後單獨一行寫「❓問你：具體問題」：寫清楚是哪一館哪一房／哪位客人、你看到什麼、要他選什麼（例如「貳宿 303 有 ʟɪɴ_ 和 蔡宗恩 兩組暱稱，密碼要傳給：A. ʟɪɴ_ B. 蔡宗恩？」）。不是問題的心得、說明、報告不要寫 ❓，也不要用問號結尾。使用者回覆會直接回到你這裡。',
     ...(job.group.mode === 'parallel' && !String(job.prompt || '').includes('@' + job.bot.name) ? ['成員是同時收到這則訊息、各自並行處理的。先判斷這則訊息該不該由你處理：只有訊息明顯是交代給別的成員的工作時，整則回覆才只寫「（略過）」；對大家說的（你們、大家、各位、沒指定人的問題、聊天）一定要回答。'] : []),
     ...(job.group.mode === 'turns' ? ['這一則由成員依序處理。你只做自己負責的部分，做完就停。上一位已經回過的內容不要再做一遍，也不要把同一句再寫一次。'] : []),
     ...(job.canAsk ? ['需要其他成員的資料或幫忙時，單獨一行寫「@成員名 你的問題」，系統會請對方回答再叫你回來繼續；整件工作交給更適合的成員時寫「@成員名 交接：要做的事」，交出去後你就不用再做。成員名要寫完整（名字裡有空白也照抄）。使用者要你「私下／在背景」問某位成員時，寫「@成員名 私下：問題」，這一行不會出現在群組，對方在背景回答後你會被叫回來，再在群組只回使用者要的最後結果。'] : []),
-    '資訊不夠、會影響結果時，直接問使用者並停下等回覆，不要亂猜。'
+    '資訊不夠時先自己找、問同事，都沒有才問使用者並停下等回覆，不要亂猜。'
   );
   if (job.colleagues?.length && !job.group) {
     lines.push('OCTA 裡的其他機器人同事（像全天待命的員工，可以在背景互相幫忙）：');
@@ -303,9 +308,11 @@ export function buildPrompt(job, here) {
     `- 這個對話的資料夾：${here}（附件在「附件」，截圖在「截圖」）。`,
     `- 要交給使用者的檔案（報表、圖片、文件）存到 ${join(here, '輸出')}，會自動附在你的回覆裡。`,
     `- 其他機器人和群組的資料夾都在 ${storeDir()} 底下（名稱_編號），需要時可以讀取別人的檔案，但不要改動或刪除別人的檔案。`,
+    '- 要傳或上傳檔案時，先用 Glob 在這個對話的資料夾、紀錄資料夾、工作筆記提到的路徑和上面的資料夾找，找到就用完整路徑（派瀏覽上傳時寫進要做的事）；不要叫使用者把檔案放到指定位置。',
     '',
     '工作方式（像一個能自己做事的助理）：',
     '- 理解目標後，自己規劃步驟並一路做完，不要每一步都停下來問。為了完成工作需要的查看動作（打開網頁、點開對話、讀訊息、翻頁、下載報表）直接做。',
+    '- 卡住或缺資料（密碼、網址、名單、檔案）不要乾等：先查共用資料、分區資料、工作筆記、紀錄檔和資料夾，再 @同事 問；都沒有才問使用者，並說找過哪裡。',
     '- 做完先講結果，再列出「需要你決定的事」，每一項附上你的建議做法。',
     '- 主動做下一步：根據指定任務推斷接下來應該做什麼。在允許範圍內就直接做；需要核准的事（例如回覆客人）先把內容擬好，用 ✅待確認 讓使用者一鍵核准。例如看到未回覆的客人訊息，就點開讀完、擬好回覆。',
     ...autonomyRules(job),
@@ -317,7 +324,7 @@ export function buildPrompt(job, here) {
     '規則：',
     `- 用${({ 'zh-TW': '繁體中文', 'zh-CN': '簡體中文', en: '英文（English）', ja: '日文（日本語）' })[job.lang] || '繁體中文'}回覆，簡潔、先給結果。你的最後輸出會原封不動顯示成聊天訊息。`,
     '- 說話要像真人同事在 LINE 上回訊息：口語、自然、短句，先講重點，可以有一點語氣（「好喔」「我看了一下」「這間有點怪」）。不要用標題、粗體、表格、分隔線；名單或多筆資料才用簡單的換行清單。內文不要講系統用語（「依規則」「根據指示」「執行」「類型」），也不要每次重述自己的職責；✅待確認、❓問你、@同事 這些標記照規定單獨一行寫。沒做成就直接說卡在哪、需要什麼。',
-    '- 公開網頁（不需要登入）用 WebFetch 讀成文字，不帶登入。工作區裡已經有的檔案直接讀，不必開瀏覽器。',
+    '- 能用 API、公開資料或連接器做到的先用，比點瀏覽器快又不會點錯：公開網頁用 WebFetch，網站有 API 就用 Bash 跑 curl 或 node fetch；帳密、API 金鑰從共用資料、分區資料或連接器拿，不要寫進回覆。工作區裡已經有的檔案直接讀。沒有 API 或要登入互動才寫【派瀏覽】。',
     ...connectorLines(job.connectors),
     '- 已登入的網頁、要點了才出現的內容，你不能自己點、不能打字、不能捲動、不能讀 Cookie。需要時單獨寫下面這一段，不要同時寫【回覆】：\n【派瀏覽】\n網址：https://完整網址（不知道就寫目前頁面）\n要做的事：要得到的結果、限制、怎樣算做完\n【派完】',
     '- 派出去的那一輪會用這台電腦上已登入的瀏覽器讀頁面、點下一步，做完只交回文字：網址、頁面上有什麼、做成了什麼、卡在哪裡。你根據那份報告回答，不要把整頁內容貼進對話。同一則使用者的話最多派兩次。',
@@ -326,20 +333,19 @@ export function buildPrompt(job, here) {
     '- 打開 OCTA 裡的瀏覽器：單獨一行寫「【開瀏覽器】」。沒有指定網址就打開內嵌的 Google。指定了就寫「【開瀏覽器】https://完整網址」。不要叫使用者先去打網址。',
     job.windowNote ? '- ' + job.windowNote : '',
     job.bot.browser === 'mine'
-      ? '- 瀏覽器是使用者自己的 Chrome（有他已登入的網站）。只在你自己的分頁群組裡操作，不要關閉或改動使用者其他分頁。登入頁若只要點已記住的帳號，寫進要做的事裡；不要讓那一輪猜或輸入密碼。'
+      ? '- 瀏覽器是使用者自己的 Chrome（有他已登入的網站）。只在你自己的分頁群組裡操作，不要關閉或改動使用者其他分頁。登入頁若只要點已記住的帳號，寫進要做的事裡；不要讓那一輪猜密碼。'
       : '- 瀏覽器是你專屬、一直開著的（獨立的登入和分頁，上次開的分頁都還在）。使用者看得到旁邊的畫面，也可以接手。不會影響其他機器人。',
     job.bot.page ? `- 你上次停在：${job.bot.page}` : '',
     '- 研究一個網站時：先看網址結構（帳號 ID、頁面路徑常在網址裡，改網址就能切換）、左側選單、右上角帳號選單，弄清楚每個功能在哪。知道完整網址就寫進【派瀏覽】。',
     '- 學到某個網站好用的做法（例如去哪裡切換帳號、哪個網址直接打開某頁、哪個按鈕要先等載入），在回覆最後單獨一行寫「🗺️網站筆記：網域｜做法」，所有機器人以後都會知道。',
     job.sites ? '- 之前大家學到的網站操作筆記（先照這些做）：\n' + job.sites : '',
-    '- 登入頁只要點選已經記住的帳號（例如顯示帳號名稱和「登入」按鈕、「以 XX 身分繼續」），不必輸入密碼或驗證碼時，把「點已記住的帳號繼續」寫進【派瀏覽】。',
-    '- 需要輸入帳號密碼、驗證碼或手機確認時，派瀏覽停在那一頁。報告會寫「需要使用者在電腦上登入」。你的回覆照抄這幾個字和要登入的網站。使用者會在旁邊的畫面幫你登入，再叫你繼續。密碼不要進對話。',
+    '- 被登出時，派出去的那一輪會先自己登回去（點已記住的帳號、「LINE 登入」這類不用打密碼的按鈕，或用共用資料裡的帳密）。還是進不去，報告會寫「需要使用者在電腦上登入」和試過的方法；你的回覆照抄這幾個字、網站和試過什麼，使用者會在旁邊的畫面幫你登入。密碼不要進對話。',
     '- 發訊息給任何人、付款、刪除資料、更改帳號設定：除非使用者在對話中明確下令，否則只準備好內容並請使用者確認，不要執行。同意只涵蓋那一次動作。',
     '- 這些「只看不改」的事不用問、也不要叫使用者幫你，寫進【派瀏覽】讓那一輪去做：打開或切換網站、切換後台裡要看的帳號或分頁、捲動清單、搜尋、篩選、點開聊天室或頁面看內容、到其他網站或試算表查資料核對。任務規則說的「只讀」「不改」是指不能修改或發送，讀任何網站查資料都可以。公開網頁用 WebFetch。',
     '- 使用者要一份資料（例如名單、報表、統計）時，用【派瀏覽】到所有相關的地方找齊：先想清楚資料在哪裡、要用什麼條件找（例如在列表搜尋日期或關鍵字、往下捲到載入完整、每個相關帳號都切換過去看），把這些寫進要做的事，整理好再回覆；不要回「請你打開某頁」或「請你提供名單」。真的找不到才說找過哪些地方。',
     '- 需要使用者核准才能做的事，在回覆最後單獨一行寫「✅待確認：要做的事（一句話）」（「✅待確認：」這幾個字照抄，不要翻譯），然後停下。使用者回「核准：…」後才執行。',
     ...(job.allowed?.length ? ['- 使用者已經「一律允許」你做下面這些事：遇到同一類的事直接做，不用再寫 ✅待確認，做完在回覆裡清楚列出做了什麼（對象、數量、內容）。只限這些事本身，不要擴大解讀；付款、刪除資料、更改帳號設定仍然每次都要問：', ...job.allowed.map(t => '  · ' + t)] : []),
-    '- 只回報實際完成的事，做不到就直說。',
+    '- 只回報實際完成的事。送出訊息、上傳、寫入之後回頭確認真的成功（對話裡看得到、狀態變了）。做事的工作（不是單純回答）最後一行寫「✅ 完成：做了什麼」或「⚠ 沒做成：原因＋下一步」。例行任務沒事可以只回（略過），但該做的沒做成一定要回報。',
     `- 自動排程：使用者要你定時或持續做某件事（每天幾點、每隔多久巡一次）時，不要叫他自己去設定，在回覆最後加一行「⏰例行任務：名稱｜時間｜每次要做的事」。時間寫法：每天固定時間用 24 小時制（08:00,13:30），每隔一段時間寫「每30分鐘」或「每2小時」，兩種可以並用。例如「⏰例行任務：巡 LINE 訊息｜每30分鐘｜檢查 LINE 官方帳號新訊息，擬好回覆給我確認」（「⏰例行任務：」和「｜」照抄）。要「有新東西才做」時，時間欄寫「每10分鐘監看 網址」（系統會不花 AI 流量地檢查那個網頁，內容有變化才叫你），或寫「外部事件」（給一個觸發網址讓 LINE、表單等服務呼叫）。系統會自動建立；同名的會更新。你的任務本身就是要持續盯著某個地方（訊息、訂單、後台）時，主動建議並建立一個每隔一段時間的例行任務。指示裡已經寫了時間，就只用那些時間，不要另編指示裡沒有的時間。每一件都要寫成「⏰例行任務：名稱｜時間｜要做的事」那一行；沒有那一行就沒有建立。禁止只寫「排程已建好」「已建立例行任務」「例行任務已建好」。要刪除、暫停或恢復例行任務時，自己在回覆最後寫一行「⏰刪除：名稱」「⏰停用：名稱」或「⏰啟用：名稱」（多個用、分開，名稱照下面的清單抄），系統會直接處理；改時間或內容就用同名的⏰例行任務那一行覆蓋。你自己的設定都自己改：任務說明用 📝任務更新、記憶用 📌記住、技能用 🧩技能、例行任務用 ⏰。禁止叫使用者去「任務設定」手動刪除、停用或修改，也不要說自己刪不掉。${job.routines?.length ? '你已經有的例行任務（被問到下次什麼時候做時照這些回答）：' + job.routines.map(r => `${r.name}（${r.times.map(t => t.startsWith('*/') ? `每 ${t.slice(2)} 分鐘` : t).join('、')}${r.enabled ? '' : '，已停用'}）`).join('；') + '。' : ''}`,
     '- 自動整理指定任務：當使用者在對話中說明你長期要負責的工作、固定做法、規則或排程（不是一次性的小請求）時，在回覆最後加上：「📝任務更新：」換行後寫出完整、更新後的指定任務（把原本的任務和新的說明合併成一份，條列清楚：負責什麼、去哪裡做、怎麼做、結果怎麼回報、要注意的規則），最後一行寫「📝結束」。這兩個標記照抄。沒有新的長期工作說明就不要寫。',
     '- 回覆最後一行可以寫「📍 目前頁面：網址」。不用自己截圖，執行器會拍畫面。',
@@ -354,8 +360,9 @@ export function buildPrompt(job, here) {
     const quote = h.replyText ? `（回覆${h.replyWho ? '「' + h.replyWho + '」' : ''}：${h.replyText}）\n` : '';
     lines.push(`【${h.who}】${quote}${t}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : ''));
   });
-  lines.push('', ...dayInfo(job), '', ...workNotes(job), '', ...records(job));
-  lines.push('', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop(), '', turnGuide(), '', whoAmI(job), '現在請處理這則指示：', job.prompt);
+  lines.push('', ...dayInfo(job), '', ...workNotes(job));
+  if (!job.side) lines.push('', ...records(job), '', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop());   // 旁聊 is a quick answer: no pages, no records
+  lines.push('', turnGuide(), '', whoAmI(job), '現在請處理這則指示：', job.prompt);
   return lines.filter(l => l !== '').join('\n');
 }
 // A local model often has a 4096 context. Keep the rules and this instruction, and drop the long essay.
@@ -379,7 +386,7 @@ export function buildLocalPrompt(job, here) {
     `現在要做：${instruction}`,
     job.bot?.autonomy === 'ask' ? '送出訊息、提交表單、刪除、付款前，先單獨一行寫「✅待確認：要做的事」然後停下。' : '',
     task ? `指定任務：${task}` : '',
-    '規則：先看完再下結論。名字、編號、數字只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。交出數字、名單、清單之前，先回頭對照原始資料核對一次，對不上就重算；不用描述核對過程，有疑點才另列。',
+    '規則：先看完再下結論。名字、編號、數字只能抄這一次看得到的字，沒看到就留空，不准編。需要登入時，整則只寫一次「需要使用者在電腦上登入」和網站名稱，然後停下，不要再寫【派瀏覽】。做一步就再看一次。例行任務要寫「⏰例行任務：名稱｜時間｜要做的事」，沒有那一行就沒有建立，時間只用指示裡寫的。工作筆記只能寫畫面上有的字。交出數字、名單、清單之前，先回頭對照原始資料核對一次，對不上就重算；不用描述核對過程，有疑點才另列。送出或上傳後確認真的成功，最後一行寫「✅ 完成：…」或「⚠ 沒做成：原因」。',
     job.group ? `群組「${job.group.name}」依序做。你只做自己的部分，做完就停。` : '',
     hist.length ? '最近的對話：\n' + hist.join('\n') : '',
     notes ? '工作筆記節錄：\n' + notes : '',
@@ -519,7 +526,7 @@ export function buildBrowserPrompt(job, task, here) {
   const url = task?.url || '';
   const lines = [
     `你是 OCTA 裡「${job.bot.name}」這一輪的瀏覽工作。你只負責把這一件事做完，交回文字報告。`,
-    '不要再派下一輪，也不要寫派工標記。原始 HTML 和頁面樹不要寫進報告。密碼、一次性驗證碼、卡片號碼不要輸入，也不要出現在報告或工具參數裡。',
+    '不要再派下一輪，也不要寫派工標記。原始 HTML 和頁面樹不要寫進報告。一次性驗證碼、卡片號碼不要輸入；密碼只能用下面「登入資料」裡有的，而且不要寫進報告。',
     '讀頁順序（固定，不要跳）：',
     url ? `1. browser_navigate 到這個完整網址：${url}` : '1. 停在目前頁面，不要亂開新網址。若這是使用者按繼續之後，第一步必須 browser_snapshot，不沿用接手之前的引用。',
     '2. browser_snapshot。下一步之前先知道頁面上現在有什麼。',
@@ -532,9 +539,9 @@ export function buildBrowserPrompt(job, task, here) {
     '做完只寫這四段：',
     '網址：現在的網址',
     '頁面上有什麼：看得到的文字和狀態',
-    '做成了什麼：這輪實際做了的事',
-    '卡在哪裡：沒卡住就寫「沒有」。需要登入、驗證碼或付款就寫「需要使用者在電腦上登入」和網站名稱，不要自己填密碼。寄信、付款、刪除、更改帳號還沒有這一次的同意時，停下來寫 ✅待確認，不要執行。',
-    '登入頁只要點選已經記住的帳號（例如顯示帳號名稱和「登入」按鈕、「以 XX 身分繼續」），不必輸入密碼或驗證碼時，直接點它繼續。',
+    '做成了什麼：這輪實際做了的事。送出、上傳、儲存之後回頭看畫面確認真的出現了，沒出現就寫沒做成。',
+    '卡在哪裡：沒卡住就寫「沒有」。要驗證碼、付款，或自己登入試過還是進不去，才寫「需要使用者在電腦上登入」、網站名稱和試過哪些方法。寄信、付款、刪除、更改帳號還沒有這一次的同意時，停下來寫 ✅待確認，不要執行。',
+    '被登出、停在登入頁時先自己登回去：點已記住的帳號、「以 XX 身分繼續」、「LINE 登入」「用 Google 登入」這類不用打密碼的按鈕；登入資料裡有這個網站的帳密就照填。上傳檔案用 browser_file_upload，路徑用要做的事裡的完整路徑。',
     task?.prompt ? '這次要做的事：\n' + task.prompt : '',
     '使用者原本的指示：\n' + String(job.prompt || '').slice(0, 1500),
     here ? `檔案在 ${here}。大量資料讀檔案，不要從頁面上逐格抄。` : ''
@@ -543,8 +550,48 @@ export function buildBrowserPrompt(job, task, here) {
   if (hist.length) lines.push('最近的對話：', ...hist.map(h => `【${h.who}】${String(h.text || '').slice(0, 300)}`));
   lines.push(...tabsNow(job), ...dayInfo(job));
   if (job.sites) lines.push('網站操作筆記（先照這些做）：\n' + job.sites);
+  const login = loginHints(job);
+  if (login) lines.push('登入資料（只拿來登入，不要寫進報告）：\n' + login);
   if (job.bot?.page) lines.push('上次停在：' + job.bot.page);
   return lines.filter(Boolean).join('\n');
+}
+// the lines of 共用資料／分區資料 about sign-ins (with the line before, which often names the site), for the round that logs back in
+const CRED_RE = /帳號|密碼|帳密|password|passwd|login|登入|username|email|信箱/i;
+export function loginHints(job, max = 1200) {
+  const out = [];
+  for (const block of [job?.notes, job?.folderNotes]) {
+    const ls = String(block || '').split('\n');
+    ls.forEach((l, i) => { if (!CRED_RE.test(l)) return; if (i && ls[i - 1].trim() && !out.includes(ls[i - 1])) out.push(ls[i - 1]); if (!out.includes(l)) out.push(l); });
+  }
+  return out.join('\n').slice(0, max);
+}
+// passwords written in 共用資料 never come back in a reply or a record
+export function hideSecrets(text, job) {
+  let t = String(text || '');
+  for (const m of `${job?.notes || ''}\n${job?.folderNotes || ''}`.matchAll(/(?:密碼|password|passwd|pw)\s*[:：=]\s*([^\s，,、；;）)]+)/gi)) if (m[1].length >= 4) t = t.split(m[1]).join('••••');
+  return t;
+}
+// file names in a browse task → full paths found in the bot's folders, so the round can upload them
+const UPLOAD_RE = /[^\s「」『』"'：:，,、（）()]+\.(pdf|png|jpe?g|gif|webp|xlsx?|csv|docx?|pptx?|zip|txt)\b/gi;
+export function findUploads(text, roots, seen = 4000) {
+  const t = String(text || ''), out = [];
+  for (const n of new Set(t.match(UPLOAD_RE) || [])) {
+    if (isAbsolute(n)) { if (existsSync(n)) out.push(n); continue; }
+    const want = basename(n).toLowerCase();
+    let best = null, left = seen;
+    const walk = (d, depth) => {
+      let es = []; try { es = readdirSync(d, { withFileTypes: true }); } catch { return; }
+      for (const e of es) {
+        if (--left < 0) return;
+        const p = join(d, e.name);
+        if (e.isDirectory()) { if (depth < 4 && !/^(profile|node_modules|\.git|shots)$/.test(e.name)) walk(p, depth + 1); }
+        else if (e.name.toLowerCase() === want) { try { const m = statSync(p).mtimeMs; if (!best || m > best.m) best = { p, m }; } catch { } }
+      }
+    };
+    for (const r of roots) if (r && !best) walk(r, 0);
+    if (best) out.push(best.p);
+  }
+  return out.slice(0, 5);
 }
 function aboutMe(job) {
   const e = job.bot.engine || 'claude', E = ENGINES[e] || ENGINES.claude, u = usageNow[e];
@@ -762,6 +809,7 @@ const claudeTokens = u => (u ? (u.input_tokens || 0) + (u.output_tokens || 0) + 
 const toml = v => (Array.isArray(v) ? '[' + v.map(x => JSON.stringify(String(x))).join(',') + ']' : JSON.stringify(String(v)));
 const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep';
 const WORKER_TOOLS = 'mcp__browser,Read';
+const PARENT_ALLOWED = PARENT_TOOLS + ',Bash';   // Bash: call a site's API (curl / node fetch) and compute lists from record files
 // 省 token: --allowedTools only pre-approves; every built-in tool (Agent, TodoWrite, NotebookEdit…) and every installed
 // skill / slash command is still described to the model on each request. When this Claude Code supports them, load only
 // the tools a bot can use (Bash stays: bots compute lists from their record files) and skip skills and slash commands.
@@ -800,9 +848,8 @@ function describeTool(name, input = {}) {
 }
 async function runEngine(engine, prompt, b, model, live = {}) {
   let tokens = null;
-  const { dir, server } = b;
-  const useBrowser = live.browser === true;
-  if (b.applyBrowser) b.applyBrowser(useBrowser);
+  const useBrowser = live.browser === true, { dir } = b, server = b.serverFor ? b.serverFor(useBrowser && live.files) : b.server;
+  if (b.applyBrowser) b.applyBrowser(useBrowser, live.files);
   const store = storeDir();
   const m = (flag) => (model ? [flag, model] : []);
   writeFileSync(join(dir, 'octa-task.md'), prompt);
@@ -849,7 +896,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       // stream-json: lets OCTA show what the bot is doing while it works
       let result = null;
       r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
-        '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_TOOLS, ...(await claudeLean(useBrowser))], dir, prompt, {
+        '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_ALLOWED, ...(await claudeLean(useBrowser))], dir, prompt, {
         ctl: live.ctl, quietMs: QUIET_MS,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
@@ -894,10 +941,13 @@ async function chatJob(job) {
   return chatRun(job);
 }
 async function chatRun(job) {
+  // 旁聊 beside the bot's running work: no browser, no AI 待機 session, its own folder (the work's octa-task.md stays untouched)
+  const side = !!job.side;
+  if (side) job.warm = 0;
   const own = job.bot.browser !== 'mine';
   let port = 0;
-  if (own && job.bot.engine !== 'grokbot') { try { port = await ensureBrowser(job.bot); } catch (e) { log('瀏覽器：' + e.message); } }   // a Grok Bot works on xAI's cloud computer
-  const b = botDir(job.bot.id, job.bot.browser, port), { dir } = b;
+  if (own && !side && job.bot.engine !== 'grokbot') { try { port = await ensureBrowser(job.bot); } catch (e) { log('瀏覽器：' + e.message); } }   // a Grok Bot works on xAI's cloud computer
+  const b = botDir(side ? job.bot.id + '-side' : job.bot.id, side ? 'own' : job.bot.browser, port), { dir } = b;
   const here = convDir(job.conv || job.bot);
   if (port) busyBots.add(job.bot.id);
   for (const h of job.history) {   // attachments: already in the folder, or saved there now
@@ -916,14 +966,16 @@ async function chatRun(job) {
   }
   restoreSkills(dir, job.nskills);
   const start = Date.now() - 1000;
-  log(`▶ ${job.bot.name}［${job.bot.engine || 'claude'}］${job.group ? ' @' + job.group.name : ''}：${job.prompt.slice(0, 40)}`);
+  log(`${side ? '💬' : '▶'} ${job.bot.name}［${job.bot.engine || 'claude'}］${job.group ? ' @' + job.group.name : ''}：${job.prompt.slice(0, 40)}`);
   job.bot.livePort = port;
-  if (port) { try { job.bot.tabs = await cdp(port, async send => (await pagesOf(send)).filter(p => !/^(about:blank|chrome:)/.test(p.url)).slice(0, 6).map(p => ({ title: p.title.slice(0, 80), url: p.url.slice(0, 200) }))); } catch { } }
-  job.eyes = port ? await captureEyes(port, dir) : '';
+  // the open tabs and the picture of the page at the same time (each is a CDP round trip)
+  const [tabs, eyes] = port ? await Promise.all([cdp(port, async send => (await pagesOf(send)).filter(p => !/^(about:blank|chrome:)/.test(p.url)).slice(0, 6).map(p => ({ title: p.title.slice(0, 80), url: p.url.slice(0, 200) }))).catch(() => undefined), captureEyes(port, dir)]) : [undefined, ''];
+  if (tabs) job.bot.tabs = tabs;
+  job.eyes = eyes;
   // live progress (at most every 4 s); if the user pressed 停止, the server says so and the run is stopped
   const ctl = {};
   let lastSent = 0, pendingText = '', timerP = null, stoppedByUser = false;
-  const flush = () => { timerP = null; lastSent = Date.now(); api('runner/progress', { id: job.id, text: pendingText }).then(r => { if (r.hand) { job.handed = true; log(`✋ ${job.bot.name}：使用者接手，停止點擊`); ctl.kill?.(); } if (r.stop) { stoppedByUser = true; log(`■ ${job.bot.name}：使用者按了停止`); ctl.kill?.(); } }).catch(() => { }); };
+  const flush = () => { timerP = null; lastSent = Date.now(); api('runner/progress', { id: job.id, text: pendingText }).then(r => { if (r.hand && !side) { job.handed = true; log(`✋ ${job.bot.name}：使用者接手，停止點擊`); ctl.kill?.(); } if (r.stop) { stoppedByUser = true; log(`■ ${job.bot.name}：使用者按了停止`); ctl.kill?.(); } }).catch(() => { }); };
   const progress = t => { pendingText = t; if (timerP) return; const wait = Math.max(0, 4000 - (Date.now() - lastSent)); timerP = setTimeout(flush, wait); };
   progress('開始工作');
   const beat = setInterval(() => { if (!timerP) flush(); }, 15000);   // also notices 停止 for AIs that don't report progress
@@ -933,7 +985,7 @@ async function chatRun(job) {
   const liveBeat = port ? setInterval(() => pushLive(port, job).catch(() => { }), 1500) : null;
   try {
     if (port) await settleBrowserWindow(port, job);
-    refreshNotes(job);
+    if (!side) refreshNotes(job);
     res = engine === 'grokbot' ? await runGrokBot(job, { progress, ctl })
       : engine === 'claude' && job.warm && (await has('claude'))
       ? await warmClaude(job, b, here, { progress, ctl })        // AI 待機: reuse the running Claude session
@@ -942,7 +994,9 @@ async function chatRun(job) {
       const pendingBrowser = takeBrowserTask(res.text);
       res = await connectorRounds(job, b, here, engine, res, { progress, ctl });
       if (pendingBrowser && res?.ok && !takeBrowserTask(res.text)) res = { ...res, text: `【派瀏覽】\n網址：${pendingBrowser.url || '目前頁面'}\n要做的事：${pendingBrowser.prompt}\n【派完】\n${stripConnectorTask(res.text)}` };
-      res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
+      if (side) {   // a page to look at waits until the work is done: the server runs this message again then
+        if (res?.ok && (takeBrowserTask(res.text) || /【稍後】/.test(res.text))) { job.later = true; res = { ...res, text: stripBrowserTask(res.text).replace(/^\s*【稍後】\s*$/gm, '').trim() || '好，手上這件做完我就接著做。' }; }
+      } else res = await browseRounds(job, b, here, engine, res, { progress, ctl, port });
       const again = res?.ok && port && !job.handed && !/需要使用者在電腦上登入/.test(res.text || '') ? forcedBrowseTask(job) : null;
       if (again) {
         res = { ...res, text: `【派瀏覽】\n網址：目前頁面\n要做的事：${again}\n【派完】` };
@@ -950,14 +1004,14 @@ async function chatRun(job) {
       }
     }
   }
-  finally { clearTimeout(timerP); clearInterval(beat); clearInterval(liveBeat); busyBots.delete(job.bot.id); if (port) touchBrowser(job.bot.id); }
+  finally { clearTimeout(timerP); clearInterval(beat); clearInterval(liveBeat); if (port) { busyBots.delete(job.bot.id); touchBrowser(job.bot.id); } }
   if (job.handed && res) { res.ok = true; res.text = '我先停手。你在旁邊的畫面登入或看完，按繼續我就重新讀頁再做。'; }
-  if (res?.text) res.text = stripConnectorTask(stripBrowserTask(res.text)) || '這次沒有新的結果。';
+  if (res?.text) res.text = hideSecrets(stripConnectorTask(stripBrowserTask(res.text)), job) || '這次沒有新的結果。';
   if (port && res?.text) res.text = await finishBrowserWindow(port, job, res.text);
   if (port && shareBrowser) await syncOut(port);
   // 📒工作筆記：…📒結束 — the bot couldn't write its notes file itself (sandbox): OCTA saves it
   if (res?.text) res.text = res.text.replace(/📒\s*工作筆記[:：]\s*([\s\S]*?)📒\s*結束/g, (_, n) => { try { const cleanNotes = scrubNotes(n, evidenceText(job)).text; if (!cleanNotes) return ''; mkdirSync(dirname(notesFile(job)), { recursive: true }); writeFileSync(notesFile(job), cleanNotes + '\n'); log(`📒 已更新 ${job.bot.name} 的工作筆記`); } catch (e) { log('工作筆記寫入失敗：' + e.message); } return ''; }).trim() || '（已更新工作筆記）';
-  refreshNotes(job);
+  if (!side) refreshNotes(job);
   // what the browser shows now: taken by OCTA itself (no need for the bot to remember)
   let page = (res.text.match(/📍\s*目前頁面[:：]\s*(\S+)/) || [])[1];
   const d = new Date(), z = n => String(n).padStart(2, '0'), stamp = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
@@ -975,7 +1029,7 @@ async function chatRun(job) {
     else { const shot = newestImage(dir, start); if (shot) await saveShot(readFileSync(shot.p), extname(shot.p).toLowerCase()); }
   } catch (e) { log('截圖儲存失敗：' + e.message); }
   const nsk = collectSkills(dir, job.nskills);
-  await api('runner/done', { id: job.id, ok: res.ok, text: res.text, page, tokens: res.tokens ?? null, files: res.ok ? newFiles(join(here, '輸出'), start) : [], browser: !!port, stopped: stoppedByUser, ...(nsk ? { nskills: nsk } : {}), ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : {}), ...(shotB64 ? { shot: shotB64 } : {}) });
+  await api('runner/done', { id: job.id, ok: res.ok, text: res.text, page, tokens: res.tokens ?? null, files: res.ok ? newFiles(join(here, '輸出'), start) : [], browser: !!port, stopped: stoppedByUser, ...(job.later ? { later: true } : {}), ...(nsk ? { nskills: nsk } : {}), ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : {}), ...(shotB64 ? { shot: shotB64 } : {}) });
   log(`${res.ok ? '✓' : '✗'} ${job.bot.name}`);
   if (['claude', 'codex'].includes(job.bot.engine || 'claude')) lastUsage = 0;   // refresh how much is left
   try { cfg.onDone?.(job, res); } catch { }
@@ -1027,6 +1081,9 @@ async function connectorRounds(job, b, here, engine, res, live) {
   if (res?.text) res = { ...res, text: stripConnectorTask(res.text) || '這次沒有新的結果。' };
   return res;
 }
+const LOGIN_RE = /需要使用者在電腦上登入/;
+// what the browse round says it already tried, from its 「卡在哪裡」 part
+export const triedText = report => (String(report || '').match(/卡在哪裡[:：]\s*([^\n]+(?:\n(?!網址|頁面上有什麼|做成了什麼)[^\n]+){0,2})/) || [])[1]?.replace(/需要使用者在電腦上登入[。，,]?/g, '').replace(/\s+/g, ' ').trim().slice(0, 200) || '';
 async function browseRounds(job, b, here, engine, res, live) {
   const port = live.port, mine = job.bot.browser === 'mine';
   for (let depth = 0; depth < 2 && res?.ok; depth++) {
@@ -1047,14 +1104,29 @@ async function browseRounds(job, b, here, engine, res, live) {
       return { ok: true, text, tokens: addTokens(res.tokens, next?.tokens) };
     }
     live.progress?.('讀取網頁');
-    const workerPrompt = engine === 'opencode' ? fitLocal(buildBrowserPrompt(job, plan.task, here), 4000) : buildBrowserPrompt(job, plan.task, here);
-    const worker = await runEngine(engine, workerPrompt, b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: true });
-    if (b.applyBrowser) b.applyBrowser(false);
-    let report = stripBrowserTask(worker?.ok ? worker.text : ('瀏覽沒有完成：' + String(worker?.text || '沒有報告'))).slice(0, 6000) || '瀏覽沒有完成。';
+    // a file to upload: its full path goes with the task, and that round may read outside the bot's folder
+    const sending = /上傳|附上|附加|夾帶|傳(給|送|到)|寄|upload|attach/i.test(plan.task.prompt);
+    const ups = sending ? findUploads(`${plan.task.prompt}\n${job.prompt}`, [here, join(workDir, 'bots', String(job.bot.id).replace(/[^\w-]/g, '')), storeDir()]) : [];
+    if (ups.length) plan.task = { ...plan.task, prompt: plan.task.prompt + '\n要上傳的檔案（完整路徑）：' + ups.join('、') };
+    const files = sending;
+    const work = async task => {
+      const prompt = engine === 'opencode' ? fitLocal(buildBrowserPrompt(job, task, here), 4000) : buildBrowserPrompt(job, task, here);
+      const w = await runEngine(engine, prompt, b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: true, files });
+      if (b.applyBrowser) b.applyBrowser(false);
+      return { w, report: hideSecrets(stripBrowserTask(w?.ok ? w.text : ('瀏覽沒有完成：' + String(w?.text || '沒有報告'))), job).slice(0, 6000) || '瀏覽沒有完成。' };
+    };
+    let { w: worker, report } = await work(plan.task), wTokens = worker?.tokens;
+    // logged out: one more round only to log back in (remembered account, 「LINE 登入」, a password from 共用資料), then the task
+    if (LOGIN_RE.test(report) && !job.relogin && !job.handed) {
+      job.relogin = true;
+      live.progress?.('自己重新登入');
+      const again = await work({ url: plan.task.url, prompt: `上一輪停在登入頁（${triedText(report) || '沒寫試過什麼'}）。這一輪先自己登回去，換上一輪沒試過的方法；登入成功就接著做：${plan.task.prompt}` });
+      worker = again.w; report = again.report; wTokens = addTokens(wTokens, worker?.tokens);
+    }
     job.seen = ((job.seen || '') + '\n' + report).slice(-8000);
-    if (/需要使用者在電腦上登入/.test(report)) {
-      const site = (report.match(/https?:\/\/[^\s）)]+/) || [])[0] || '';
-      return { ok: true, text: `需要使用者在電腦上登入${site ? '（' + site + '）' : ''}。登入好之後跟我說一聲。`, tokens: addTokens(res.tokens, worker?.tokens) };
+    if (LOGIN_RE.test(report)) {
+      const site = (report.match(/https?:\/\/[^\s）)]+/) || [])[0] || '', tried = triedText(report);
+      return { ok: true, text: `需要使用者在電腦上登入${site ? '（' + site + '）' : ''}。${tried ? '我先自己試過：' + tried + '。' : '我先自己試過登入，沒有成功。'}登入好之後跟我說一聲。`, tokens: addTokens(res.tokens, wTokens) };
     }
     if (worker?.ok) { const rec = saveRecord(job, plan.task, report); if (rec) report += `\n（這份報告已存成紀錄檔：${rec}）`; }
     if (port) {
@@ -1069,7 +1141,7 @@ async function browseRounds(job, b, here, engine, res, live) {
       '使用者原本的指示：', job.prompt
     ].join('\n');
     const next = await parentFollow(job, b, here, engine, follow, live);
-    const tokens = addTokens(addTokens(res.tokens, worker?.tokens), next?.tokens);
+    const tokens = addTokens(addTokens(res.tokens, wTokens), next?.tokens);
     if (!next?.ok) return { ok: true, text: report, tokens };
     let text = next.text || '';
     if (depth + 1 >= 2 || !takeBrowserTask(text)) text = stripBrowserTask(text) || report;
@@ -1265,7 +1337,7 @@ function startSession(job, b) {
   const { dir } = b, m = job.bot.model ? ['--model', job.bot.model] : [];
   const child = spawn('claude', (WIN ? a => a.map(q) : a => a)(['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
     '--mcp-config', join(dir, 'mcp.json'), '--strict-mcp-config', '--add-dir', storeDir(), ...m,
-    '--allowedTools', PARENT_TOOLS, ...leanFlags(claudeFlags || '', false)]), { cwd: dir, shell: WIN, windowsHide: true });
+    '--allowedTools', PARENT_ALLOWED, ...leanFlags(claudeFlags || '', false)]), { cwd: dir, shell: WIN, windowsHide: true });
   if (claudeFlags === null) claudeLean(false);   // known from the next session on
   const s = { child, turn: null, err: [] };
   let part = '';
@@ -1857,6 +1929,23 @@ function doFiles(inbox = [], pull = []) {
 }
 let poll = null;
 const kick = () => { if (active < MAX) poll?.abort(); };   // a slot freed up: ask again right away (with the free slot)
+// 反應快: checking the AI tools, quotas and models can take many seconds (codex app-server, model lists). Asking for the
+// next job no longer waits on them: they run on the side and their result goes up with a later ask. Only the very
+// first look at the installed AIs is awaited, so the app knows them right after start.
+export function sideReport(fn) {
+  let busy = null, ready;
+  return () => {
+    if (ready !== undefined) { const v = ready; ready = undefined; return v; }
+    if (!busy) busy = Promise.resolve().then(fn).then(v => { if (v !== undefined) ready = v; }, () => { }).finally(() => { busy = null; });
+    return undefined;
+  };
+}
+const reportsBg = { engines: sideReport(engineReport), usage: sideReport(usageReport), models: sideReport(modelReport), coding: sideReport(codingProbe) };
+let firstLook = true;
+async function reports() {
+  if (firstLook) { firstLook = false; return { engines: await engineReport(), usage: reportsBg.usage(), models: reportsBg.models(), coding: await codingProbe() }; }
+  return { engines: reportsBg.engines(), usage: reportsBg.usage(), models: reportsBg.models(), coding: reportsBg.coding() };
+}
 async function loop() {
   if (polling) return;
   polling = true;
@@ -1865,8 +1954,8 @@ async function loop() {
       const slots = MAX - active;
       poll = new AbortController();
       const r = await api('runner/next', {
-        wait: true, slots, engines: await engineReport(), usage: await usageReport(), models: await modelReport(),
-        version: VERSION, app: cfg.appVersion || undefined, store: storeDir(), coding: await codingProbe()
+        wait: true, slots, ...(await reports()),
+        version: VERSION, app: cfg.appVersion || undefined, store: storeDir()
       }, 'POST', slots ? undefined : poll.signal).catch(e => { if (e.name === 'AbortError') return {}; throw e; });
       failures = 0;
       if ('job' in r && !!r.standby !== standby) { standby = !!r.standby; log(standby ? '⏸ 這台電腦目前是備用電腦，由主機執行機器人。可在「設定 → 電腦」改成主機。' : '▶ 這台電腦是主機，開始接工作。'); cfg.onStandby?.(standby); }
@@ -1889,7 +1978,7 @@ export function startRunner(opts) {
   MAX = Math.max(1, Math.min(+opts.max || 3, 8));
   if (opts.log) log = opts.log;
   onFatal = opts.onFatal || null;
-  stopped = false; lastReport = 0; lastUsage = 0; lastModels = 0; standby = false;
+  stopped = false; lastReport = 0; lastUsage = 0; lastModels = 0; standby = false; firstLook = true;
   mkdirSync(join(workDir, 'bots'), { recursive: true });
   mkdirSync(storeDir(), { recursive: true });
   log(`OCTA 執行器 v${VERSION} 啟動，最多 ${MAX} 個機器人同時工作；檔案資料夾：${storeDir()}`);
@@ -1902,10 +1991,10 @@ export function startRunner(opts) {
   const reaper = setInterval(() => reapBrowsers(false).catch(() => { }), 5 * 60000);
   const watcher = setInterval(() => checkWatches().catch(() => { }), 60000);
   watchesAt = 0; lastLook.clear();
-  setTimeout(() => checkWatches().catch(() => { }), 15000);
+  const firstWatch = setTimeout(() => checkWatches().catch(() => { }), 15000);
   const myCfg = cfg;
   return {
-    stop: () => { stopped = true; poll?.abort(); clearInterval(reaper); clearInterval(watcher); reapBrowsers(true).catch(() => { }); for (const id of [...sessions.keys()]) closeSession(id); if (myCfg.token) fetch(myCfg.url + '/api/runner/bye', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + myCfg.token }, body: '{}' }).catch(() => { }); },
+    stop: () => { stopped = true; poll?.abort(); clearInterval(reaper); clearInterval(watcher); clearTimeout(firstWatch); reapBrowsers(true).catch(() => { }); for (const id of [...sessions.keys()]) closeSession(id); if (myCfg.token) fetch(myCfg.url + '/api/runner/bye', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + myCfg.token }, body: '{}' }).catch(() => { }); },
     active: () => active, standby: () => standby
   };
 }
