@@ -11,7 +11,7 @@ import os from 'node:os';
 import { startServer } from './server.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
 import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
-import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, braveDownload, chromeDownload, edgeDownload, firefoxDownload, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
+import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, SAME_TO_CDP, braveDownload, chromeDownload, clientHintHeaders, edgeDownload, electronCookie, firefoxDownload, googleRefused, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
 // ---------- updates (GitHub Releases) ----------
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
@@ -399,28 +399,40 @@ async function applyIdentity(wc, engine) {
       wc.debugger.sendCommand('Emulation.setUserAgentOverride', params),
       new Promise(r => setTimeout(r, 400))
     ]);
+    // a cross-site frame (Google's sign-in uses them) is its own target: without this it still says Electron
+    wc.__octaUa = params;
+    if (!wc.__octaFrames) {
+      wc.__octaFrames = true;
+      wc.debugger.on('message', (_e, method, ev) => { if (method === 'Target.attachedToTarget') void dressChild(wc, ev); });
+    }
+    await Promise.race([
+      wc.debugger.sendCommand('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }),
+      new Promise(r => setTimeout(r, 400))
+    ]);
   } catch (e) { logError('ua', e); }
 }
-// CDP cookies (what the runner keeps) ↔ Electron cookies. Electron needs a url and calls the expiry expirationDate.
-const SAME_TO_CDP = { lax: 'Lax', strict: 'Strict', no_restriction: 'None' };
-const SAME_TO_EL = { Lax: 'lax', Strict: 'strict', None: 'no_restriction', lax: 'lax', strict: 'strict', no_restriction: 'no_restriction' };
-const KEEP_DAYS = 30;
-function electronCookie(c) {
-  const host = String(c.domain || '').replace(/^\./, '') || (() => { try { return new URL(c.url).hostname; } catch { return ''; } })();
-  const out = { url: c.url || `${c.secure ? 'https' : 'http'}://${host}${c.path || '/'}`, name: c.name, value: c.value, path: c.path || '/', secure: !!c.secure, httpOnly: !!c.httpOnly };
-  if (String(c.domain || '').startsWith('.')) out.domain = c.domain;
-  if (SAME_TO_EL[c.sameSite]) out.sameSite = SAME_TO_EL[c.sameSite];
-  // a sign-in kept only "for this session" would be gone after OCTA restarts: bots keep it like a remembered login
-  out.expirationDate = +c.expires > 0 ? +c.expires : Date.now() / 1000 + KEEP_DAYS * 86400;
-  return out;
+// a frame or worker that just started (paused until we let it run): same identity, then resume it
+async function dressChild(wc, ev) {
+  const sid = ev?.sessionId, type = ev?.targetInfo?.type;
+  if (!sid || wc.isDestroyed()) return;
+  const send = (method, params) => Promise.race([wc.debugger.sendCommand(method, params, sid), new Promise(r => setTimeout(r, 400))]).catch(() => { });
+  try {
+    const params = wc.__octaUa;
+    if (params && (type === 'iframe' || type === 'page')) {
+      await send('Emulation.setUserAgentOverride', params);
+      await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });   // frames inside that frame
+    } else if (params && /worker/.test(String(type))) await send('Network.setUserAgentOverride', params);
+  } finally { await send('Runtime.runIfWaitingForDebugger', {}); }
 }
+// CDP cookies ↔ Electron cookies: electronCookie() in browser-catalog.mjs
 // sites often keep the login in a session cookie; keep those across restarts so the bot stays signed in
 function keepLogins(ses) {
   if (!ses || ses.__octaKeep) return;
   ses.__octaKeep = true;
   ses.cookies.on('changed', (_e, c, _cause, removed) => {
     if (removed || !c.session || !c.name) return;
-    ses.cookies.set(electronCookie({ ...c, expires: 0 })).catch(() => { });
+    const kept = electronCookie({ ...c, expires: 0 });
+    if (kept) ses.cookies.set(kept).catch(() => { });
   });
 }
 function dressSession(ses, bucket) {
@@ -436,9 +448,7 @@ function dressSession(ses, bucket) {
         else details.requestHeaders[key] = value;
       };
       set('user-agent', id.userAgent);
-      set('sec-ch-ua', id.clientHint || null);
-      set('sec-ch-ua-mobile', id.clientHint ? '?0' : null);
-      set('sec-ch-ua-platform', id.clientHint ? `"${id.metadata.platform}"` : null);
+      for (const [name, value] of Object.entries(clientHintHeaders(id, details.requestHeaders))) set(name, value);
     } catch { }
     cb({ requestHeaders: details.requestHeaders });
   });
@@ -459,6 +469,7 @@ async function notePage(wc, bucket) {
   try { text = await wc.executeJavaScript('document.body?document.body.innerText.slice(0,4000):""'); } catch { return; }
   bucket.blocked = pageNeedsAttention(text);
   const url = shownUrl(wc);
+  googleBlocked(bucket, wc.getURL(), text);
   if (pageUnsupported(text) && url && !bucket.handed) {
     const exe = ownedExe(bucket.engine || 'chrome');
     if (exe) {
@@ -469,26 +480,53 @@ async function notePage(wc, bucket) {
   }
   sendFrame(bucket, {});
 }
-// Google blocks sign-in in embedded browsers. Hand this bot to a real Chrome window (its own profile) for good.
-function googleBlocked(bucket, url) {
-  let u; try { u = new URL(url); } catch { return; }
-  if (u.hostname !== 'accounts.google.com' || !/signin|ServiceLogin|AddSession|rejected/i.test(u.pathname)) return;
+// Google refused the sign-in inside OCTA ("這個瀏覽器或應用程式可能不安全"). A plain sign-in page is tried here first;
+// only a refusal hands this bot to a real Chrome window (its own profile). Once the sign-in is done there, the runner
+// brings the sign-ins back into this browser and the bot is shown in OCTA again (returnToEmbed).
+const STAY_MS = 15 * 60000;
+function googleBlocked(bucket, url, text = '') {
+  if (!googleRefused(url, text)) return;
   if (!bucket.botId || bucket.toChrome || typeof embedApi.onGoogle !== 'function') return;
   bucket.toChrome = true;
-  cfg = { ...cfg, realChrome: { ...(cfg.realChrome || {}), [bucket.botId]: true } };
+  const back = +cfg.embedBack?.[bucket.botId] || 0;   // when it last came back from Chrome
+  const again = back > 0;
+  // refused again right after coming back: keep the Chrome window until the person switches back by hand
+  const stay = again && Date.now() - back < STAY_MS;
+  cfg = { ...cfg, realChrome: { ...(cfg.realChrome || {}), [bucket.botId]: { at: Date.now(), why: 'google', ...(stay ? { stay: true } : {}) } } };
   writeCfg(cfg);
   bucket.engineError = 'Google 不讓內嵌瀏覽器登入，正在改用 Chrome 視窗…';
   sendFrame(bucket, {});
-  setTimeout(() => Promise.resolve(embedApi.onGoogle(bucket.botId, url)).catch(e => logError('google-chrome', e)), 300);
+  setTimeout(() => Promise.resolve(embedApi.onGoogle(bucket.botId, url, { again, stay })).catch(e => logError('google-chrome', e)), 300);
+}
+// the bot's browser is back in OCTA: forget the Chrome window, remember when (a quick second refusal then stays in Chrome)
+function useEmbedded(botId) {
+  const id = String(botId || '');
+  if (!id) return false;
+  const rc = { ...(cfg.realChrome || {}) };
+  delete rc[id];
+  cfg = { ...cfg, realChrome: rc, embedBack: { ...(cfg.embedBack || {}), [id]: Date.now() } };
+  writeCfg(cfg);
+  return true;
+}
+function browserMode(botId) {
+  const v = cfg.realChrome?.[String(botId || '')];
+  if (!v) return { chrome: false };
+  // true: set by 3.0.37–3.3.x, always because of Google's sign-in
+  return { chrome: true, why: v === true ? 'google' : (v.why || 'google'), at: v === true ? 0 : (+v.at || 0), stay: !!v?.stay };
 }
 async function hookPage(wc, id, bucket) {
   try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) logError('debugger', e); }
   await applyIdentity(wc, bucket.engine || 'chrome');
-  wc.debugger.on('message', (_e, method, params) => bucket.onEvent?.(id, method, params));
+  // events of the frames and workers OCTA attached to itself (sessionId set) are not the page's: Playwright never asked for them
+  wc.debugger.on('message', (_e, method, params, sessionId) => {
+    if (sessionId || method === 'Target.attachedToTarget' || method === 'Target.detachedFromTarget') return;
+    bucket.onEvent?.(id, method, params);
+  });
   bucket.pages.set(id, { wc });
   const ping = () => { if (bucket.active?.webContents === wc) sendFrame(bucket, {}); };
   wc.on('did-navigate', (_e, url) => { ping(); googleBlocked(bucket, url); });
-  wc.on('did-navigate-in-page', ping);
+  // Google's sign-in changes pages without loading: look at the text again once it has drawn
+  wc.on('did-navigate-in-page', (_e, url, main) => { ping(); if (main !== false && /accounts\.google\.com/.test(url)) setTimeout(() => void notePage(wc, bucket), 1200); });
   wc.on('did-finish-load', () => { ping(); void notePage(wc, bucket); });
   // a new page while the person has control: its live cursor must not follow the person's mouse either
   wc.on('dom-ready', () => { if (bucket.control) flagPage(bucket, wc); });
@@ -611,6 +649,7 @@ async function embedStart(bot, port) {
       return { windowId: 1, bounds: { left: 0, top: 0, width: PAGE.width, height: PAGE.height, windowState: bucket.shown === 'thumb' ? 'normal' : 'minimized' } };
     },
     setBounds: bounds => embedShow(port, bounds?.windowState !== 'minimized' && !(bounds?.left < -5000)),
+    version: () => ({ product: 'Chrome/' + versionFor('chrome'), userAgent: identity(bucket.engine || 'chrome', versionFor(bucket.engine || 'chrome'), process.platform, process.arch).userAgent }),
     onEvent: cb => { bucket.onEvent = cb; },
     async command(targetId, method, params) {
       const page = bucket.pages.get(targetId);
@@ -620,7 +659,7 @@ async function embedStart(bot, port) {
         return { cookies: cookies.map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expires: c.expirationDate || 0, ...(SAME_TO_CDP[c.sameSite] ? { sameSite: SAME_TO_CDP[c.sameSite] } : {}) })) };
       }
       if (method === 'Storage.setCookies') {
-        for (const c of params.cookies || []) { try { await page.wc.session.cookies.set(electronCookie(c)); } catch { } }
+        for (const c of params.cookies || []) { const el = electronCookie(c); if (el) { try { await page.wc.session.cookies.set(el); } catch { } } }
         try { await page.wc.session.cookies.flushStore(); } catch { }
         return {};
       }
@@ -670,7 +709,12 @@ async function embedStart(bot, port) {
 }
 
 // ---------- runner ----------
-const embedApi = { start: embedStart, show: embedShow, stop: embedStop, external: id => !!cfg.realChrome?.[String(id)], onGoogle: null };
+const embedApi = {
+  start: embedStart, show: embedShow, stop: embedStop, onGoogle: null,
+  external: id => !!cfg.realChrome?.[String(id)],
+  autoBack: id => browserMode(id).chrome && !browserMode(id).stay,   // may come back from Chrome by itself once signed in there
+  useEmbedded, mode: browserMode
+};
 async function bundledRunnerOpts() {
   const pwCli = unpacked(join(dirname(require.resolve('@playwright/mcp/package.json')), 'cli.js'));
   return {
@@ -1179,6 +1223,13 @@ async function start() {
       getStore: () => cfg.store || join(dataDir, 'files'),
       setStore: p => { cfg = { ...cfg, store: p }; writeCfg(cfg); },
       getExtToken: () => cfg.extToken || '',
+      browserMode: id => browserMode(id),
+      // 改回內建瀏覽器: the runner moves the Chrome window's sign-ins into OCTA's browser and closes the window
+      useEmbedded: async bot => {
+        if (runner && runnerMod?.returnToEmbed) return runnerMod.returnToEmbed(bot, { manual: true });
+        useEmbedded(bot.id);
+        return { ok: true, cookies: 0 };
+      },
       setExtToken: t => { cfg = { ...cfg, extToken: t }; writeCfg(cfg); },
       getAutostart: () => app.getLoginItemSettings({ args: LOGIN_ARGS }).openAtLogin,   // Windows needs the same args to find the entry
       setAutostart: on => { app.setLoginItemSettings({ openAtLogin: on, args: LOGIN_ARGS, path: process.execPath }); cfg = { ...cfg, autostartChosen: true }; writeCfg(cfg); }

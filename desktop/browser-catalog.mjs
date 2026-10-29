@@ -64,7 +64,7 @@ export function identity(engine, version, platform = 'win32', arch = 'x64') {
       fullVersion: v,
       platform: os.hint,
       platformVersion: os.hintVersion,
-      architecture: 'x86',
+      architecture: String(arch).startsWith('arm') ? 'arm' : 'x86',
       model: '',
       mobile: false,
       bitness: '64',
@@ -72,6 +72,67 @@ export function identity(engine, version, platform = 'win32', arch = 'x64') {
     },
     clientHint: brands.map(b => `"${b.brand}";v="${b.version}"`).join(', ')
   };
+}
+
+// Client-hint request headers for this identity (header name → value, null = remove).
+// The three low-entropy ones always go out. The others are rewritten only when Chromium already sends them
+// (the site asked with Accept-CH), so a request never carries a hint a real Chrome would not send.
+const CH_MORE = ['sec-ch-ua-full-version-list', 'sec-ch-ua-full-version', 'sec-ch-ua-platform-version', 'sec-ch-ua-arch', 'sec-ch-ua-bitness', 'sec-ch-ua-model', 'sec-ch-ua-wow64'];
+export function clientHintHeaders(id, sent = {}) {
+  const has = name => Object.keys(sent || {}).some(k => k.toLowerCase() === name);
+  const out = {};
+  const m = id?.metadata;
+  if (!m) {   // Firefox sends no client hints at all
+    for (const k of ['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', ...CH_MORE]) out[k] = null;
+    return out;
+  }
+  const q = v => `"${v}"`;
+  out['sec-ch-ua'] = id.clientHint;
+  out['sec-ch-ua-mobile'] = m.mobile ? '?1' : '?0';
+  out['sec-ch-ua-platform'] = q(m.platform);
+  const more = {
+    'sec-ch-ua-full-version-list': m.fullVersionList.map(b => `"${b.brand}";v="${b.version}"`).join(', '),
+    'sec-ch-ua-full-version': q(m.fullVersion),
+    'sec-ch-ua-platform-version': q(m.platformVersion),
+    'sec-ch-ua-arch': q(m.architecture),
+    'sec-ch-ua-bitness': q(m.bitness),
+    'sec-ch-ua-model': q(m.model),
+    'sec-ch-ua-wow64': m.wow64 ? '?1' : '?0'
+  };
+  for (const k of CH_MORE) if (has(k)) out[k] = more[k];
+  return out;
+}
+
+// CDP cookies (what the runner keeps) ↔ Electron cookies. Electron needs a url and calls the expiry expirationDate.
+export const SAME_TO_CDP = { lax: 'Lax', strict: 'Strict', no_restriction: 'None' };
+const SAME_TO_EL = { Lax: 'lax', Strict: 'strict', None: 'no_restriction', lax: 'lax', strict: 'strict', no_restriction: 'no_restriction' };
+export const KEEP_DAYS = 30;
+// null: nothing to set (no name, no site, or already expired)
+export function electronCookie(c, now = Date.now() / 1000) {
+  if (!c?.name) return null;
+  const host = String(c.domain || '').replace(/^\./, '') || (() => { try { return new URL(c.url).hostname; } catch { return ''; } })();
+  if (!host) return null;
+  if (+c.expires > 0 && +c.expires < now) return null;
+  // __Secure- and __Host- cookies are only accepted over https; __Host- never carries a domain
+  const prefixed = /^__(Secure|Host)-/.test(c.name);
+  const secure = !!c.secure || prefixed;
+  const out = { url: c.url || `${secure ? 'https' : 'http'}://${host}${c.path || '/'}`, name: c.name, value: String(c.value ?? ''), path: c.name.startsWith('__Host-') ? '/' : (c.path || '/'), secure, httpOnly: !!c.httpOnly };
+  if (String(c.domain || '').startsWith('.') && !c.name.startsWith('__Host-')) out.domain = c.domain;
+  if (SAME_TO_EL[c.sameSite]) out.sameSite = SAME_TO_EL[c.sameSite];
+  // a sign-in kept only "for this session" would be gone after OCTA restarts: bots keep it like a remembered login
+  out.expirationDate = +c.expires > 0 ? +c.expires : now + KEEP_DAYS * 86400;
+  return out;
+}
+
+// Google refused the sign-in because this is an embedded browser ("這個瀏覽器或應用程式可能不安全").
+// Only this sends the bot to a Chrome window; a plain sign-in page is tried in OCTA first.
+const GOOGLE_REFUSED = ['這個瀏覽器或應用程式可能不安全', '此瀏覽器或應用程式可能不安全', '这个浏览器或应用可能不安全', '此浏览器或应用可能不安全', 'This browser or app may not be secure', "Couldn't sign you in", '無法登入'];
+export function googleRefused(url, text = '') {
+  let u; try { u = new URL(url); } catch { return false; }
+  if (u.hostname !== 'accounts.google.com') return false;
+  if (/\/rejected\b|\/signin\/rejected/i.test(u.pathname)) return true;
+  const t = String(text || '');
+  return GOOGLE_REFUSED.slice(0, 5).some(w => t.includes(w)) || (/signin|ServiceLogin|AddSession/i.test(u.pathname) && GOOGLE_REFUSED.slice(5).some(w => t.includes(w)) && /瀏覽器|browser|浏览器/i.test(t));
 }
 
 export function pageUnsupported(text) {

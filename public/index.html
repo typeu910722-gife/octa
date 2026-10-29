@@ -2082,7 +2082,7 @@ function sheet(kind,edit){
   <div class="field">瀏覽器<div class="bchoice" id="sf_b">
     <label class="bc"><input type="radio" name="sf_b" value="own" ${c?.browser!=='mine'?'checked':''}><span><b>機器人專屬瀏覽器</b><small>${S.shareBrowser!==false?'它自己的瀏覽器，可以和其他機器人同時工作；登入共用，在任何一個機器人登入過的網站它也能用。不會動到你的 Chrome。':'這個機器人自己的瀏覽器和登入，不會動到你的 Chrome。第一次用某網站要在「瀏覽器」幫它登入一次。'}</small></span></label>
     <label class="bc"><input type="radio" name="sf_b" value="mine" ${c?.browser==='mine'?'checked':''}><span><b>使用我的 Chrome</b><small>直接用你 Chrome 已登入的網站和已儲存的密碼。需要先在設定裡連接 Chrome。</small></span></label>
-  </div></div>
+  </div>${c&&DESK()&&c.browser!=='mine'?`<div data-bm="${c.id}"></div>`:''}</div>
   <label class="field">AI 引擎<select id="sf_e">${Object.entries(ENG).filter(([k,v])=>!v.hide||c?.engine===k).map(([k,v])=>`<option value="${k}" ${(c?.engine||'claude')===k?'selected':''}>${v.full}${engState(k)==='ok'?'　✓ 已連接':engState(k)==='no'?'　（還沒連接）':''}</option>`).join('')}</select></label>
   <label class="field">模型<select id="sf_m"></select></label>
   <p style="margin-top:-6px" id="sf_hint"></p>
@@ -2106,6 +2106,7 @@ function sheet(kind,edit){
   <div class="acts">${edit?'<button type="button" class="del" id="sd">刪除</button>':''}<span class="dflag" data-dirty-flag hidden>● 有未儲存的變更</span><button type="button" class="no" id="sx">取消</button><button class="btn">${edit?'儲存':'建立'}</button></div></form>`;
   $('veil').hidden=false;$('sn').focus();
   $('sx').onclick=closeSheet;
+  browserModes($('veil'));
   if(!g){const nm0=c?.name||'';sheet.nameOk=()=>{const v=$('sn').value.trim(),bad=/[\s\u3000]/.test(v)&&v!==nm0;$('se').textContent=bad?I18N.t('名稱不能有空格，才能用 @ 叫它'):'';$('sn').setAttribute('aria-invalid',bad?'true':'false');return !bad};$('sn').addEventListener('input',sheet.nameOk)}   // bots are called with @名字
   if(!g){let av=c?.avatar||'';
     const box=$('sf_av');box.onclick=e=>{const b=e.target.closest('[data-emo]');if(!b)return;av=b.dataset.emo;$('sf_avc').value='';box.querySelectorAll('.emo-b').forEach(x=>x.classList.toggle('on',x===b))};
@@ -2210,15 +2211,23 @@ function shotSheet(ids){
   <p>${window.octaDesktop?'平常縮成圓角小卡，可以拖到你要的位置停住。打開後是這個機器人自己的側邊視窗，可以拖、也可以拉大小，只留在這個畫面裡。換到別的機器人不會把這個瀏覽器帶過去。分頁右邊的 × 可以關掉。按「收回」就縮回小卡。':'每個機器人在電腦版 OCTA 裡有自己的瀏覽器。打開後是它自己的側邊視窗，可以拖、可以拉大小，換到別的機器人不會跟著走。'}</p>
   ${ids.map(id=>{const b=bot(id);return `<div class="bw" data-id="${id}"><div class="hd"><span class="av sm" data-u>${avOf(b.id)}</span><b data-u>${esc(b.name)}</b>${S.busy.some(x=>x.bot_id===id&&x.status==='running')?'<span class="pill p-pr">工作中</span>':''}</div>
     ${b.shot_ts?`<img class="shot" alt="${esc(b.name)}" id="img_${id}"><div class="meta">截圖：${ago(b.shot_ts)}${b.page?' · <span data-u>'+esc(b.page)+'</span>':''}</div>`:`<div class="noshot">還沒有畫面。機器人用過瀏覽器後，這裡會顯示它最後停在哪一頁。</div>`}
-    ${b.browser==='mine'?`<div class="meta">這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。</div>`:`<div class="row2"><button class="btn" data-open="${id}">${showBrowserLabel()}</button><button class="ghost" data-hide="${id}">收到背景</button><button class="ghost" data-url="${id}">讓它打開網址…</button></div>`}</div>`}).join('')}
+    ${b.browser==='mine'?`<div class="meta">這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。</div>`:`${DESK()?`<div data-bm="${id}"></div>`:''}<div class="row2"><button class="btn" data-open="${id}">${showBrowserLabel()}</button><button class="ghost" data-hide="${id}">收到背景</button><button class="ghost" data-url="${id}">讓它打開網址…</button></div>`}</div>`}).join('')}
   <div class="acts"><button class="btn" id="sx">關閉</button></div></div>`;
-  $('veil').hidden=false;$('sx').onclick=closeSheet;
+  $('veil').hidden=false;$('sx').onclick=closeSheet;browserModes($('veil'));
   ids.forEach(id=>{if(bot(id).shot_ts)api('shot/'+id).then(d=>d.file?fileData(d.file):d).then(d=>{const im=$('img_'+id);if(im&&d.data)im.src=`data:${d.mime};base64,${d.data}`}).catch(e=>{const im=$('img_'+id);if(im)im.replaceWith(Object.assign(document.createElement('div'),{className:'noshot',textContent:e.message}))})});
   $('veil').querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>{closeSheet();openBrowser(x.dataset.open)});
   $('veil').querySelectorAll('[data-url]').forEach(x=>x.onclick=()=>urlSheet(x.dataset.url));
   $('veil').querySelectorAll('[data-hide]').forEach(x=>x.onclick=()=>{closeSheet();openBrowser(x.dataset.hide,'',true)});
   $('veil').querySelectorAll('.shot').forEach(im=>im.onclick=()=>{const id=im.id.slice(4);closeSheet();openBrowser(id)});
 }
+// a bot whose browser went to a Chrome window because Google refused the sign-in in OCTA: say why, and offer the way back
+function browserModes(root){if(!DESK())return;root.querySelectorAll('[data-bm]').forEach(el=>{const id=el.dataset.bm;
+  api('desktop/browser-mode','POST',{bot:id}).then(d=>{if(!d?.chrome||!el.isConnected)return;
+    el.innerHTML=`<div class="meta"><b>目前用 Chrome 視窗</b>　<span>${d.why==='google'?'因 Google 登入改用 Chrome 視窗':'改用 Chrome 視窗'}</span>${d.stay?'<br><span>剛改回內建又被 Google 擋下，先固定用 Chrome 視窗</span>':''}</div>
+      <div class="row2"><button type="button" class="ghost" data-embed>改回內建瀏覽器</button></div><p class="hmuted">會把 Chrome 視窗裡的登入（Google 和其他網站）帶進 OCTA 內建瀏覽器，然後關掉 Chrome 視窗。如果 Google 又擋下內建瀏覽器的登入，會再自動改用 Chrome 視窗。</p>`;
+    el.querySelector('[data-embed]').onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent=I18N.t('切換中…');
+      try{await api('desktop/browser-embed','POST',{bot:id,name:bot(id)?.name||''});toast(I18N.t('已改回內建瀏覽器'));el.innerHTML=''}
+      catch(err){b.disabled=false;b.textContent=I18N.t('改回內建瀏覽器');toast(I18N.t(String(err.message||err).replace(/^Error invoking remote method '[^']+': (Error: )?/,'')))}}}).catch(()=>{})})}
 /* ---------- menus ---------- */
 function closeMenu(fromHistory){const had=document.querySelector('.menu.asheet');document.querySelectorAll('.menu,.mveil').forEach(m=>m.remove());if(had&&!fromHistory)navPop('menu')}
 document.addEventListener('click',e=>{if(lpHit)return;if(!e.target.closest('.menu'))closeMenu()});   // the lift that ends a long press is not a tap outside

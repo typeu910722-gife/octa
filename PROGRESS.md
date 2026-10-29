@@ -145,3 +145,8 @@
 ## 2026-10-28 3.3.2
 - 15 分鐘上限改設定 settings.jobMax（15/30/60/120/180，預設 60）→ job.maxMin → 執行器 ctl.maxMs（spawnCli 與 agy --print-timeout）；jobs.beat（runner/progress 心跳每分鐘最多寫一次）；伺服器卡住判定改為 IFNULL(beat,started) 超過 20 分鐘或總時間超過 jobMax+5 分。test/job-time.test.mjs。
 - 修：3.3.2 第一次推送時 runEngine 內誤用不在範圍的 job（Claude 一般執行會 job is not defined），測試抓到後已取消該次桌面建置並修正再發布。
+
+## 2026-10-29 3.3.3
+- 映日所（教練建立）因 Google 登入被 3.0.37 機制永久切到真 Chrome。改：googleRefused 只在 /signin/rejected 或「瀏覽器可能不安全」才切；realChrome 改記 {at,why,stay}；returnToEmbed（讀 Chrome profile cookies→electronCookie→內嵌，SID/__Secure-1PSID 判斷已登入；啟動後第一次開瀏覽器或偵測到新登入時自動改回；15 分鐘內再被擋設 stay）；跨站 iframe/worker 也套標準 Chrome UA 與 client hints；CDP /json/version 回 Chrome 身分；runner/note；介面「改回內建瀏覽器」。
+- 修 loadLocal 等待中視窗關閉的 null 錯誤、startThumbs 的 webContents undefined。
+- 未實測：真實 Google 是否接受、Windows DPAPI cookie 讀取。

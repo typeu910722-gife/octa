@@ -53,6 +53,8 @@ export function startCdpBridge(adapter, port = 0) {
   const sessions = new Map();
   const told = new WeakMap(); // socket → Set of target ids it has already been given
   let seq = 0, autoAttach = false, waitDbg = false;
+  // what the browser says it is: the page's own identity when the adapter knows it (never "Electron" or "OCTA")
+  const version = () => { const v = adapter.version?.() || {}; return { product: v.product || 'Chrome/128.0.6613.186', userAgent: v.userAgent || 'OCTA' }; };
   const sendTo = (socket, obj) => { try { socket.write(encodeFrame(JSON.stringify(obj))); } catch { } };
   const sendAll = obj => { for (const socket of clients) sendTo(socket, obj); };
   const sessionFor = targetId => [...sessions].find(([, id]) => id === targetId)?.[0] || null;
@@ -193,7 +195,7 @@ export function startCdpBridge(adapter, port = 0) {
   const CONTEXT = 'octa';
   const info = t => ({ targetId: t.id, type: 'page', title: t.title || '', url: t.url || 'about:blank', attached: false, canAccessOpener: false, browserContextId: CONTEXT });
   async function browserCommand(method, params, socket) {
-    if (method === 'Browser.getVersion') return { protocolVersion: '1.3', product: 'Chrome/128.0.6613.186', revision: 'octa', userAgent: 'OCTA', jsVersion: '12.0' };
+    if (method === 'Browser.getVersion') { const v = version(); return { protocolVersion: '1.3', product: v.product, revision: 'octa', userAgent: v.userAgent, jsVersion: '12.0' }; }
     if (method === 'Browser.getWindowForTarget') return adapter.bounds?.(params?.targetId) || { windowId: 1, bounds: { left: 0, top: 0, width: 1100, height: 800, windowState: 'normal' } };
     if (method === 'Browser.setWindowBounds') { await adapter.setBounds?.(params?.bounds || {}); return {}; }
     if (method === 'Browser.close') { await adapter.close?.(); return {}; }
@@ -278,7 +280,7 @@ export function startCdpBridge(adapter, port = 0) {
     const path = (req.url || '').split('?')[0].replace(/\/+$/, '') || '/';
     const list = () => adapter.list().map(t => ({ id: t.id, type: 'page', title: t.title || '', url: t.url || 'about:blank', webSocketDebuggerUrl: `ws://127.0.0.1:${bound}/devtools/page/${t.id}` }));
     let body = null;
-    if (path === '/json/version') body = { Browser: 'Chrome/128.0.6613.186', 'Protocol-Version': '1.3', 'User-Agent': 'OCTA', 'V8-Version': '12.0', 'WebKit-Version': '537.36', webSocketDebuggerUrl: `ws://127.0.0.1:${bound}/devtools/browser/octa` };
+    if (path === '/json/version') body = { Browser: version().product, 'Protocol-Version': '1.3', 'User-Agent': version().userAgent, 'V8-Version': '12.0', 'WebKit-Version': '537.36', webSocketDebuggerUrl: `ws://127.0.0.1:${bound}/devtools/browser/octa` };
     else if (path === '/json/list' || path === '/json') body = list();
     res.writeHead(body ? 200 : 404, { 'content-type': 'application/json' });
     res.end(body ? JSON.stringify(body) : '{}');

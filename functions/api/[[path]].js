@@ -2212,6 +2212,15 @@ async function route({ request: req, env, params }) {
         const res = await fireEvent(env, db, r, `監看的網頁有變化：${w.url}\n新出現的內容：\n${added || '（版面有變動，請打開網頁確認）'}`);
         return J({ ok: true, changed: true, result: res });
       }
+      if (path === 'runner/note' && m === 'POST') {   // a system line from the computer in a bot's own chat (e.g. its browser moved to a Chrome window)
+        const bot = clean(body.bot, 64), text = clean(body.text, 400);
+        const owns = await db.prepare('SELECT id FROM bots WHERE id=? AND user_id=?').bind(bot, U).first();
+        if (!owns) return err('找不到', 404);
+        if (!text) return J({ ok: true });
+        await addMsg(db, U, bot, 'sys', text);
+        await bump(db, U);
+        return J({ ok: true });
+      }
       if (path === 'runner/progress' && m === 'POST') {   // what the bot is doing now; also tells the computer if 停止 was pressed
         const txt = clean(body.text, 120);
         const jr = await db.prepare("SELECT progress, beat FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();

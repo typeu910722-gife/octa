@@ -1231,3 +1231,24 @@ T.update({   # 單件工作最長時間
  '一件工作最多做多久就中止。機器人只要還在動作、有在回報進度，就不會被提早中止；超過 8 分鐘完全沒動靜才會當成卡住。一次要讀很多頁面（例如兩館的 LINE）時可以調長。': ('How long one job may run before it is stopped. A bot that is still working and reporting progress is never stopped early; only 8 minutes with no activity at all counts as stuck. Make it longer for jobs that read many pages at once.', '1 件の作業を止めるまでの最大時間です。動いていて進捗を報告している間は途中で止めません。8 分間まったく動きがない場合だけ止まったとみなします。多くのページを一度に読む作業では長めにしてください。'),
  '小時': ('h', '時間'),
 })
+T.update({   # 瀏覽器：Google 登入改用 Chrome 視窗、改回內建
+ '改回內建瀏覽器': ('Switch back to the built-in browser', '内蔵ブラウザに戻す'),
+ '目前用 Chrome 視窗': ('Using a Chrome window now', '現在は Chrome ウィンドウを使用中'),
+ '因 Google 登入改用 Chrome 視窗': ('Switched to a Chrome window for the Google sign-in', 'Google ログインのため Chrome ウィンドウに切り替えました'),
+ '改用 Chrome 視窗': ('Switched to a Chrome window', 'Chrome ウィンドウに切り替えました'),
+ '剛改回內建又被 Google 擋下，先固定用 Chrome 視窗': ('Google blocked the built-in browser again right after switching back, so it stays in the Chrome window for now', '内蔵に戻した直後に再び Google にブロックされたため、当面は Chrome ウィンドウを使います'),
+ '會把 Chrome 視窗裡的登入（Google 和其他網站）帶進 OCTA 內建瀏覽器，然後關掉 Chrome 視窗。如果 Google 又擋下內建瀏覽器的登入，會再自動改用 Chrome 視窗。': ('Brings the sign-ins from the Chrome window (Google and other sites) into OCTA’s built-in browser, then closes the Chrome window. If Google blocks the built-in browser’s sign-in again, it switches to the Chrome window again by itself.', 'Chrome ウィンドウのログイン（Google とその他のサイト）を OCTA の内蔵ブラウザに移し、Chrome ウィンドウを閉じます。Google が再び内蔵ブラウザのログインをブロックした場合は、自動で Chrome ウィンドウに切り替えます。'),
+ '已改回內建瀏覽器': ('Switched back to the built-in browser', '内蔵ブラウザに戻しました'),
+ '機器人正在工作，等它停下來再切換': ('The bot is working. Switch after it stops.', 'ボットが作業中です。止まってから切り替えてください'),
+ '正在切換中': ('Already switching', '切り替え中です'),
+ '只有電腦版 OCTA 有內建瀏覽器': ('Only the OCTA desktop app has a built-in browser', '内蔵ブラウザは OCTA デスクトップ版だけにあります'),
+ '內建瀏覽器沒有起來': ('The built-in browser did not start', '内蔵ブラウザが起動しませんでした'),
+ '這台電腦不能切換瀏覽器': ('This computer cannot switch the browser', 'このパソコンではブラウザを切り替えられません'),
+ '切換失敗': ('Switching failed', '切り替えに失敗しました'),
+ 'Google 又擋下內建瀏覽器的登入（「這個瀏覽器或應用程式可能不安全」），已改用 Chrome 視窗。在 Chrome 視窗登入好之後，會自動改回 OCTA 內建瀏覽器。': ('Google blocked the built-in browser’s sign-in again (“This browser or app may not be secure”), so it now uses a Chrome window. Once you have signed in there, it switches back to OCTA’s built-in browser by itself.', 'Google が再び内蔵ブラウザのログインをブロックしました（「このブラウザまたはアプリは安全でない可能性があります」）。Chrome ウィンドウに切り替えました。そこでログインが終わると、自動で OCTA の内蔵ブラウザに戻ります。'),
+ 'Google 又擋下內建瀏覽器的登入，已改用 Chrome 視窗。剛改回內建就又被擋，所以這個機器人先固定用 Chrome 視窗；要再試內建瀏覽器，到「瀏覽器」按「改回內建瀏覽器」。': ('Google blocked the built-in browser’s sign-in again, so it now uses a Chrome window. This happened right after switching back, so this bot stays in the Chrome window for now; to try the built-in browser again, press “Switch back to the built-in browser” under “Browser”.', 'Google が再び内蔵ブラウザのログインをブロックしたため、Chrome ウィンドウに切り替えました。内蔵に戻した直後だったので、このボットは当面 Chrome ウィンドウを使います。内蔵ブラウザをもう一度試すには「ブラウザ」で「内蔵ブラウザに戻す」を押してください。'),
+})
+P.extend([
+ (r'^已在 Chrome 視窗登入 Google，瀏覽器已改回 OCTA 內建（帶入 (\d+) 筆網站登入），Chrome 視窗已關閉。$', 'Signed in to Google in the Chrome window. The browser is back in OCTA ($1 site sign-ins brought over) and the Chrome window is closed.', 'Chrome ウィンドウで Google にログインしました。ブラウザを OCTA 内蔵に戻し（サイトのログイン $1 件を移行）、Chrome ウィンドウを閉じました。'),
+ (r'^這個機器人的 Chrome 視窗已經登入 Google，瀏覽器已改回 OCTA 內建（帶入 (\d+) 筆網站登入）。$', 'This bot’s Chrome window is already signed in to Google, so its browser is back in OCTA ($1 site sign-ins brought over).', 'このボットの Chrome ウィンドウは Google にログイン済みのため、ブラウザを OCTA 内蔵に戻しました（サイトのログイン $1 件を移行）。'),
+])

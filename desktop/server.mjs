@@ -433,6 +433,15 @@ export async function startServer(opts = {}) {
         return json(res, { data: readFileSync(full).toString('base64') });
       }
       if (p === 'autostart') { hooks.setAutostart(!!body.on); return json(res, { ok: true }); }
+      // a bot's browser: in OCTA, or a Chrome window because Google refused the sign-in in OCTA (and switching back)
+      if (p === 'browser-mode') return json(res, hooks.browserMode ? hooks.browserMode(String(body.bot || '')) : { chrome: false });
+      if (p === 'browser-embed') {
+        const id = String(body.bot || '').slice(0, 64);
+        if (!id || !hooks.useEmbedded) return json(res, { error: '這台電腦不能切換瀏覽器' }, 400);
+        const r = await hooks.useEmbedded({ id, name: String(body.name || '機器人').slice(0, 40) });
+        if (!r?.ok) return json(res, { error: r?.error || '切換失敗' }, 400);
+        return json(res, r);
+      }
       if (p === 'store') {   // where attachments, screenshots and outputs are kept
         const cur = hooks.getStore(), def = join(dataDir, 'files'), gd = googleDrive();
         if (body.set) {
