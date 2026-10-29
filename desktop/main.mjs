@@ -146,6 +146,7 @@ const TRANSIENT_LOAD = /ERR_ADDRESS_IN_USE|ERR_CONNECTION_REFUSED|ERR_CONNECTION
 export function loadRetryDelay(tries) { return Math.min(30000, 1000 * 2 ** Math.min(tries, 5)); }
 async function loadLocal() {
   for (let tries = 0; ; tries++) {
+    if (!win || win.isDestroyed()) return;   // the window was closed while waiting: nothing to load into
     try { await win.loadURL(server.url); return; }
     catch (e) {
       if (!TRANSIENT_LOAD.test(String(e)) || tries >= 12 || !win || win.isDestroyed()) throw e;
@@ -241,7 +242,7 @@ function stopThumbs(bucket) { clearTimeout(bucket.thumbTimer); bucket.thumbTimer
 function startThumbs(bucket) {
   stopThumbs(bucket);
   const tick = async () => {
-    if (bucket.shown !== 'thumb' || thumbDot() || !bucket.active || bucket.active.webContents.isDestroyed()) return;
+    if (bucket.shown !== 'thumb' || thumbDot() || !bucket.active?.webContents || bucket.active.webContents.isDestroyed()) return;
     try {
       const shot = await bucket.active.webContents.debugger.sendCommand('Page.captureScreenshot', { format: 'jpeg', quality: 45 });
       sendFrame(bucket, { mode: 'thumb', jpeg: shot.data });
