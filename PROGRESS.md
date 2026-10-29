@@ -150,3 +150,5 @@
 - 映日所（教練建立）因 Google 登入被 3.0.37 機制永久切到真 Chrome。改：googleRefused 只在 /signin/rejected 或「瀏覽器可能不安全」才切；realChrome 改記 {at,why,stay}；returnToEmbed（讀 Chrome profile cookies→electronCookie→內嵌，SID/__Secure-1PSID 判斷已登入；啟動後第一次開瀏覽器或偵測到新登入時自動改回；15 分鐘內再被擋設 stay）；跨站 iframe/worker 也套標準 Chrome UA 與 client hints；CDP /json/version 回 Chrome 身分；runner/note；介面「改回內建瀏覽器」。
 - 修 loadLocal 等待中視窗關閉的 null 錯誤、startThumbs 的 webContents undefined。
 - 未實測：真實 Google 是否接受、Windows DPAPI cookie 讀取。
+## 2026-10-29 3.3.4
+- [x] 執行器每分鐘檢查 `ollama list`，有新模型就立即回報模型選單（原本 30 分鐘才更新）

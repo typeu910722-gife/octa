@@ -754,12 +754,19 @@ function codexUsage() {   // `codex app-server` answers account/rateLimits/read 
 }
 // which models each AI on this computer offers (for the model menu); asked from the tools that can list them
 const runText = (bin, args) => new Promise(ok => execFile(bin, args, { shell: WIN, windowsHide: true, timeout: 20000, encoding: 'utf8', maxBuffer: 4 << 20 }, (e, out, err) => ok(e ? '' : String(out || '') + String(err || ''))));
-let lastModels = 0;
-async function modelReport() {   // every 30 minutes
+let lastModels = 0, lastOllamaCheck = 0, ollamaSig = null;
+const ollamaList = async () => (await runText('ollama', ['list'])).split('\n').slice(1).map(l => l.trim().split(/\s+/)[0]).filter(Boolean).slice(0, 30);
+async function modelReport() {   // every 30 minutes, or right away once a new Ollama model shows up (checked every minute)
+  let quick;
+  if (Date.now() - lastOllamaCheck > 60000) {
+    lastOllamaCheck = Date.now();
+    if (await has('ollama')) { quick = await ollamaList(); if (ollamaSig !== null && quick.join('|') !== ollamaSig) lastModels = 0; }
+  }
   if (Date.now() - lastModels < 30 * 60000) return undefined;
   lastModels = Date.now();
   const out = {};
-  if (await has('ollama')) out.opencode = (await runText('ollama', ['list'])).split('\n').slice(1).map(l => l.trim().split(/\s+/)[0]).filter(Boolean).slice(0, 30);
+  if (quick || await has('ollama')) out.opencode = quick || await ollamaList();
+  ollamaSig = (out.opencode || []).join('|');
   if (await has('agent')) {
     const t = (await runText('agent', ['--list-models'])).replace(/\x1b\[[0-9;]*m/g, '');
     out.cursor = [...new Set(t.split('\n').map(l => (l.match(/^\s*(?:[-*•]\s*)?([a-z0-9][\w.\-]{2,40})(?:\s|$)/i) || [])[1]).filter(x => x && /\d|-/.test(x)))].slice(0, 30);
