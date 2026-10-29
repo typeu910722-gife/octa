@@ -205,6 +205,7 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}   /* desktop: 
 .bub .at{color:var(--gold2)}
 .bub a{color:var(--gold2)}
 .sys{align-self:center;font-size:12px;color:var(--faint);font-family:var(--tc);letter-spacing:.1em}
+.sysd summary{cursor:pointer;list-style:none}.sysd summary::-webkit-details-marker{display:none}.sysd summary::after{content:' ▾';opacity:.6}.sysd[open] summary::after{content:' ▴'}.sysd .sysfull{white-space:pre-wrap;margin-top:6px;text-align:left}
 .work{align-self:flex-start;font-size:13px;color:var(--mute);display:flex;gap:10px;align-items:center}
 .bstage{align-self:center;max-width:min(560px,100%);font-size:12px;color:var(--mute)}
 .bstage summary{cursor:pointer;list-style:none;text-align:center;color:var(--faint);letter-spacing:.06em}
@@ -1379,6 +1380,7 @@ const conv=id=>bot(id)||S.groups.find(g=>g.id===id);
 const isG=id=>id&&id.startsWith('g-');
 const init=n=>esc((n||'?').slice(0,1));
 const avOf=id=>{const b=bot(id);return b?.avatar?`<span class="emo">${esc(b.avatar)}</span>`:init(b?b.name:nameOf(id))};
+const SYSOPEN=new Set();
 const nameOf=by=>by==='me'?'你':by==='sys'?'系統':(bot(by)?.name||'已刪除');
 const convMsgs=id=>MSG[id]?.list||[];
 let SEEN={};try{SEEN=JSON.parse(localStorage.getItem('octa_seen')||'{}')}catch(e){}
@@ -1619,7 +1621,10 @@ function render(scroll){
   let mh=!mc?.loaded?'<div class="sys fade">載入中…</div>':mc.more?'<button type="button" class="ghost older" id="older">載入更早的訊息</button>':'';
   let prevDay='';
   const row=(m,rk='')=>{
-    if(m.by==='sys')return `<div class="sys">${esc(m.text)}<span class="ts">${hm(m.ts)}</span></div>`;
+    if(m.by==='sys'){const t=String(m.text||''),first=t.split('\n')[0],long=t.length>70||t.includes('\n');
+      if(!long)return `<div class="sys">${esc(t)}<span class="ts">${hm(m.ts)}</span></div>`;
+      const head=first.length>48?first.slice(0,46)+'…':first;   // long background notes: one line, the rest on tap
+      return `<details class="sys sysd"${SYSOPEN.has(String(m.id))?' open':''} data-sid="${esc(String(m.id))}" ontoggle="this.open?SYSOPEN.add(this.dataset.sid):SYSOPEN.delete(this.dataset.sid)"><summary>${esc(head)}<span class="ts">${hm(m.ts)}</span></summary><div class="sysfull">${esc(t)}</div></details>`}
     if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}${rk}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'傳送中…':hm(m.ts)}</div></div></div>`;
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
     return `<div class="m${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx">${g?`<div class="who" data-u>${esc(nameOf(m.by))}</div>`:''}${quoteHtml(m)}${(()=>{const body=APPR.test(m.text)?apprStrip(optText(m)):optText(m);return body||(m.files||[]).length?`<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(body)}${filesHtml(m.files)}</div>`:''})()}${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}<div class="meta">${hm(m.ts)}<button type="button" class="cp" data-copy-msg="${m.id}" aria-label="複製">複製</button></div></div></div>`};
