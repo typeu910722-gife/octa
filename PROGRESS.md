@@ -163,3 +163,5 @@
 - Google「目前無法登入帳戶」視為拒絕；教練連結主機未接上回 503，不給雲端舊資料；coach group rename/delete。
 - 測試 test/host-care.test.mjs 8 項；全套失敗仍是原本 7 項。
 - 未實測：真實 Windows 睡眠阻擋、resume 重啟、各機器人是否照新規則；E·ROOM 的部分欄位寫入要靠 E·ROOM API 本身支援。
+
+- 3.3.7（2026-10-31）：Ollama 卡住根因＝OpenCode 每次指令約 16–18K tokens，octa-ctx 只有 4K/8K，server.log 顯示 truncating input prompt → 2050。OLLAMA_NUM_CTX 改 24576（舊 octa-ctx 標籤會自動重建）。8GB 顯卡跑 qwen3 會稍微溢出到 CPU，較慢但能完成。

@@ -24,7 +24,9 @@ import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
 export const VERSION = '19.1';
-export const OLLAMA_NUM_CTX = 8192;
+// OpenCode's own system prompt + browser tool schemas run ~16–18K tokens per call (seen in Ollama's server log);
+// at 4K/8K Ollama cut every prompt down to ~2K, the model lost its instructions and tools and looped until the job timed out.
+export const OLLAMA_NUM_CTX = 24576;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
 const WIN = process.platform === 'win32';
