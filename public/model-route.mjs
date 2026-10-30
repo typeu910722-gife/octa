@@ -97,6 +97,7 @@ export const FAIL_KINDS = {
   not_logged_in: { label: '需要登入', why: '網站把機器人登出了，或要先登入才能繼續。', next: '在電腦上打開機器人的瀏覽器登入，再按「繼續」。', retry: false },
   site_changed: { label: '網頁變了', why: '網頁上找不到要操作的地方，可能改版或跳出了別的畫面。', next: '看截圖確認畫面；網站改版了就告訴機器人新的位置。', retry: true },
   quota: { label: '額度用完', why: 'AI 的使用額度用完或被限流了。', next: '等額度重置，或在任務設定加一個備援 AI。', retry: false },
+  interrupted: { label: '中斷', why: '主機電腦斷線、睡眠或重新啟動，工作做到一半停了。', next: '主機連上後會自動接著做；沒有接上就按重試。', retry: true },
   timeout: { label: '逾時', why: '做太久，或 AI 很久沒有回應，已中止。', next: '把工作拆小一點再交代，或稍後按重試。', retry: true },
   tool_error: { label: '工具出錯', why: '瀏覽器、搜尋或其他工具出錯。', next: '確認電腦的網路和瀏覽器正常，再按重試。', retry: true },
   unknown: { label: '其他錯誤', why: '執行時發生錯誤。', next: '看錯誤訊息後按重試；一直失敗就換個說法交代。', retry: true }
@@ -127,8 +128,10 @@ const RETRY_NOTE = /\n\n（自動重試 \d+）[\s\S]*$/;
 export const stripRetryNote = p => String(p || '').replace(RETRY_NOTE, '');
 export function retryPrompt(prompt, n, kind, msg) {
   const base = stripRetryNote(prompt);
-  if (n < MAX_AUTO_RETRY) return base;
   const k = FAIL_KINDS[kind] || FAIL_KINDS.unknown;
+  // stopped halfway (time limit, no answer, the host went offline): go on from where it stopped, never start over
+  if (kind === 'timeout' || kind === 'interrupted') return `${base}\n\n（自動重試 ${n}）上一次做到一半中斷了（${kind === 'interrupted' ? '主機斷線或重新啟動' : k.label}）。先看對話紀錄和你的工作紀錄：已經做完、已經傳出去的訊息和檔案不要重做、不要重傳，只把剩下的做完；最後回報時寫清楚哪些是這次補完的。${n >= MAX_AUTO_RETRY ? '這次換一種比較快的方法（能用 API 或程式就不要開網頁一頁頁等）。' : ''}`;
+  if (n < MAX_AUTO_RETRY) return base;
   const m = String(msg || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   return `${base}\n\n（自動重試 ${n}）前一次失敗了，原因：${k.label}（${k.why}）${m ? '錯誤訊息：' + m : ''}這次請換一種方法做，不要重複上次失敗的步驟。`;
 }

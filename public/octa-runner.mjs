@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '19.0';
+export const VERSION = '19.1';
 export const OLLAMA_NUM_CTX = 8192;
 export const GOOGLE_HOME = 'https://www.google.com/';
 const PW_MCP = '@playwright/mcp@0.0.83';
@@ -40,9 +40,20 @@ if (WIN) {
   process.env.PATH = [...add.filter(p => !(process.env.PATH || '').includes(p)), process.env.PATH].join(';');
 }
 
+// every call has a time limit: a connection that died while the computer slept (or the network dropped) used to leave
+// the wait for the next job hanging forever, so no job and no routine ran until OCTA was restarted
+const API_LIMIT_MS = 3 * 60000, NEXT_LIMIT_MS = 75000;
+export function limitSignal(signal, ms) {
+  const t = AbortSignal.timeout(ms);
+  if (!signal) return t;
+  if (AbortSignal.any) return AbortSignal.any([signal, t]);
+  const c = new AbortController(), go = s => () => c.abort(s.reason);
+  signal.addEventListener('abort', go(signal), { once: true }); t.addEventListener('abort', go(t), { once: true });
+  return c.signal;
+}
 async function api(path, body, method = 'POST', signal) {
   const r = await fetch(cfg.url + '/api/' + path, {
-    method, signal,
+    method, signal: limitSignal(signal, path === 'runner/next' ? NEXT_LIMIT_MS : API_LIMIT_MS),
     headers: { 'content-type': 'application/json', ...(cfg.token ? { authorization: 'Bearer ' + cfg.token } : {}) },
     body: method === 'GET' ? undefined : JSON.stringify(body || {})
   });
@@ -214,9 +225,21 @@ function dayInfo(job) {
     '名字、編號、數字、金額只能抄這一次畫面上或資料裡看到的字，不准自己編；沒看到的空著。',
     '日期沒有寫年份時，當成今年、離今天最近的那一天。',
     '找資料不能只看畫面上看得到的：用搜尋、篩選、往下捲到載入完整，相關的帳號和頁面都要看過。',
-    '交出數字、名單、清單之前，先回頭對照原始資料（畫面、檔案、紀錄）逐項核對一次，對不上就重算。回覆裡不用描述核對過程，只有無法確認的疑點才另外列出。');
+    '交出數字、名單、清單之前，先回頭對照原始資料（畫面、檔案、紀錄）逐項核對一次，對不上就重算。回覆裡不用描述核對過程，只有無法確認的疑點才另外列出。',
+    ...SAFE_WORK_RULES);
   return out;
 }
+// 送錯、重送、蓋掉別人改的、等網頁等到逾時: the same few mistakes on any chat app or website, so they're general rules
+export const SAFE_WORK_RULES = [
+  '傳訊息找對象：一律用聊天軟體的搜尋框輸入對象全名找，不要在聊天列表捲著找（列表只顯示最近的，舊的會漏）。打開後核對聊天室標題跟要傳的對象一字不差才傳；搜尋不到、名字對不上、群組不見了，就停下來回報「找不到這個對象」，絕對不要改傳給別人（包括使用者自己）。',
+  '搜尋舊資料（很早之前的訂單、客人、日期）也用搜尋框輸入名字或日期找，不要只看列表最上面那幾則。',
+  '傳之前先查有沒有傳過：打開對象的聊天紀錄和你的工作紀錄，看今天是不是已經傳過同樣的內容，傳過就跳過並在回報裡說「已傳過，跳過」；傳完把「傳給誰、傳了什麼、幾點」寫進工作紀錄，下次照著查。',
+  '有附件（PDF、圖片）跟文字一起傳時，先傳附件、確認畫面上已經送出完成，再傳下一則；順序寫在規則裡的照規則。',
+  '從資料表、名單、密碼表取值時，用房號、名稱這類鍵逐字比對那一列再抄，不要憑記憶或沿用上一筆；傳出前再核對一次「鍵」跟「值」是同一列。不同店、不同館各自的模板、密碼、時間只能用同一店（館）那一列，不能混用。',
+  '寫回網站或系統（存檔、更新名單、改備註）之前，先重新讀一次目前最新的內容，只改這次要改的那幾項、其他照最新內容保留，不要拿你手上較舊的那份整個蓋回去；寫完再讀一次確認別人剛改的還在。',
+  '有 API 可以用的系統就只用 API，不要開瀏覽器。網頁超過 2 分鐘還沒載入或一直轉圈，就換方法（API、重新整理一次、換別的頁），不要一直等到逾時。',
+  '工作很多件時，做完一件就把那一件的結果寫進工作紀錄，萬一中途被中止，已完成的不會白做；接著做時先看紀錄，從沒做完的開始。'
+];
 const notesFile = job => join(workDir, 'bots', String(job.bot.id).replace(/[^\w-]/g, ''), '工作筆記.md');
 function workNotes(job) {
   let t = ''; try { t = readFileSync(notesFile(job), 'utf8').trim(); } catch { }
@@ -1376,7 +1399,7 @@ function startSession(job, b) {
       s.turn.heard = true;
       if (e.type === 'assistant') for (const c of e.message?.content || []) {
         if (c.type === 'tool_use') s.turn.progress?.(describeTool(c.name, c.input));
-        else if (c.type === 'text' && c.text?.trim()) s.turn.progress?.('整理回覆中');
+        else if (c.type === 'text' && c.text?.trim()) { s.turn.progress?.('整理回覆中'); (s.turn.parts = s.turn.parts || []).push(c.text.trim()); }
       }
       if (e.type === 'result') { const t = s.turn; s.turn = null; const raw = String(e.result || '').trim(); t.done({ ok: !e.is_error && !!raw, text: keepBrowserTask(raw) || '⚠ Claude Code 沒有回覆內容', tokens: claudeTokens(e.usage) }); }
     }
@@ -1396,6 +1419,12 @@ function warmSend(job, text, live) {
 }
 const WARM_STALE = 20 * 60000;   // reuse a waiting session only if it answered within the last 20 minutes
 const FIRST_WORD = 180000, QUIET = 360000;   // no sign of life this long → the session is stuck
+// what the AI had already written when a run was stopped: sent up with the failure, so finished parts aren't lost
+export const PARTIAL_TAG = '【中止前已完成的部分】';
+export function partialNote(parts) {
+  const t = (parts || []).join('\n').trim();
+  return t ? `\n\n${PARTIAL_TAG}\n${t.length > 3000 ? '…' + t.slice(-3000) : t}` : '';
+}
 function turnWithWatch(job, s, text, live) {
   return new Promise(done => {
     const started = Date.now();
@@ -1404,11 +1433,17 @@ function turnWithWatch(job, s, text, live) {
     s.turn = { done: end, progress: live.progress, heard: false };
     const dog = setInterval(() => {
       if (!s.turn) return clearInterval(dog);
-      const quiet = Date.now() - (s.seenAt || started);
+      const quiet = Date.now() - (s.seenAt || started), limit = job.maxMin ? job.maxMin * 60000 : JOB_TIMEOUT_MS;
+      if (Date.now() - started > limit) {   // the job's own time limit: stop here and keep what is done
+        const t = s.turn; s.turn = null;
+        closeSession(job.bot.id, `${job.bot.name}：超過單件工作最長時間`);
+        t.done({ ok: false, stalled: true, limit: true, text: `⚠ 執行超過 ${Math.round(limit / 60000)} 分鐘（單件工作最長時間），已中止` + partialNote(t.parts) });
+        return;
+      }
       if (quiet > (s.turn.heard ? QUIET : FIRST_WORD)) {
         const t = s.turn; s.turn = null;
         closeSession(job.bot.id, `${job.bot.name}：AI ${Math.round(quiet / 60000)} 分鐘沒有動靜`);
-        t.done({ ok: false, stalled: true, text: '⚠ AI 很久沒有回應，已中止' });
+        t.done({ ok: false, stalled: true, text: '⚠ AI 很久沒有回應，已中止' + partialNote(t.parts) });
       }
     }, 10000);
     try { s.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n'); }
@@ -1441,7 +1476,7 @@ async function warmClaude(job, b, here, live) {
   live.ctl.kill = () => closeSession(job.bot.id, `${job.bot.name}：已停止`);
   const res = await turnWithWatch(job, s, text, live);
   s.doneAt = Date.now();
-  if (res.stalled && !job.stallRetried) {   // the AI never answered: one fresh try with the full instructions
+  if (res.stalled && !res.limit && !String(res.text).includes(PARTIAL_TAG) && !job.stallRetried) {   // (with work done: the server continues from it instead)   // the AI never answered: one fresh try with the full instructions
     job.stallRetried = true;
     log(`⏱ ${job.bot.name}：AI 沒有回應，重新開始一次`);
     live.progress?.('AI 沒有回應，重新開始');
@@ -2070,7 +2105,8 @@ function doFiles(inbox = [], pull = []) {
   for (const f of inbox) if (!fileWork.has(f.id)) { fileWork.add(f.id); saveUpload(f).catch(e => log('附件儲存失敗：' + e.message)).finally(() => fileWork.delete(f.id)); }
   for (const f of pull) if (!fileWork.has(f.id)) { fileWork.add(f.id); sendCopy(f).catch(e => log('傳送檔案失敗：' + e.message)).finally(() => fileWork.delete(f.id)); }
 }
-let poll = null;
+let poll = null, booting = true, lastPoll = 0;
+export const pollAge = () => (lastPoll ? Date.now() - lastPoll : 0);   // how long the wait-for-work loop has been stuck (desktop watchdog)
 const kick = () => { if (active < MAX) poll?.abort(); };   // a slot freed up: ask again right away (with the free slot)
 // 反應快: checking the AI tools, quotas and models can take many seconds (codex app-server, model lists). Asking for the
 // next job no longer waits on them: they run on the side and their result goes up with a later ask. Only the very
@@ -2097,15 +2133,16 @@ async function loop() {
       const slots = MAX - active;
       poll = new AbortController();
       const r = await api('runner/next', {
-        wait: true, slots, ...(await reports()),
+        wait: true, slots, ...(await reports()), ...(booting ? { boot: true } : {}),
         version: VERSION, app: cfg.appVersion || undefined, store: storeDir()
-      }, 'POST', slots ? undefined : poll.signal).catch(e => { if (e.name === 'AbortError') return {}; throw e; });
-      failures = 0;
+      }, 'POST', slots ? undefined : poll.signal).catch(e => { if (e.name === 'AbortError' && poll.signal.aborted) return {}; if (e.name === 'TimeoutError' || e.name === 'AbortError') throw new Error('等待工作逾時，重新連線'); throw e; });
+      failures = 0; lastPoll = Date.now();
       if ('job' in r && !!r.standby !== standby) { standby = !!r.standby; log(standby ? '⏸ 這台電腦目前是備用電腦，由主機執行機器人。可在「設定 → 電腦」改成主機。' : '▶ 這台電腦是主機，開始接工作。'); cfg.onStandby?.(standby); }
+      booting = false;
       doFiles(r.inbox, r.pull);
       if (r.job) runJob(r.job);
     } catch (e) {
-      failures++;
+      failures++; lastPoll = Date.now();   // an answer, even a failed one: the loop itself is alive
       log('連線問題：' + e.message);
       if (/執行器金鑰|請先登入/.test(e.message)) { stopped = true; onFatal?.('金鑰無效，請重新登入 OCTA 或到網站「設定」重新產生。'); break; }
       await new Promise(ok => setTimeout(ok, Math.min(2000 * 2 ** Math.min(failures, 5), 60000)));
@@ -2121,7 +2158,7 @@ export function startRunner(opts) {
   MAX = Math.max(1, Math.min(+opts.max || 3, 8));
   if (opts.log) log = opts.log;
   onFatal = opts.onFatal || null;
-  stopped = false; lastReport = 0; lastUsage = 0; lastModels = 0; standby = false; firstLook = true;
+  stopped = false; booting = true; lastPoll = Date.now(); lastReport = 0; lastUsage = 0; lastModels = 0; standby = false; firstLook = true;
   mkdirSync(join(workDir, 'bots'), { recursive: true });
   mkdirSync(storeDir(), { recursive: true });
   log(`OCTA 執行器 v${VERSION} 啟動，最多 ${MAX} 個機器人同時工作；檔案資料夾：${storeDir()}`);

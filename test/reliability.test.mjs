@@ -94,7 +94,10 @@ test('failures are sorted into plain kinds', () => {
 });
 
 test('only the second retry carries the reason, and notes never stack', () => {
-  assert.equal(retryPrompt('查訂單', 1, 'timeout', 'x'), '查訂單');
+  assert.equal(retryPrompt('查訂單', 1, 'site_changed', 'x'), '查訂單');
+  // stopped halfway: every retry continues from what is done instead of starting over
+  assert.match(retryPrompt('查訂單', 1, 'timeout', 'x'), /^查訂單\n\n（自動重試 1）上一次做到一半中斷了.*不要重做、不要重傳/s);
+  assert.match(retryPrompt('查訂單', 1, 'interrupted', 'x'), /主機斷線或重新啟動/);
   const two = retryPrompt('查訂單', 2, 'site_changed', 'Ref e1 not found');
   assert.match(two, /^查訂單\n\n（自動重試 2）前一次失敗了，原因：網頁變了/);
   assert.match(two, /換一種方法/);
@@ -113,7 +116,7 @@ test('a timeout retries twice (the second time with the reason), then fails with
   await call(db, 'POST', 'runner/done', { token: rt, body: { id: j1.id, ok: false, stalled: true, err_kind: 'timeout', text: '⚠ AI 很久沒有回應，已中止' } });
   assert.equal(jobRow(db, j1.id).err_kind, 'timeout');
   const j2 = await claim(db, rt);
-  assert.equal(j2.prompt, '查今天的訂單');
+  assert.match(j2.prompt, /^查今天的訂單\n\n（自動重試 1）上一次做到一半中斷了/);
   assert.equal(jobRow(db, j2.id).retry_of, j1.id);
   await call(db, 'POST', 'runner/done', { token: rt, body: { id: j2.id, ok: false, text: 'Error: Ref e9 not found in the current page snapshot' } });
   assert.equal(jobRow(db, j2.id).err_kind, 'site_changed');

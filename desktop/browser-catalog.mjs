@@ -126,13 +126,15 @@ export function electronCookie(c, now = Date.now() / 1000) {
 
 // Google refused the sign-in because this is an embedded browser ("這個瀏覽器或應用程式可能不安全").
 // Only this sends the bot to a Chrome window; a plain sign-in page is tried in OCTA first.
-const GOOGLE_REFUSED = ['這個瀏覽器或應用程式可能不安全', '此瀏覽器或應用程式可能不安全', '这个浏览器或应用可能不安全', '此浏览器或应用可能不安全', 'This browser or app may not be secure', "Couldn't sign you in", '無法登入'];
+// (the first group alone is enough on accounts.google.com; "目前無法登入帳戶" is the same refusal, worded for the account)
+const GOOGLE_REFUSED = ['這個瀏覽器或應用程式可能不安全', '此瀏覽器或應用程式可能不安全', '这个浏览器或应用可能不安全', '此浏览器或应用可能不安全', 'This browser or app may not be secure', '目前無法登入帳戶', '目前無法登入您的帳戶', '目前无法登录帐号', '目前无法登录您的帐号', "Couldn't sign you in", '無法登入'];
+const STRONG = 9;
 export function googleRefused(url, text = '') {
   let u; try { u = new URL(url); } catch { return false; }
   if (u.hostname !== 'accounts.google.com') return false;
   if (/\/rejected\b|\/signin\/rejected/i.test(u.pathname)) return true;
   const t = String(text || '');
-  return GOOGLE_REFUSED.slice(0, 5).some(w => t.includes(w)) || (/signin|ServiceLogin|AddSession/i.test(u.pathname) && GOOGLE_REFUSED.slice(5).some(w => t.includes(w)) && /瀏覽器|browser|浏览器/i.test(t));
+  return GOOGLE_REFUSED.slice(0, STRONG).some(w => t.includes(w)) || (/signin|ServiceLogin|AddSession/i.test(u.pathname) && GOOGLE_REFUSED.slice(STRONG).some(w => t.includes(w)) && /瀏覽器|browser|浏览器/i.test(t));
 }
 
 export function pageUnsupported(text) {

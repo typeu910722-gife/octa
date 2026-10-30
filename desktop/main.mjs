@@ -1,7 +1,7 @@
 // OCTA desktop (Electron).
 // Signed in: the window shows the OCTA website (same account as the web version, everything syncs)
 // and this computer runs that account's bots. Offline mode: everything stays on this computer.
-import { app, BrowserWindow, WebContentsView, Tray, Menu, Notification, shell, nativeImage, dialog, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, WebContentsView, Tray, Menu, Notification, shell, nativeImage, dialog, ipcMain, screen, powerSaveBlocker, powerMonitor } from 'electron';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -732,14 +732,34 @@ async function closeBrowsers() {
   if (browsersClosed || !runnerMod?.closeAllBrowsers) return; browsersClosed = true;
   await Promise.race([runnerMod.closeAllBrowsers().catch(e => logError('close-browsers', e)), new Promise(r => setTimeout(r, 4000))]);
 }
-function stopRunner() { runner?.stop(); runner = null; runnerFor = ''; }
+// 主機不斷線: while the bots work, Windows must not put the computer to sleep (that stopped every job and routine
+// for hours). After waking up, or when the runner hasn't heard from the server for minutes, it starts over cleanly;
+// the server then continues whatever was cut off and catches up the missed routines.
+let awakeId = null, runnerArgs = null, restarting = false;
+function keepAwake(on) {
+  try {
+    if (on && (awakeId === null || !powerSaveBlocker.isStarted(awakeId))) awakeId = powerSaveBlocker.start('prevent-app-suspension');
+    if (!on && awakeId !== null) { powerSaveBlocker.stop(awakeId); awakeId = null; }
+  } catch (e) { logError('keep-awake', e); }
+}
+async function restartRunner(why) {
+  if (!runnerArgs || restarting) return;
+  restarting = true;
+  try { logError('runner-restart', new Error(why)); const [u, t] = runnerArgs; stopRunner(); await startRunnerFor(u, t); }
+  catch (e) { logError('runner-restart', e); }
+  finally { restarting = false; }
+}
+setInterval(() => { if (runner && runnerMod?.pollAge && runnerMod.pollAge() > 4 * 60000) restartRunner('超過 4 分鐘沒有收到伺服器回應'); }, 60000);
+app.whenReady().then(() => powerMonitor.on('resume', () => setTimeout(() => restartRunner('電腦從睡眠醒來'), 5000)));
+function stopRunner() { runner?.stop(); runner = null; runnerFor = ''; keepAwake(false); }
 async function startRunnerFor(url, token) {
   if (runner && runnerFor === url + token) return;
   stopRunner();
   const mod = await import(pathToFileURL(join(server.webDir, 'octa-runner.mjs')).href); runnerMod = mod;
   const { startRunner } = mod;
-  runner = startRunner({ url, token, openInstall: k => server.installEngine(k), ...(await bundledRunnerOpts()) });
-  runnerFor = url + token;
+  runner = startRunner({ url, token, openInstall: k => server.installEngine(k), ...(await bundledRunnerOpts()), onStandby: sb => keepAwake(!sb) });   // a standby computer may sleep
+  runnerFor = url + token; runnerArgs = [url, token];
+  keepAwake(true);
 }
 
 // only OCTA's own pages may use the bridge

@@ -154,3 +154,12 @@
 - [x] 執行器每分鐘檢查 `ollama list`，有新模型就立即回報模型選單（原本 30 分鐘才更新）
 ## 2026-10-29 3.3.5
 - [x] 長的系統訊息（超過 70 字或多行）摺疊成一行重點，點擊展開
+## 2026-10-30 3.3.6（四個機器人回報）
+- 診斷（筆電舊主機 DB 備份）：10:55～15:43 沒有任何 runner/next（電腦睡眠／執行器卡住），15:43 一次補做 16 件；例行任務的執行 prompt 含「例行任務」＋時間，schedulesFromTurn 每次跑都從自己的 prompt 建新排程（亂碼排程、刪了又建回來的原因）。
+- 修：desktop powerSaveBlocker（主機不睡）、powerMonitor resume 與 pollAge>4 分重啟執行器；runner api 全部加時限（runner/next 75 秒）、首次 runner/next 帶 boot → 伺服器把 running 的工作 continueJob（interrupted，接著做）；stale 逾時也改接著做；retryPrompt timeout/interrupted 每次都附「不要重做重傳」。
+- 部分結果：turnWithWatch 收集文字、單件工作時限也在待機 session 生效；中止時【中止前已完成的部分】→ runner/done 先貼出再重試。
+- 排程：schedulesFromTurn 忽略例行任務執行／同事／重試／刪除類指示；非 userTurn 不建排程；splitTaskSchedules 不搬「不要/取消」句；sameRoutine 同時間＋名稱或內容重疊視為同一個；routineName 去掉結尾編號；整理排程預覽列出會建立的名稱與時間。
+- 通用規則 SAFE_WORK_RULES（dayInfo）：搜尋框找對象、找不到不改傳、先查傳過沒、先傳附件、資料表逐字比對、寫回前讀最新、只用 API、做一件記一件。
+- Google「目前無法登入帳戶」視為拒絕；教練連結主機未接上回 503，不給雲端舊資料；coach group rename/delete。
+- 測試 test/host-care.test.mjs 8 項；全套失敗仍是原本 7 項。
+- 未實測：真實 Windows 睡眠阻擋、resume 重啟、各機器人是否照新規則；E·ROOM 的部分欄位寫入要靠 E·ROOM API 本身支援。

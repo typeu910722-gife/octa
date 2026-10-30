@@ -97,11 +97,16 @@ function routineName(raw) {
   name = name.replace(/[（(].*$/, '');
   name = name.replace(/(要給|交給|給「|給『|，|。|；|;|→|➡).*$/, '');
   name = name.replace(/^(請|幫我|建立|新增|設定|例行任務|排程|每天|每日|的)+/, '').trim();
+  name = name.replace(/[\s「」『』]*\d{1,2}\s*[.、．)）]?\s*$/, '').replace(/[「」『』]/g, '').trim();   // "…不要傳房號的人用。4." → no list number
   return clean(name, 40);
 }
 // Times written in the instruction win. A prose "已建好" does not.
+const NOT_A_SCHEDULE_ASK = /^（例行任務|^〔背景:|^同事|^（自動接續|^\S+ (問你|把工作交接給你)：|（自動重試 \d+）|這是主機重開後補做/;
 export function schedulesFromTurn(prompt, reply) {
   const src = String(prompt || '');
+  // a routine's own run (its instruction names the routine and its time), a colleague's question or a retry is not
+  // the user asking for a schedule: reading times out of it made the same routines over and over
+  if (NOT_A_SCHEDULE_ASK.test(src) || /刪除|刪掉|停用|取消|不要/.test(src.replace(/不要再|別再/g, ''))) return { fromPrompt: false, routines: [] };
   const asks = /例行任務/.test(src)
     || /(?:建立|新增|設定|做成|改成|排進|寫成|建成).{0,16}排程|排程.{0,16}(?:建立|新增|設定|做成|改成|建成)/.test(src)
     || (/交接/.test(src) && clockHits(src).length && /名單|早報|入住|退房|續住|掃房|訂單|每天|每日|例行|排程|要給|交給/.test(src));
@@ -228,6 +233,7 @@ export function splitTaskSchedules(task) {
     if (!line.trim()) { keep.push(line); continue; }
     const left = [];
     for (const part of line.split(/(?<=[。；;])/)) {
+      if (/不要|不用|不必|別做|勿|停止|取消|暫停|已刪|刪掉/.test(part)) { left.push(part); continue; }   // "07:30 不要做…" is a rule, not a schedule
       const found = scheduleIn(part.replace(/^[\s\-•·*]+|^\s*\d+[.)、]\s*/g, ''));
       if (found.length) { for (const r of found) moved.push({ ...r, line: clean(part.replace(/^[\s\-•·*]+/, ''), 300) }); continue; }
       left.push(part);
@@ -723,7 +729,7 @@ const ROUTINE_NEEDS_PROMPT = '請寫這個例行任務每次要做什麼（每�
 const ROUTINE_FALLBACK = '（這個例行任務還沒寫自己的指示）照你的指定任務，做這個時間該做的事，完成後回報結果。';
 function routinePrompt(r, o = {}) {
   const head = `（例行任務「${r.name}」${o.event ? '由事件觸發' : ''}）`;
-  const when = o.catchup ? `這是主機重開後補做的一次${o.missed?.length > 1 ? `（錯過了 ${o.missed.join('、')}，只補做一次）` : ''}。` : '';
+  const when = o.catchup ? `這是主機重開後補做的一次${o.missed?.length > 1 ? `（錯過了 ${o.missed.join('、')}，只補做一次）` : ''}。先看今天的對話和工作紀錄：這次該做的如果已經做過、已經傳出去，就不要重做重傳，只補沒做到的；已經過時不用做的就說明略過。` : '';
   const where = o.group ? `做完把結果回報在群組「${o.group}」（這則對話就是那個群組）。` : '';
   return `${head}${when}${where}${String(r.prompt || '').trim() || ROUTINE_FALLBACK}`;
 }
@@ -782,11 +788,23 @@ const nextText = (env, r) => {
 async function saveRoutine(env, db, U, conv, r, quiet = false) {
   const { date, hm } = localNow(env);
   const fired = JSON.stringify(Object.fromEntries(r.times.filter(t => !isEvery(t) && t <= hm).map(t => [t, date])));   // times already past today start tomorrow
-  const old = await db.prepare('SELECT id FROM routines WHERE user_id=? AND conv=? AND name=?').bind(U, conv, r.name).first();
+  let old = await db.prepare('SELECT id FROM routines WHERE user_id=? AND conv=? AND name=?').bind(U, conv, r.name).first();
+  if (!old) old = sameRoutine((await db.prepare('SELECT id,name,times,prompt FROM routines WHERE user_id=? AND conv=?').bind(U, conv).all()).results, r);
   if (old) await db.prepare('UPDATE routines SET times=?,prompt=?,enabled=1,fired=? WHERE id=?').bind(JSON.stringify(r.times), r.prompt, fired, old.id).run();
   else await db.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)').bind('r-' + uid(), U, conv, r.name, r.prompt, JSON.stringify(r.times), fired, now()).run();
   if (!quiet) await addMsg(db, U, conv, 'sys', `已${old ? '更新' : '新增'}例行任務「${r.name}」：${timesWords(r.times)}`);
   return old ? 'updated' : 'added';
+}
+// 不重複建: a routine at the same times whose name or instruction overlaps is the same routine
+export function sameRoutine(rows, r) {
+  const want = [...r.times].sort().join(','), key = x => String(x || '').replace(/[\s「」『』（）()。，,、:：]/g, '');
+  const n = key(r.name), p = key(r.prompt).slice(0, 40);
+  return rows.find(x => {
+    let t = x.times; try { if (typeof t === 'string') t = JSON.parse(t); } catch { t = []; }
+    if ([...(t || [])].sort().join(',') !== want) return false;
+    const xn = key(x.name), xp = key(x.prompt);
+    return (n.length >= 2 && xn.length >= 2 && (xn.includes(n) || n.includes(xn))) || (p.length >= 6 && (xp.includes(p) || key(r.prompt).includes(xp.slice(0, 40))));
+  }) || null;
 }
 // a bot's routines: its own chat and the groups it is in
 const routinesOfBot = async (db, U, botId) => (await db.prepare('SELECT r.id,r.conv,r.name,r.times,r.prompt,r.enabled FROM routines r LEFT JOIN groups_ g ON g.id=r.conv WHERE r.user_id=? AND (r.conv=? OR g.members LIKE ?)').bind(U, botId, '%' + JSON.stringify(botId) + '%').all()).results.map(r => ({ ...r, times: JSON.parse(r.times || '[]') }));
@@ -811,6 +829,7 @@ async function moveTaskSchedules(env, db, U, botId, conv, task) {
   const rows = compareSchedules(sp.moved, await routinesOfBot(db, U, botId));
   const lines = [];
   for (const m of rows) {
+    if (m.state === 'missing' && rows.indexOf(m) !== rows.findIndex(x => x.state === 'missing' && x.times.join() === m.times.join() && x.name === m.name)) continue;   // the same sentence twice: one routine
     if (m.state === 'missing') { await saveRoutine(env, db, U, botId, { name: m.name, times: m.times, prompt: m.line }, true); lines.push(`「${m.line}」→ 新增例行任務「${m.name}」（${timesWords(m.times)}）`); }
     else lines.push(`「${m.line}」→ 已有例行任務「${m.routine.name}」（${timesWords(m.routine.times)}）${m.state === 'differ' ? '，時間不一樣，以例行任務為準' : ''}`);
   }
@@ -859,7 +878,7 @@ async function tidyScan(env, db, U, { post = false, bot = null } = {}) {
     if (!post) continue;
     const line = '✅待確認：整理排程：指定任務裡的時間搬到例行任務';
     if (await db.prepare('SELECT 1 AS n FROM messages WHERE user_id=? AND conv=? AND by_=? AND text LIKE ? AND ts>? LIMIT 1').bind(U, b.id, b.id, '%' + line + '%', now() - 14 * DAY).first()) continue;
-    const says = rows.map(r => r.state === 'missing' ? `- 「${r.line}」：還沒有對應的例行任務` : r.state === 'differ' ? `- 「${r.line}」：例行任務「${r.routine.name}」是 ${timesWords(r.routine.times)}，不一致` : `- 「${r.line}」：跟例行任務「${r.routine.name}」重複`);
+    const says = rows.map(r => r.state === 'missing' ? `- 「${r.line}」：還沒有對應的例行任務 → 會建立「${r.name}」（${timesWords(r.times)}）` : r.state === 'differ' ? `- 「${r.line}」：例行任務「${r.routine.name}」是 ${timesWords(r.routine.times)}，不一致` : `- 「${r.line}」：跟例行任務「${r.routine.name}」重複`);
     await addMsg(db, U, b.id, b.id, `我的指定任務裡還寫著排程時間，排程應該只放在例行任務一個地方：\n${says.join('\n')}\n按「核准」會把這些時間句從指定任務移掉；沒有例行任務的會建立；已經有的以例行任務為準，不會改。\n${line}`);
   }
   return out;
@@ -1022,6 +1041,7 @@ const coachGuide = (base, coach) => `你是 OCTA 機器人們的教練「${coach
 4. GET ${base}/job/<編號>?wait=25 → {"status":"pending|running|done|error","replies":[它的回覆]}。wait 最多等 25 秒，沒好就再查一次。
 5. POST ${base}/teach {"to":"<id>","remember":["要它永遠記住的事"],"skill":{"name":"技能名","steps":"一步一步的做法"},"task":"新的任務說明（會取代舊的，可省略）"} → 直接寫進它的記憶／技能／任務。
 5b. POST ${base}/routine {"to":"<id>","name":"例行任務名","op":"add|delete|disable|enable","times":["07:55","*/30"],"prompt":"每次要做的事（必填，每個例行任務有自己的說明）"} → 幫它新增、修改、刪除或暫停例行任務（GET bot/<id> 的 routines 看現有的）。
+5c. POST ${base}/group {"name":"群組名","op":"rename","to":"新名稱"} 或 {"name":"群組名","op":"delete","confirm":true} → 改名或刪除 OCTA 群組（刪除會連同它的對話和例行任務；先確認使用者同意）。
 6. POST ${base}/hire {"name":"接班人名字","task":"它負責的工作，寫清楚步驟與標準","remember":["交接重點"],"avatar":"🤖"} → 建立新的 OCTA 機器人，回傳 {"id":...}。
 7. GET ${base}/inbox?since=<上次看到的訊息編號> → 機器人們的新回覆（含 asks=true 的提問）。定時查這裡就能跟進；有人問問題就用 ask 回答它。
 帶人的方法：先 ask 讓它實際做一次 → 用 job 看結果 → 錯了就 ask 加 feedback 指出哪裡錯、正確答案是什麼 → 穩定的做法用 teach 寫成 remember 或 skill。不要替它編造資料，也不要要求它付款、刪除或對外發訊息而不經使用者同意。`;
@@ -1036,6 +1056,10 @@ async function coachApi(env, db, path, m, body, url, pathQuery, rawBody) {
     if (h.hmode === 1) {
       const fr = await toHost(h, s.user_id, m, pathQuery, rawBody, { 'x-octa-coach': encodeURIComponent(s.label || 'Grok Bot'), 'x-octa-origin': url.origin });
       if (fr) return fr;
+      // the computer that answered isn't the host (e.g. right after moving to a new computer): the cloud's copy is old,
+      // so don't show it (the coach saw groups that were already gone and none of the new ones)
+      forgetUser(s.user_id);
+      if ((await hostOf(db, s.user_id)).hmode === 1) return J({ error: '主機電腦現在沒有接上（可能剛換主機電腦）。請在主機電腦打開 OCTA，幾分鐘後再試。', hostOffline: true }, 503);
     }
   }
   const lim = [['coach:' + key.slice(0, 16), 400]];
@@ -1123,6 +1147,27 @@ async function coachApi(env, db, path, m, body, url, pathQuery, rawBody) {
     }
     const word = { add: old ? '更新' : '新增', delete: '刪除', disable: '停用', enable: '啟用' }[op];
     await addMsg(db, U, conv, 'sys', `🎓 ${coach}${word}了例行任務「${name}」`);
+    await bump(db, U);
+    return J({ ok: true });
+  }
+  if (sub === 'group' && m === 'POST') {   // {name|id, op: rename|delete, to?, confirm:true for delete}
+    const g = all.groups.find(x => x.id === clean(body.id || body.name, 64) || x.name === clean(body.name, 64));
+    if (!g) return J({ error: '找不到這個群組', groups: all.groups.map(x => ({ id: x.id, name: x.name })) }, 404);
+    const op = clean(body.op, 10);
+    if (op === 'rename') {
+      const to = clean(body.to, 32); if (!to) return err('要有 to（新名稱）');
+      await db.prepare('UPDATE groups_ SET name=? WHERE id=? AND user_id=?').bind(to, g.id, U).run();
+      await addMsg(db, U, g.id, 'sys', `🎓 ${coach}把群組改名為「${to}」`);
+    } else if (op === 'delete') {
+      if (body.confirm !== true) return err('刪除群組會一起刪掉它的對話和例行任務，確定要刪請加 confirm: true');
+      await db.batch([
+        db.prepare('DELETE FROM routines WHERE conv=? AND user_id=?').bind(g.id, U),
+        db.prepare('DELETE FROM groups_ WHERE id=? AND user_id=?').bind(g.id, U),
+        db.prepare('DELETE FROM messages WHERE conv=? AND user_id=?').bind(g.id, U),
+        db.prepare("DELETE FROM jobs WHERE conv=? AND user_id=? AND status='pending'").bind(g.id, U)
+      ]);
+      for (const b of g.members) await addMsg(db, U, b, 'sys', `🎓 ${coach}刪除了群組「${g.name}」`);
+    } else return err('op 只能是 rename、delete');
     await bump(db, U);
     return J({ ok: true });
   }
@@ -1874,6 +1919,26 @@ const TEMPLATES_I18N = {
  }
 };
 
+const PARTIAL_TAG = '【中止前已完成的部分】';   // same tag as octa-runner.mjs partialNote()
+// a chat job that stopped halfway (no answer for a long time, or the host computer went offline): the same job again,
+// told to continue from what is done, at most MAX_AUTO_RETRY times. Other kinds just fail.
+async function continueJob(db, U, job, kind, msg) {
+  const done = await db.prepare("UPDATE jobs SET status='error', finished=?, err_kind=?, err_msg=? WHERE id=? AND status='running'").bind(now(), kind, msg, job.id).run();
+  if (!done.meta.changes) return false;
+  const n = (+job.tries || 0) + 1, chat = !job.kind || job.kind === 'chat';
+  const who = (await db.prepare('SELECT name FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first())?.name || '機器人';
+  if (!chat || n > MAX_AUTO_RETRY || String(job.via || '').includes('"side"')) {
+    await addMsg(db, U, job.conv, job.bot_id, `⚠ ${msg}`);
+    if (job.routine) await db.prepare("UPDATE routines SET last_status='error', last_text=? WHERE id=? AND last_job=?").bind(clean(msg, 200), job.routine, job.id).run();
+    return true;
+  }
+  const r = await db.prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(U, job.conv, job.bot_id, job.chain, retryPrompt(job.prompt, n, kind, msg), now(), job.depth || 0, job.eng || null, n, job.id, job.via || null, job.routine || null).run();
+  if (job.routine) await db.prepare('UPDATE routines SET last_job=? WHERE id=? AND last_job=?').bind(r.meta.last_row_id, job.routine, job.id).run();
+  await addMsg(db, U, job.conv, 'sys', `「${who}」的工作中斷了（${msg}），自動接著做剩下的（第 ${n} 次）。`);
+  return true;
+}
+
 const CODE_ENGINES = ['ollama', 'opencode', 'claude', 'codex', 'gemini', 'grok', 'grokbot', 'copilot', 'cursor', 'qwen', 'fixture'];
 const codeEngineOk = e => (CODE_ENGINES.includes(e) ? e : '');
 const repoPathOk = p => {
@@ -2170,11 +2235,16 @@ async function route({ request: req, env, params }) {
         let changed = await fireRoutines(env, db, U, true);
         // stale running jobs become errors
         const maxMin = jobMaxOk((await getSettings(db, U)).jobMax);
-        const stale = (await db.prepare("SELECT id,conv,bot_id,started,beat FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND (IFNULL(beat,started)<? OR started<?)) OR started<?)").bind(U, now() - 20 * MIN, now() - (maxMin + 5) * MIN, now() - Math.max(3 * 60, maxMin + 5) * MIN).all()).results;
+        // the host just (re)started: whatever was running belonged to the old run and will never report back.
+        // Those jobs continue (from what is done) instead of sitting in 處理中 until they time out.
+        if (body.boot) {
+          const lost = (await db.prepare("SELECT * FROM jobs WHERE user_id=? AND status='running' AND (kind IS NULL OR kind='' OR kind='chat')").bind(U).all()).results;
+          for (const j of lost) if (await continueJob(db, U, j, 'interrupted', '主機電腦斷線或重新啟動')) changed++;
+        }
+        const stale = (await db.prepare("SELECT * FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND (IFNULL(beat,started)<? OR started<?)) OR started<?)").bind(U, now() - 20 * MIN, now() - (maxMin + 5) * MIN, now() - Math.max(3 * 60, maxMin + 5) * MIN).all()).results;
         for (const s of stale) {
-          await db.prepare("UPDATE jobs SET status='error', err_kind='timeout', err_msg=? WHERE id=?").bind(now() - (s.beat || s.started) >= 20 * MIN ? '超過 20 分鐘沒有任何回報，已中止' : `執行超過 ${maxMin} 分鐘（單件工作最長時間），已中止`, s.id).run();
-          await addMsg(db, U, s.conv, s.bot_id, '⚠ 執行逾時，已中止。');
-          changed++;
+          const quietLong = now() - (s.beat || s.started) >= 20 * MIN;
+          if (await continueJob(db, U, s, quietLong ? 'interrupted' : 'timeout', quietLong ? '超過 20 分鐘沒有任何回報（主機可能睡眠或斷線）' : `執行超過 ${maxMin} 分鐘（單件工作最長時間）`)) changed++;
         }
         try { changed += await weeklyReview(env, db, U); } catch { }
         try { changed += await tidyOnce(env, db, U); } catch { }
@@ -2299,6 +2369,12 @@ async function route({ request: req, env, params }) {
       if (path === 'runner/done' && m === 'POST') {
         const job = await db.prepare("SELECT * FROM jobs WHERE id=? AND user_id=? AND status='running'").bind(+body.id, U).first();
         if (!job) return err('找不到執行中的任務', 404);
+        // stopped halfway: what was already done goes out now (not lost with the failure); the retry continues from it
+        if (job.kind === 'chat' && body.ok === false && String(body.text || '').includes(PARTIAL_TAG)) {
+          const [head, ...rest] = String(body.text).split(PARTIAL_TAG), part = rest.join(PARTIAL_TAG).trim();
+          body.text = head.trim(); body.stalled = true; body.err_kind = body.err_kind || 'timeout';
+          if (part) await addMsg(db, U, job.conv, job.bot_id, `⏸ 這次做到一半就停了，先送出已完成的部分（剩下的會自動接著做）：\n${clean(part, 3500)}`);
+        }
         let good = body.ok !== false;
         let fail = null;   // { kind, msg, ai }: why a chat job finally failed (工作紀錄, notification)
         // Classify the failure before choosing a backup. Quota, HTTP 429, auth, and
@@ -2447,7 +2523,8 @@ async function route({ request: req, env, params }) {
             if (plan) plans.push(plan);
             return '';
           }).trim() || '（已設定例行任務）';
-          applySchedules(plans, job.prompt, text);
+          if (userTurn(job)) applySchedules(plans, job.prompt, text);
+          else plans.length = 0;   // a routine run, a colleague's question or a retry doesn't make routines (they kept growing back)
         }
         const claimedBuilt = good && job.kind === 'chat' && /排程已建好|例行任務已建好|已建立例行任務|已建好例行/.test(text);
         const tk = Number.isFinite(+body.tokens) && body.tokens !== null ? Math.max(0, Math.round(+body.tokens)) : null;
