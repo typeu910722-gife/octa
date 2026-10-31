@@ -165,3 +165,4 @@
 - 未實測：真實 Windows 睡眠阻擋、resume 重啟、各機器人是否照新規則；E·ROOM 的部分欄位寫入要靠 E·ROOM API 本身支援。
 
 - 3.3.7（2026-10-31）：Ollama 卡住根因＝OpenCode 每次指令約 16–18K tokens，octa-ctx 只有 4K/8K，server.log 顯示 truncating input prompt → 2050。OLLAMA_NUM_CTX 改 24576（舊 octa-ctx 標籤會自動重建）。8GB 顯卡跑 qwen3 會稍微溢出到 CPU，較慢但能完成。
+- 3.3.8（2026-10-31）：Ollama 瀏覽改走 browser-use（public/octa-browseruse.py，pin 0.13.14，venv 在 work/browser-use，CDP 連機器人自己的瀏覽器、keep_alive、use_judge=False、num_ctx 走原生 /api/chat）；mine（使用者 Chrome 擴充）或未安裝好時仍走 OpenCode+Playwright。ollama show 讀 Capabilities：無 tools 直接回說明；預設模型挑 tools＋vision。沙箱以假 Ollama＋Chromium 實測橋接通過；使用者 Windows 實機尚未驗證。

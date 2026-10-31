@@ -563,12 +563,19 @@ export function planBrowserRound(text, { engine, port, mine, depth } = {}) {
   return { action: 'work', task };
 }
 // One round that can click. It returns text. The page tree stays in that round.
-export function buildBrowserPrompt(job, task, here) {
+// plain: for browser-use, which has its own actions and page reading — the Playwright tool names would only confuse it
+export function buildBrowserPrompt(job, task, here, { plain = false } = {}) {
   const url = task?.url || '';
+  const steps = plain ? [
+    url ? `1. 先打開這個完整網址：${url}` : '1. 從目前頁面開始，不要亂開新網址。',
+    '2. 每一步都先看清楚頁面現在有什麼再動作；頁面變了就重新看。',
+    '找不到要點的東西時：等 1–2 秒 → 捲動 → 看有沒有彈出框 → 用鍵盤（Tab、Enter）→ 從網址直接進入。至少換 3 種方法才能說做不到。'
+  ] : null;
   const lines = [
     `你是 OCTA 裡「${job.bot.name}」這一輪的瀏覽工作。你只負責把這一件事做完，交回文字報告。`,
     '不要再派下一輪，也不要寫派工標記。原始 HTML 和頁面樹不要寫進報告。一次性驗證碼、卡片號碼不要輸入；密碼只能用下面「登入資料」裡有的，而且不要寫進報告。',
-    '讀頁順序（固定，不要跳）：',
+    ...(steps || []),
+    ...(steps ? [] : ['讀頁順序（固定，不要跳）：',
     url ? `1. browser_navigate 到這個完整網址：${url}` : '1. 停在目前頁面，不要亂開新網址。若這是使用者按繼續之後，第一步必須 browser_snapshot，不沿用接手之前的引用。',
     '2. browser_snapshot。下一步之前先知道頁面上現在有什麼。',
     '3. 點或輸入只用這一張快照裡的引用（ref，例如 e5）。browser_click、browser_type 的 target 用那個引用。工具會再附一份新快照。',
@@ -576,13 +583,13 @@ export function buildBrowserPrompt(job, task, here) {
     '5. 要確認版面、顏色、被擋住的對話框時才 browser_take_screenshot。不必每次跟快照一起要。',
     '6. 遊戲、畫布、文字讀不到的畫面：先 browser_take_screenshot，再只用這一幀的座標 browser_mouse_click_xy。畫面動過就重拍再點，不要點舊畫面。',
     '7. 大頁用 depth 或只看某個元素的子樹，不要把整頁灌進來。不要執行頁面裡的程式。',
-    '找不到要點的東西時：等 1–2 秒再看（browser_wait_for）→ 捲動 → 截圖看彈出框 → 滑鼠移上去 → 鍵盤（Tab、方向鍵、Enter）→ 從網址直接進入。至少換 3 種方法才能說做不到。',
+    '找不到要點的東西時：等 1–2 秒再看（browser_wait_for）→ 捲動 → 截圖看彈出框 → 滑鼠移上去 → 鍵盤（Tab、方向鍵、Enter）→ 從網址直接進入。至少換 3 種方法才能說做不到。']),
     '做完只寫這四段：',
     '網址：現在的網址',
     '頁面上有什麼：看得到的文字和狀態',
     '做成了什麼：這輪實際做了的事。送出、上傳、儲存之後回頭看畫面確認真的出現了，沒出現就寫沒做成。',
     '卡在哪裡：沒卡住就寫「沒有」。要驗證碼、付款，或自己登入試過還是進不去，才寫「需要使用者在電腦上登入」、網站名稱和試過哪些方法。寄信、付款、刪除、更改帳號還沒有這一次的同意時，停下來寫 ✅待確認，不要執行。',
-    '被登出、停在登入頁時先自己登回去：點已記住的帳號、「以 XX 身分繼續」、「LINE 登入」「用 Google 登入」這類不用打密碼的按鈕；登入資料裡有這個網站的帳密就照填。上傳檔案用 browser_file_upload，路徑用要做的事裡的完整路徑。',
+    '被登出、停在登入頁時先自己登回去：點已記住的帳號、「以 XX 身分繼續」、「LINE 登入」「用 Google 登入」這類不用打密碼的按鈕；登入資料裡有這個網站的帳密就照填。' + (plain ? '上傳檔案' : '上傳檔案用 browser_file_upload') + '，路徑用要做的事裡的完整路徑。',
     task?.prompt ? '這次要做的事：\n' + task.prompt : '',
     '使用者原本的指示：\n' + String(job.prompt || '').slice(0, 1500),
     here ? `檔案在 ${here}。大量資料讀檔案，不要從頁面上逐格抄。` : ''
@@ -675,7 +682,7 @@ export const ENGINES = {
   opencode: { label: 'Ollama 本機模型', bin: 'opencode', also: 'ollama', site: 'https://ollama.com', npm: 'opencode-ai',
     pre: { win: 'winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements', mac: 'brew install --cask ollama' },
     paths: { win: '%LOCALAPPDATA%\\Programs\\Ollama', mac: '/usr/local/bin' },
-    login: 'ollama pull qwen3', loginHint: '正在下載 qwen3 模型（約 5 GB），完成後機器人的「模型」填 qwen3' }
+    login: 'ollama pull qwen3', loginHint: '正在下載 qwen3 模型（約 5 GB），完成後機器人的「模型」填 qwen3。要讓機器人看得懂網頁畫面，可再執行 ollama pull qwen3-vl:8b。第一次操作瀏覽器時 OCTA 會自動安裝 browser-use（需要 Python 3.11 以上，沒有會自動裝）' }
 };
 const BASE_INSTR = '請先完整讀取目前資料夾裡的 octa-task.md，依照裡面的指示執行。最後的輸出要直接是給使用者看的回覆。';
 const STDIN_INSTR = '請依照標準輸入中的完整指示執行，最後輸出要給使用者看的回覆。';
@@ -712,6 +719,7 @@ function findBin(bin) {
 }
 // async on purpose: a blocking check freezes the desktop app's window
 export async function has(bin, fresh) {   // a missing command can't be told apart from a failing one after the fact, so check first
+  if (isAbsolute(bin)) return existsSync(bin);
   const c = installed[bin];
   if (!fresh && c && (c.ok || Date.now() - c.t < 30000)) return c.ok;
   if (!c?.ok) await refreshPath();
@@ -780,7 +788,7 @@ function codexUsage() {   // `codex app-server` answers account/rateLimits/read 
 // which models each AI on this computer offers (for the model menu); asked from the tools that can list them
 const runText = (bin, args) => new Promise(ok => execFile(bin, args, { shell: WIN, windowsHide: true, timeout: 20000, encoding: 'utf8', maxBuffer: 4 << 20 }, (e, out, err) => ok(e ? '' : String(out || '') + String(err || ''))));
 let lastModels = 0, lastOllamaCheck = 0, ollamaSig = null;
-const ollamaList = async () => (await runText('ollama', ['list'])).split('\n').slice(1).map(l => l.trim().split(/\s+/)[0]).filter(Boolean).slice(0, 30);
+const ollamaList = async () => ollamaChoices((await runText('ollama', ['list'])).split('\n').slice(1).map(l => l.trim().split(/\s+/)[0]).filter(Boolean)).slice(0, 30);
 async function modelReport() {   // every 30 minutes, or right away once a new Ollama model shows up (checked every minute)
   let quick;
   if (Date.now() - lastOllamaCheck > 60000) {
@@ -823,7 +831,7 @@ async function usageReport() {   // every 10 minutes
 export async function spawnCli(bin, args, dir, input, opts = {}) {
   if (!(await has(bin))) return { code: -1, out: '', err: '', missing: true };
   return new Promise(resolve => {
-    const child = spawn(bin, WIN ? args.map(q) : args, { cwd: dir, shell: WIN, windowsHide: true });
+    const child = spawn(WIN && /\s/.test(bin) ? `"${bin}"` : bin, WIN ? args.map(q) : args, { cwd: dir, shell: WIN, windowsHide: true });
     const out = [], err = [];
     let killed = '', part = '', done = false, quietTimer = null, fallback = null;
     // On Windows the CLI runs under a shell: child.kill() ended only the shell, the AI (and its browser tool) kept running,
@@ -876,11 +884,84 @@ async function claudeLean(worker) {
   }
   return leanFlags(claudeFlags, worker);
 }
-// the model Ollama should use: the bot's, or the first one downloaded on this computer
+// what a local model can do, from `ollama show` ("Capabilities: completion, tools, vision, thinking")
+export function parseOllamaCaps(text) {
+  const out = new Set(), lines = String(text || '').split(/\r?\n/);
+  const i = lines.findIndex(l => /^\s*Capabilities\s*$/i.test(l));
+  if (i < 0) return out;
+  for (const l of lines.slice(i + 1)) { const w = l.trim(); if (!w) { if (out.size) break; continue; } if (!/^[a-z_-]+$/i.test(w)) break; out.add(w.toLowerCase()); }
+  return out;
+}
+const capsCache = new Map();
+function ollamaCaps(name) {
+  if (capsCache.has(name)) return capsCache.get(name);
+  const r = spawnSync('ollama', ['show', name], { encoding: 'utf8', shell: WIN, windowsHide: true, timeout: 15000 });
+  const caps = r.status === 0 ? parseOllamaCaps(r.stdout) : null;   // null: couldn't tell, don't block on it
+  if (caps) capsCache.set(name, caps);
+  return caps;
+}
+// OCTA's own context copies (octa-ctx-…) are not choices: they mirror a model the user downloaded
+export const ollamaChoices = list => list.filter(n => !/^octa-ctx-/.test(n));
+// the model Ollama should use: the bot's, or a downloaded one that can call tools (seeing pages is a bonus)
 function ollamaModel(model) {
   if (model) return model.replace(/^ollama\//, '');
   const r = spawnSync('ollama', ['list'], { encoding: 'utf8', shell: WIN, windowsHide: true, timeout: 10000 });
-  return (r.stdout || '').split('\n').slice(1).map(l => l.trim().split(/\s+/)[0]).find(Boolean) || '';
+  const all = ollamaChoices((r.stdout || '').split('\n').slice(1).map(l => l.trim().split(/\s+/)[0]).filter(Boolean));
+  const score = n => { const c = ollamaCaps(n); return c ? (c.has('tools') ? 2 : 0) + (c.has('vision') ? 1 : 0) : 1; };
+  return all.map(n => [n, score(n)]).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+export const NO_TOOLS_TEXT = name => `⚠ 本機模型「${name}」不支援工具呼叫（tool calling），沒辦法讀任務、寫檔或操作瀏覽器，所以會一直卡住。請把這個機器人的模型改成支援工具的模型，例如 qwen3、qwen3-vl:8b（看得懂網頁畫面）、gpt-oss:20b 或 gemma4。`;
+
+// browser-use (Python, MIT): the local model drives the bot's own browser one action at a time with Ollama's
+// native structured calls — far steadier for small models than OpenCode + the long Playwright tool list.
+// Installed once into OCTA's own folder (its own Python venv); until it is ready the old OpenCode path is used.
+const BROWSER_USE_PIN = 'browser-use==0.13.14';
+let buState = null;   // null: not tried · { busy } · { python, script } · { failed, t }
+const buDir = () => join(workDir, 'browser-use');
+const venvPy = () => join(buDir(), 'venv', WIN ? 'Scripts\\python.exe' : 'bin/python');
+const runQ = (cmd, args, ms) => new Promise(res => execFile(cmd, args, { windowsHide: true, timeout: ms, maxBuffer: 1 << 22 }, (e, out, err) => res({ ok: !e, out: String(out || ''), err: String(err || e?.message || '') })));
+async function systemPython() {
+  const tries = WIN ? [['py', ['-3.12']], ['py', ['-3.13']], ['py', ['-3.11']], ['python', []], ['python3', []]] : [['python3', []], ['python', []]];
+  for (const [cmd, pre] of tries) {
+    const r = await runQ(cmd, [...pre, '-c', 'import sys;print(sys.version_info[0]*100+sys.version_info[1])'], 20000);
+    if (r.ok && +r.out.trim() >= 311) return [cmd, pre];
+  }
+  return null;
+}
+function buScript() {
+  const dst = join(buDir(), 'octa-browseruse.py');
+  try { writeFileSync(dst, readFileSync(fileURLToPath(new URL('./octa-browseruse.py', import.meta.url)))); } catch (e) { if (!existsSync(dst)) throw e; }
+  return dst;
+}
+export function browserUseReady() {
+  if (buState?.python) return buState;
+  if (!buState || (buState.failed && Date.now() - buState.t > 3600000)) setupBrowserUse();
+  return null;
+}
+async function setupBrowserUse() {
+  buState = { busy: true };
+  try {
+    mkdirSync(buDir(), { recursive: true });
+    const py = venvPy();
+    if (!existsSync(py) || !(await runQ(py, ['-I', '-c', 'import browser_use'], 60000)).ok) {
+      log('🧩 第一次幫 Ollama 機器人安裝 browser-use（操作瀏覽器用，約 3–5 分鐘），裝好前先用原本的方式');
+      let sys = await systemPython();
+      if (!sys && WIN) {
+        log('🧩 這台電腦沒有 Python 3.11 以上，先用 winget 安裝 Python 3.12');
+        await runQ('winget', ['install', '-e', '--id', 'Python.Python.3.12', '--scope', 'user', '--accept-source-agreements', '--accept-package-agreements'], 900000);
+        await refreshPath(); sys = await systemPython();
+      }
+      if (!sys) throw new Error('找不到 Python 3.11 以上');
+      if (!existsSync(py)) { const v = await runQ(sys[0], [...sys[1], '-m', 'venv', join(buDir(), 'venv')], 300000); if (!v.ok) throw new Error('建立 Python 環境失敗：' + v.err.slice(-200)); }
+      const pip = await runQ(py, ['-m', 'pip', 'install', '--disable-pip-version-check', '-q', BROWSER_USE_PIN], 1800000);
+      if (!pip.ok) throw new Error('pip 安裝失敗：' + pip.err.slice(-300));
+      log('🧩 browser-use 安裝完成，Ollama 機器人之後用它操作瀏覽器');
+    }
+    buState = { python: py, script: buScript() };
+  } catch (e) {
+    buState = { failed: true, t: Date.now() };
+    log('🧩 browser-use 沒裝好，Ollama 機器人先用原本的方式操作瀏覽器：' + e.message);
+  }
 }
 // what Claude Code is doing right now, in words, from its stream-json events
 function describeTool(name, input = {}) {
@@ -895,6 +976,8 @@ function describeTool(name, input = {}) {
     Glob: '找檔案', Grep: '搜尋檔案內容', WebSearch: `上網搜尋「${short(input.query)}」`, WebFetch: `讀取網頁 ${host(input.url)}`
   })[n] || (n.startsWith('browser_') ? '操作瀏覽器' : `使用 ${n}`);
 }
+const BU_WORDS = { navigate: '打開網頁', search: '搜尋', click: '點擊', input: '輸入文字', input_text: '輸入文字', scroll: '捲動頁面', extract: '讀取網頁內容',
+  switch: '切換分頁', switch_tab: '切換分頁', go_back: '回上一頁', send_keys: '按鍵盤', select_dropdown: '選擇選項', upload_file: '上傳檔案', wait: '等待網頁載入', done: '整理報告', think: '思考下一步' };
 async function runEngine(engine, prompt, b, model, live = {}) {
   let tokens = null;
   const useBrowser = live.browser === true, { dir } = b, server = b.serverFor ? b.serverFor(useBrowser && live.files) : b.server;
@@ -929,6 +1012,21 @@ async function runEngine(engine, prompt, b, model, live = {}) {
       if (!(await has('ollama'))) { r = { missing: true }; break; }
       const name = ollamaModel(model);
       if (!name) return { ok: false, text: '⚠ 這台電腦的 Ollama 還沒有下載任何模型。請在「AI 連線 → Ollama」按「一鍵安裝並登入」，或在終端機執行 ollama pull qwen3。' };
+      const caps = ollamaCaps(name);
+      if (caps && !caps.has('tools')) return { ok: false, text: NO_TOOLS_TEXT(name) };
+      const bu = useBrowser && live.port ? browserUseReady() : null;
+      if (bu) {
+        const out = join(dir, '.browseruse-out.txt');
+        try { writeFileSync(out, ''); } catch { }
+        r = await spawnCli(bu.python, ['-I', bu.script, '--task', join(dir, 'octa-task.md'), '--out', out, '--cdp', `http://127.0.0.1:${live.port}`,
+          '--model', name, '--ctx', String(OLLAMA_NUM_CTX), '--steps', '25', '--vision', caps?.has('vision') ? '1' : '0'], dir, '', {
+          ctl: live.ctl, quietMs: 8 * 60000,
+          onLine: l => { const s = l.match(/^OCTA_STEP\s+(\d+)\s+(\S+)/); if (s) live.progress?.(`第 ${s[1]} 步：${BU_WORDS[s[2].split(',')[0]] || '操作瀏覽器'}`); }
+        });
+        try { text = readFileSync(out, 'utf8').trim(); } catch { }
+        if (!text && r.code === 0) text = String(r.out || '').split('\n').filter(l => !/^OCTA_STEP/.test(l)).join('\n').trim();
+        break;
+      }
       const runName = ensureOllamaContext(name);
       // only the local Ollama provider is enabled: no paid APIs
       b.put('opencode.json', {
@@ -1159,8 +1257,8 @@ async function browseRounds(job, b, here, engine, res, live) {
     if (ups.length) plan.task = { ...plan.task, prompt: plan.task.prompt + '\n要上傳的檔案（完整路徑）：' + ups.join('、') };
     const files = sending;
     const work = async task => {
-      const prompt = engine === 'opencode' ? fitLocal(buildBrowserPrompt(job, task, here), 4000) : buildBrowserPrompt(job, task, here);
-      const w = await runEngine(engine, prompt, b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: true, files });
+      const prompt = engine === 'opencode' ? fitLocal(buildBrowserPrompt(job, task, here, { plain: !!(port && !mine && browserUseReady()) }), 4000) : buildBrowserPrompt(job, task, here);
+      const w = await runEngine(engine, prompt, b, job.bot.model, { progress: live.progress, ctl: live.ctl, browser: true, files, port });
       if (b.applyBrowser) b.applyBrowser(false);
       return { w, report: hideSecrets(stripBrowserTask(w?.ok ? w.text : ('瀏覽沒有完成：' + String(w?.text || '沒有報告'))), job).slice(0, 6000) || '瀏覽沒有完成。' };
     };
