@@ -682,7 +682,7 @@ export const ENGINES = {
   opencode: { label: 'Ollama 本機模型', bin: 'opencode', also: 'ollama', site: 'https://ollama.com', npm: 'opencode-ai',
     pre: { win: 'winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements', mac: 'brew install --cask ollama' },
     paths: { win: '%LOCALAPPDATA%\\Programs\\Ollama', mac: '/usr/local/bin' },
-    login: 'ollama pull qwen3', loginHint: '正在下載 qwen3 模型（約 5 GB），完成後機器人的「模型」填 qwen3。要讓機器人看得懂網頁畫面，可再執行 ollama pull qwen3-vl:8b。第一次操作瀏覽器時 OCTA 會自動安裝 browser-use（需要 Python 3.11 以上，沒有會自動裝）' }
+    login: 'ollama pull qwen3', loginHint: '正在下載 qwen3 模型（約 5 GB），完成後機器人的「模型」填 qwen3。要讓機器人看得懂網頁畫面，可再執行 ollama pull qwen3-vl:8b。第一次操作瀏覽器時 OCTA 會自動安裝 browser-use（有 uv 會自動準備 Python 3.12；沒有就用電腦上 3.11–3.13 的 Python，沒有會自動裝）' }
 };
 const BASE_INSTR = '請先完整讀取目前資料夾裡的 octa-task.md，依照裡面的指示執行。最後的輸出要直接是給使用者看的回覆。';
 const STDIN_INSTR = '請依照標準輸入中的完整指示執行，最後輸出要給使用者看的回覆。';
@@ -924,7 +924,8 @@ async function systemPython() {
   const tries = WIN ? [['py', ['-3.12']], ['py', ['-3.13']], ['py', ['-3.11']], ['python', []], ['python3', []]] : [['python3', []], ['python', []]];
   for (const [cmd, pre] of tries) {
     const r = await runQ(cmd, [...pre, '-c', 'import sys;print(sys.version_info[0]*100+sys.version_info[1])'], 20000);
-    if (r.ok && +r.out.trim() >= 311) return [cmd, pre];
+    const v = +r.out.trim();
+    if (r.ok && v >= 311 && v <= 313) return [cmd, pre];   // browser-use's dependencies lag behind brand-new Python (3.14+)
   }
   return null;
 }
@@ -945,6 +946,20 @@ async function setupBrowserUse() {
     const py = venvPy();
     if (!existsSync(py) || !(await runQ(py, ['-I', '-c', 'import browser_use'], 60000)).ok) {
       log('🧩 第一次幫 Ollama 機器人安裝 browser-use（操作瀏覽器用，約 3–5 分鐘），裝好前先用原本的方式');
+      // uv (if installed) fetches its own Python 3.12 into the venv — no matter which Python the computer has
+      const uv = await has('uv', true);   // a uv-made venv has no pip of its own, so keep installing with uv
+      if (uv && !existsSync(py)) {
+        const v = await runQ('uv', ['venv', '--python', '3.12', join(buDir(), 'venv')], 600000);
+        if (!v.ok) log('🧩 uv 建立 Python 3.12 環境失敗，改用電腦上的 Python：' + v.err.slice(-200));
+      }
+      if (existsSync(py)) {
+        const pip = uv ? await runQ('uv', ['pip', 'install', '--python', py, BROWSER_USE_PIN], 1800000)
+          : await runQ(py, ['-m', 'pip', 'install', '--disable-pip-version-check', '-q', BROWSER_USE_PIN], 1800000);
+        if (!pip.ok) throw new Error('安裝 browser-use 失敗：' + pip.err.slice(-300));
+        log('🧩 browser-use 安裝完成，Ollama 機器人之後用它操作瀏覽器');
+        buState = { python: py, script: buScript() };
+        return;
+      }
       let sys = await systemPython();
       if (!sys && WIN) {
         log('🧩 這台電腦沒有 Python 3.11 以上，先用 winget 安裝 Python 3.12');
