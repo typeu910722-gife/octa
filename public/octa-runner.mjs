@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '19.1';
+export const VERSION = '19.2';
 // OpenCode's own system prompt + browser tool schemas run ~16–18K tokens per call (seen in Ollama's server log);
 // at 4K/8K Ollama cut every prompt down to ~2K, the model lost its instructions and tools and looped until the job timed out.
 export const OLLAMA_NUM_CTX = 24576;
@@ -993,6 +993,8 @@ function describeTool(name, input = {}) {
 }
 const BU_WORDS = { navigate: '打開網頁', search: '搜尋', click: '點擊', input: '輸入文字', input_text: '輸入文字', scroll: '捲動頁面', extract: '讀取網頁內容',
   switch: '切換分頁', switch_tab: '切換分頁', go_back: '回上一頁', send_keys: '按鍵盤', select_dropdown: '選擇選項', upload_file: '上傳檔案', wait: '等待網頁載入', done: '整理報告', think: '思考下一步' };
+// bots without a chosen model run on Sonnet: the CLI default on Max is Opus, which burns the shared Claude quota several times faster
+const CLAUDE_DEFAULT_MODEL = 'sonnet';
 async function runEngine(engine, prompt, b, model, live = {}) {
   let tokens = null;
   const useBrowser = live.browser === true, { dir } = b, server = b.serverFor ? b.serverFor(useBrowser && live.files) : b.server;
@@ -1057,7 +1059,7 @@ async function runEngine(engine, prompt, b, model, live = {}) {
     default: {
       // stream-json: lets OCTA show what the bot is doing while it works
       let result = null;
-      r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, ...m('--model'),
+      r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose', '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', store, '--model', model || CLAUDE_DEFAULT_MODEL,
         '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_ALLOWED, ...(await claudeLean(useBrowser))], dir, prompt, {
         ctl: live.ctl, quietMs: QUIET_MS,
         onLine: l => {
