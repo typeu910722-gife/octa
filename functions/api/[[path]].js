@@ -278,6 +278,7 @@ async function addJob(db, userId, conv, chain, prompt, depth = 0, routine = null
   return r?.meta?.last_row_id ?? null;
 }
 // a user message starts the bot (or the group's members). `text` is what was typed; an empty one still hands the files over.
+const COMPACT_PROMPT = '（壓縮對話）使用者要把這段對話壓縮，舊訊息整理完就會刪掉，你之後只看得到你的記憶和你這則回覆。請只做這件事，不要開瀏覽器、不要做其他工作：\n1. 之後還用得到、而且記憶裡還沒有的長期規則、偏好、例外和做法，每條一行「📌記住：…」（一條一句，具體可照做；已經記住的不要重複）。\n2. 最後寫一段「目前進度」（300 字內）：進行中的工作、待辦、最近的結論和要接續的地方，當作新對話的開頭。';
 async function enqueueTurn(db, userId, conv, text, bot, group, bots, quoted) {
   const prompt = [quoted?.note, text || '請處理我傳的附件。'].filter(Boolean).join('\n');
   let chain, ordered = false;
@@ -2575,6 +2576,12 @@ async function route({ request: req, env, params }) {
           if (factsNew.length) await addMsg(db, U, job.conv, 'sys', `已記下事實：${factsNew.join('；').slice(0, 200)}`);
           for (const k of manualsNew) await addMsg(db, U, job.conv, 'sys', `已存成做事手冊「${k.name}」，下次做類似的事會照著做（任務設定可檢視、刪除）`);
         }
+        const cv = viaOf(job);
+        if (cv?.k === 'compact' && +cv.from > 0) {
+          const del = await db.prepare('DELETE FROM messages WHERE user_id=? AND conv=? AND id<?').bind(U, job.conv, +cv.from).run();
+          await db.prepare("DELETE FROM messages WHERE user_id=? AND conv=? AND id=? AND by_='sys'").bind(U, job.conv, +cv.from).run();
+          await addMsg(db, U, job.conv, 'sys', `🗜 已壓縮：刪掉 ${del.meta?.changes || 0} 則舊訊息，重點已寫進記憶，上面是目前進度。之後每次送給 AI 的文字會少很多。`);
+        }
         for (const r of plans.filter(x => x.trigger).slice(0, 3)) {   // event-triggered routines the bot set up
           const old = await db.prepare('SELECT * FROM routines WHERE user_id=? AND conv=? AND name=?').bind(U, job.conv, r.name).first();
           let trig; try { trig = triggerFrom(r, old); } catch { continue; }
@@ -3228,6 +3235,20 @@ async function route({ request: req, env, params }) {
       await enqueueTurn(db, U, to, text.slice(0, 8000), bot, group, bots);
       if (body.replace) await db.prepare('DELETE FROM messages WHERE id=? AND user_id=? AND conv=?').bind(id, U, from).run();
       return ok({ replaced: !!body.replace });
+    }
+    if (path === 'compact' && m === 'POST') {   // one press: the bot writes what still matters into its memory, then the old messages go
+      const conv = clean(body.conv, 64);
+      const { bots } = await loadAll(db, U);
+      const bot = bots.find(b => b.id === conv);
+      if (!bot) return err('只有單一機器人的對話可以壓縮', 404);
+      if (await db.prepare("SELECT 1 FROM jobs WHERE user_id=? AND conv=? AND status IN ('pending','running') LIMIT 1").bind(U, conv).first()) return err('它還在工作，做完再壓縮', 409);
+      const n = (await db.prepare("SELECT COUNT(*) AS n FROM messages WHERE user_id=? AND conv=? AND by_<>'sys'").bind(U, conv).first())?.n || 0;
+      if (n < 6) return err('對話還很短，不用壓縮', 400);
+      const from = await addMsg(db, U, conv, 'sys', '🗜 壓縮對話中：機器人正在把重點寫進記憶…');
+      const fromId = typeof from === 'number' ? from : (await db.prepare('SELECT MAX(id) AS id FROM messages WHERE user_id=? AND conv=?').bind(U, conv).first())?.id;
+      await addJob(db, U, conv, [{ b: bot.id, p: COMPACT_PROMPT, v: { k: 'compact', from: fromId } }]);
+      await bump(db, U);
+      return ok();
     }
     if (path === 'clear' && m === 'POST') {   // empty one conversation's history
       const conv = clean(body.conv, 64);

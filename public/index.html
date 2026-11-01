@@ -643,7 +643,7 @@ form.in.empty .send{opacity:.45}
   .menu.asheet .lab{font-size:12px}
   .menu .mcancel{display:flex;justify-content:center;margin-top:6px;font-weight:500;color:var(--gold2);background:var(--panel2)}
   /* the header keeps the name readable: back, name, browser, and ⋯ (task settings live under ⋯) */
-  .ph #railToggle,.ph #modelBtn,.ph #edit{display:none}
+  .ph #railToggle,.ph #modelBtn,.ph #edit{display:none}.ph #cmpBtn{display:none}
   .ph{flex-wrap:nowrap}
   .ph b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* send is the round arrow everyone knows; return makes a new line */
@@ -1162,7 +1162,7 @@ html[data-fs] .acts .no,html[data-fs] .acts .del,html[data-fs] .btn,html[data-fs
   <section class="pane" id="pane">
     <div class="blank" id="blank"></div>
     <div class="ph" id="ph" hidden><button class="back" id="back" aria-label="返回">‹</button><button class="ghost hb" id="railToggle" aria-label="收合對話列表"><span class="hi">☰</span></button><div class="av" id="pav"></div>
-      <div class="t"><b id="pname" data-u></b><small id="psub"></small></div><button class="ghost hb" id="modelBtn" aria-label="模型與備援"><span class="hi">✦</span><span class="hl2">模型</span></button><button class="ghost hb" id="browser" aria-label="瀏覽器"><span class="hi">🌐</span><span class="hl2">瀏覽器</span></button><button class="ghost hb" id="edit" aria-label="任務設定"><span class="hi">⚙</span><span class="hl2">任務設定</span></button><button class="ghost hb" id="more2" aria-label="更多"><span class="hi">⋯</span></button></div>
+      <div class="t"><b id="pname" data-u></b><small id="psub"></small></div><button class="ghost hb" id="modelBtn" aria-label="模型與備援"><span class="hi">✦</span><span class="hl2">模型</span></button><button class="ghost hb" id="browser" aria-label="瀏覽器"><span class="hi">🌐</span><span class="hl2">瀏覽器</span></button><button class="ghost hb" id="edit" aria-label="任務設定"><span class="hi">⚙</span><span class="hl2">任務設定</span></button><button class="ghost hb" id="cmpBtn" aria-label="壓縮對話" title="壓縮對話：重點寫進記憶、刪舊訊息，省額度"><span class="hi">🗜</span><span class="hl2">壓縮</span></button><button class="ghost hb" id="more2" aria-label="更多"><span class="hi">⋯</span></button></div>
     <div class="task" id="task" hidden></div>
     <div class="gmem" id="gmem" hidden aria-label="成員現在在做什麼"></div>
     <div class="offb" id="offb" hidden></div>
@@ -1903,7 +1903,7 @@ let atSel=0;
 // "/" at the start: built-in actions, saved instructions and the bot's skills
 function slashItems(){const c=conv(cur);if(!c)return [];const ids=isG(cur)?c.members:[cur];
   const items=[...(window.octaDesktop?[{k:'browser',t:'/瀏覽器',d:I18N.t(showBrowserLabel())},{k:'hide',t:'/收起瀏覽器',d:I18N.t('收到背景')}]:[{k:'browser',t:'/瀏覽器',d:'看這個機器人的即時畫面'}]),{k:'stop',t:'/停止',d:I18N.t('停止目前的工作')},
-    {k:'shots',t:'/歷史畫面',d:I18N.t('以前的截圖')},{k:'edit',t:'/任務設定',d:I18N.t('名稱、任務、排程、記憶')},{k:'clear',t:'/清空對話',d:I18N.t('清空對話紀錄')}];
+    {k:'shots',t:'/歷史畫面',d:I18N.t('以前的截圖')},{k:'edit',t:'/任務設定',d:I18N.t('名稱、任務、排程、記憶')},{k:'compact',t:'/壓縮對話',d:I18N.t('重點寫進記憶、刪舊訊息，省額度')},{k:'clear',t:'/清空對話',d:I18N.t('清空對話紀錄')}];
   if(phoneRemote())items.splice(1,0,{k:'url',t:'/網址',d:'操控電腦上的網址'});
   for(const id of ids)for(const k of ((S.skills||{})[id]||[]))items.push({k:'skill',t:'/'+k.name,d:'🧩 '+(isG(cur)?bot(id)?.name+' · ':'')+I18N.t('技能'),v:k.name,b:id});
   ((S.quick||{})[cur]||[]).forEach(q=>items.push({k:'quick',t:'⚡ '+(q.length>30?q.slice(0,30)+'…':q),d:I18N.t('常用指令'),v:q}));
@@ -1924,7 +1924,7 @@ $('atpop').addEventListener('mousedown',e=>{const s2=e.target.closest('[data-sla
 function runSlash(x){if(!x)return;$('msg').value='';grow();$('atpop').hidden=true;const c=conv(cur);if(!c)return;const first=isG(cur)?c.members.find(bot):cur;
   ({browser:()=>phoneRemote()?remoteUrl(isG(cur)?c.members.filter(bot):[cur]):openBrowser(first),hide:()=>openBrowser(first,'',true),stop:()=>api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()}),
     url:()=>remoteUrl(isG(cur)?c.members.filter(bot):[cur]),
-    shots:()=>shotSheet(isG(cur)?c.members.filter(bot):[cur]),edit:()=>sheet(isG(cur)?'g':'b',true),clear:()=>clearConv(cur),
+    shots:()=>shotSheet(isG(cur)?c.members.filter(bot):[cur]),edit:()=>sheet(isG(cur)?'g':'b',true),clear:()=>clearConv(cur),compact:()=>compactConv(cur),
     skill:()=>sendMsg((isG(cur)?'@'+bot(x.b)?.name+' ':'')+'請執行技能「'+x.v+'」'),quick:()=>sendMsg(x.v)})[x.k]?.()}
 $('msg').addEventListener('keydown',e=>{
   if(!$('atpop').hidden){const a=atList();if(a){
@@ -2356,11 +2356,12 @@ function itemMenu(anchor,id){const c=conv(id);if(!c)return;
     <button data-a="pin"><span class="ck">📌</span>${(S.pins||[]).includes(id)?'取消置頂':'置頂'}</button>
     <button data-a="mute"><span class="ck">${(S.mute||{})[id]?'🔔':'🔕'}</span>${(S.mute||{})[id]?'開啟通知':'關閉通知'}</button>
     ${isG(id)?'':'<button data-a="dup"><span class="ck">⧉</span>複製這個機器人</button>'}
+    ${isG(id)?'':'<button data-a="cmp"><span class="ck">🗜</span>壓縮對話（省額度）</button>'}
     <button data-a="clr"><span class="ck">⌫</span>清空對話紀錄</button>
     <button data-a="del" class="danger"><span class="ck">🗑</span>${isG(id)?'刪除群組':'刪除機器人'}</button>`,
    {mv:async v=>{await api('move','POST',{id,folder:v||null});refresh()},
     nf:()=>folderSheet(null,id),
-    clr:()=>clearConv(id),del:()=>deleteConv(id),dup:()=>dupBot(id),
+    cmp:()=>compactConv(id),clr:()=>clearConv(id),del:()=>deleteConv(id),dup:()=>dupBot(id),
     pin:async()=>{const p=S.pins||[];await api('settings','PUT',{pins:p.includes(id)?p.filter(x=>x!==id):[id,...p]});refresh()},
     mute:async()=>{await api('settings','PUT',{mute:{bot:id,on:!(S.mute||{})[id]}});toast(I18N.t((S.mute||{})[id]?'已開啟通知':'已關閉通知'));refresh()},
     ed:()=>{cur=id;render(true);$('app').classList.add('chat');focusBrowser();sheet(isG(id)?'g':'b',true)}})}
@@ -2513,9 +2514,13 @@ function alwaysSheet(m){const b=bot(m.by);if(!b)return;const act=m.text.match(AP
     try{const list=[...new Set([...((S.allow||{})[b.id]||[]),t])].slice(0,20);await api('settings','PUT',{allow:{bot:b.id,list}});
       closeSheet();toast(I18N.t('已設定一律允許'));const at=isG(cur)?'@'+b.name+' ':'';sendMsg(at+'核准：'+act+'（以後這類事一律允許：'+t+'）')}
     catch(e){$('awE').textContent=e.message}}}
+function compactConv(id){const c=conv(id);if(!c||isG(id))return;
+  confirmSheet('壓縮對話',`<p>讓「<b data-u>${esc(c.name)}</b>」把這段對話的重點寫進它的記憶，再寫一段目前進度，然後刪掉舊訊息。</p><p class="hmuted">機器人本身、記憶、技能、任務設定和例行任務都會保留；之後每次送給 AI 的文字會少很多，比較省額度。</p>`,'壓縮',false,
+    async()=>{try{await api('compact','POST',{conv:id});toast(I18N.t('開始壓縮，完成後舊訊息會自動刪掉'));await refresh();if(cur===id){await loadMsgs(id,'first');render(true)}}catch(e){toast(e.message)}})}
 function clearConv(id){const c=conv(id);if(!c)return;
   confirmSheet('清空對話紀錄',`<p>清空「<b data-u>${esc(c.name)}</b>」的所有訊息？機器人之後不會再看到這些舊對話。機器人本身、任務設定和例行任務都會保留。</p>`,'清空',true,
     async()=>{await api('clear','POST',{conv:id});delete MSG[id];toast(I18N.t('已清空'));await refresh();if(cur===id){await loadMsgs(id,'first');render(true)}})}
+$('cmpBtn').onclick=()=>{if(!cur)return;if(isG(cur)){toast(I18N.t('群組請到各機器人的對話裡壓縮'));return}compactConv(cur)};
 $('more2').onclick=e=>{e.stopPropagation();if(!cur)return;if(phoneUI()){detailSheet();return}itemMenu($('more2'),cur)};
 /* ---------- phone: the chat header is just back, face and name; everything else lives on this page ---------- */
 var pageBack=null;   // a page opened from another page goes back to it (button, Android back, edge swipe)
@@ -2531,7 +2536,7 @@ function detailSheet(){const c=conv(cur);if(!c)return;const g=isG(cur),id=cur;pa
   ${g?`<div class="dsec">成員</div><div class="dmem">${ids.map(b=>`<button type="button" class="dm" data-open="${b}"><span class="av sm" data-u>${avOf(b)}</span><span data-u>${esc(bot(b).name)}</span></button>`).join('')}</div>`:''}
   <div class="dlist">${row('ed','⚙','任務設定',(rn?`每輪 ${rn} · `:'')+'名稱、任務、排程、記憶')}${g?'':row('model','✦','模型與備援',esc(eng)+(c.model?' · <span data-u>'+esc(c.model)+'</span>':''))}${row('br','🌐','瀏覽器',phoneRemote()?'電腦上的網址':showBrowserLabel())}${row('shots','🖼','歷史畫面','以前的截圖')}</div>
   <div class="dlist">${row('pin','📌',pinned?'取消置頂':'置頂','')}${row('mute',muted?'🔔':'🔕',muted?'開啟通知':'關閉通知','')}${row('mv','📁','移到分區',fn?`<span data-u>${esc(fn)}</span>`:'未分區')}${g?'':row('dup','⧉','複製這個機器人','')}</div>
-  <div class="dlist">${row('clr','⌫','清空對話紀錄','',' warn')}${row('del','🗑',g?'刪除群組':'刪除機器人','',' danger')}</div></div>`;
+  <div class="dlist">${g?'':row('cmp','🗜','壓縮對話','重點寫進記憶，刪舊訊息，省額度')}${row('clr','⌫','清空對話紀錄','',' warn')}${row('del','🗑',g?'刪除群組':'刪除機器人','',' danger')}</div></div>`;
   $('veil').hidden=false;
   const act={ed:fromDetail(()=>sheet(g?'g':'b',true)),model:fromDetail(()=>sheet('b',true)),
     br:()=>{if(phoneRemote())fromDetail(()=>remoteUrl(ids))();else{closeSheet();$('browser').onclick({stopPropagation(){}})}},
@@ -2540,7 +2545,7 @@ function detailSheet(){const c=conv(cur);if(!c)return;const g=isG(cur),id=cur;pa
     mute:async()=>{await api('settings','PUT',{mute:{bot:id,on:!muted}});toast(I18N.t(muted?'已開啟通知':'已關閉通知'));await refresh();detailSheet()},
     mv:()=>popMenu($('more2'),`<div class="lab">移到分區</div>${S.folders.map(f=>`<button data-a="mv" data-v="${f.id}"><span class="ck">${c.folder===f.id?'✓':''}</span><span data-u>${esc(f.name)}</span></button>`).join('')}<button data-a="mv" data-v=""><span class="ck">${!c.folder?'✓':''}</span>未分區</button><hr><button data-a="nf"><span class="ck">＋</span>建立分區並移入</button>`,
       {mv:async v=>{await api('move','POST',{id,folder:v||null});await refresh();detailSheet()},nf:fromDetail(()=>folderSheet(null,id))}),
-    dup:()=>{closeSheet();dupBot(id)},clr:fromDetail(()=>clearConv(id)),del:fromDetail(()=>deleteConv(id))};
+    dup:()=>{closeSheet();dupBot(id)},cmp:fromDetail(()=>compactConv(id)),clr:fromDetail(()=>clearConv(id)),del:fromDetail(()=>deleteConv(id))};
   $('veil').querySelectorAll('[data-d]').forEach(b=>b.onclick=e=>{e.stopPropagation();act[b.dataset.d]?.()});
   $('veil').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>{closeSheet();openConv(b.dataset.open)})}
 // a sheet on a phone: settings, task settings and details are full pages with ‹ at the top; the rest rise from the bottom with ✕

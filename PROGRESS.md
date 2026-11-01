@@ -168,3 +168,4 @@
 - 3.3.8（2026-10-31）：Ollama 瀏覽改走 browser-use（public/octa-browseruse.py，pin 0.13.14，venv 在 work/browser-use，CDP 連機器人自己的瀏覽器、keep_alive、use_judge=False、num_ctx 走原生 /api/chat）；mine（使用者 Chrome 擴充）或未安裝好時仍走 OpenCode+Playwright。ollama show 讀 Capabilities：無 tools 直接回說明；預設模型挑 tools＋vision。沙箱以假 Ollama＋Chromium 實測橋接通過；使用者 Windows 實機尚未驗證。
 - 3.3.9（2026-10-31）：DESKTOP-R6E41UN 只有 Python 3.14＋uv 0.13 → setupBrowserUse 有 uv 就 uv venv --python 3.12＋uv pip install；系統 Python 限 3.11–3.13。沙箱實測 uv 流程可裝 browser-use 0.13.14。
 - 3.4.0（2026-11-01）：使用者反映 Claude 額度用很快。runEngine 的 Claude 分支沒指定模型時帶 --model sonnet（CLAUDE_DEFAULT_MODEL），選單標示「預設 sonnet，較省額度」；執行器 19.2。查證：當天 OCTA 無工作、教練連結建立後未使用，額度主因是使用者自己的長對話。
+- 3.4.1（2026-11-01）：一鍵壓縮對話。POST /api/compact（只限單一機器人、≥6 則、沒在工作）→ 加 sys「壓縮中」並派 via {k:'compact',from} 的工作（COMPACT_PROMPT：📌記住 + 目前進度）；runner/done 成功後刪 id<from 的訊息並留摘要；執行器 19.3 壓縮完關掉 AI 待機 session。UI：標題列 🗜 壓縮（手機隱藏，改在詳細資料頁）、更多選單、/壓縮對話。test/compact.test.mjs。複製機器人不帶記憶（未改）。

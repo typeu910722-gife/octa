@@ -23,7 +23,7 @@ import { probeCodingHosts, listRecoverableStates, runCodingTask, selectProvider 
 import { replyIsProviderRefusal, providerFailureText } from './model-route.mjs';
 import { connectorLines, stripConnectorTask, takeConnectorTask, toolForBrowse } from './connectors.mjs';
 
-export const VERSION = '19.2';
+export const VERSION = '19.3';
 // OpenCode's own system prompt + browser tool schemas run ~16–18K tokens per call (seen in Ollama's server log);
 // at 4K/8K Ollama cut every prompt down to ~2K, the model lost its instructions and tools and looped until the job timed out.
 export const OLLAMA_NUM_CTX = 24576;
@@ -1593,6 +1593,8 @@ async function warmClaude(job, b, here, live) {
   live.ctl.kill = () => closeSession(job.bot.id, `${job.bot.name}：已停止`);
   const res = await turnWithWatch(job, s, text, live);
   s.doneAt = Date.now();
+  // a compacted chat starts over from memory: the standing session still holds the whole old conversation
+  if (String(job.prompt || '').startsWith('（壓縮對話）')) closeSession(job.bot.id, `${job.bot.name}：對話已壓縮，下次從記憶重新開始`);
   if (res.stalled && !res.limit && !String(res.text).includes(PARTIAL_TAG) && !job.stallRetried) {   // (with work done: the server continues from it instead)   // the AI never answered: one fresh try with the full instructions
     job.stallRetried = true;
     log(`⏱ ${job.bot.name}：AI 沒有回應，重新開始一次`);
