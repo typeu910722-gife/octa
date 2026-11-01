@@ -67,6 +67,20 @@ test('desktop server: move the data in, then answer through the cloud', { skip: 
   assert.equal(bad.status, 401);
   const ping = await fetch(s.remoteUrl + '/__octa_ping');
   assert.equal(ping.status, 200);
+  // phone pairs straight to this computer (no cloud quota): same data as the window
+  const { mkdirSync, writeFileSync, chmodSync } = await import('node:fs');
+  if (process.platform !== 'win32') {
+    mkdirSync(join(dataDir, 'bin'), { recursive: true });
+    writeFileSync(join(dataDir, 'bin', 'cloudflared'), '#!/bin/sh\necho "https://phone-test.trycloudflare.com" 1>&2\nexec sleep 600\n'); chmodSync(join(dataDir, 'bin', 'cloudflared'), 0o755);
+    const on = await (await fetch(s.url + '/api/desktop/remote', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"on":true}' })).json();
+    assert.equal(on.on, true, JSON.stringify(on));
+    assert.equal((await (await fetch(s.remoteUrl + '/api/config')).json()).pair, true);
+    assert.equal((await fetch(s.remoteUrl + '/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"code":"WRONG1"}' })).status, 401);
+    const pr = await (await fetch(s.remoteUrl + '/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: on.code }) })).json();
+    const ps = await (await fetch(s.remoteUrl + '/api/state', { headers: { authorization: 'Bearer ' + pr.token } })).json();
+    assert.equal(ps.bots[0].name, '助理', 'the paired phone sees the host data');
+    assert.equal((await (await fetch(s.url + '/api/desktop/remote', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"on":false}' })).json()).on, false);
+  }
   cfg.mode = 'cloud';
   const fb = await call('GET', 'state', { token });
   assert.equal(fb.status, 200);   // host says it is not the host → the cloud answers

@@ -2743,8 +2743,8 @@ async function openComputers(){
   <p>機器人、對話、檔案和設定改存在這台電腦，雲端只負責帳號登入和轉送，手機照樣用同一個網址登入。這台電腦關機時手機會看不到對話；不過機器人本來就要這台電腦開著才會工作。</p>
   <p class="hmuted">搬移前會先備份這台電腦的資料；搬移沒完成的話什麼都不會改變，可以再試一次。</p>
   <div class="row2"><button class="btn" id="hMove">改成存在這台電腦</button></div>`:''}
-  ${CFG.local&&!CFG.host?`<h3>手機遠端</h3>
-  <p>開啟後會產生一個網址和配對碼，手機打開網址、輸入配對碼就能使用。關掉就斷開。</p>
+  ${CFG.local?`<h3>手機遠端${CFG.host?'（直連這台電腦）':''}</h3>
+  <p>開啟後會產生一個網址和配對碼，手機打開網址、輸入配對碼就能使用。關掉就斷開。</p>${CFG.host?'<p class="hmuted">手機直接連到這台電腦，不經過 octa.yzprojecttw.com，不吃 Cloudflare 每日額度；額度用完時可以用這個。網址在電腦重開或網路斷線後會變。</p>':''}
   <label class="toggle">手機遠端<button type="button" class="sw ${ds?.remote?.on?'on':''}" id="dRemote"></button></label>
   <div id="dRemoteInfo">${ds?.remote?.on?remoteInfo(ds.remote):''}</div>`:''}
   ${window.octaDesktop&&!CFG.host?`<div class="row2"><button class="ghost" id="dMode">${CFG.local?'改用雲端帳號（同步）':'改用離線模式（不同步）'}</button></div>`:''}`:'';
