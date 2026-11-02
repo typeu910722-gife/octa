@@ -17,7 +17,7 @@ function packaged(rel) {
 const relImports = src => [...src.matchAll(/(?:from|import\()\s*'(\.{1,2}\/[^']+)'/g)].map(m => m[1]);
 
 test('4.0 desktop package: version, the new folders on the file list, the 3.x cloud pieces gone', () => {
-  assert.equal(pkg.version, '4.0.0');
+  assert.match(pkg.version, /^4\./);
   for (const f of ['api/**', 'runner/**', 'lib/**', 'web/**', 'cloud-import.mjs', 'schema.sql', 'main.mjs', 'server.mjs', 'preload.cjs', 'splash.html'])
     assert.ok(pkg.build.files.includes(f), f + ' must be packed');
   for (const f of ['host-mode.mjs', 'api.js', 'model-route.mjs', 'connectors.mjs'])

@@ -57,9 +57,11 @@ test('attachments show as thumbnails or file cards before and after sending', ()
 
 test('the desktop version matches the changelog, and older releases are still recorded', () => {
   assert.equal(pkg.version, log[0].v);
-  assert.equal(log[0].v, '4.0.0');
-  for (const k of ['notes', 'notes_en', 'notes_ja']) assert.equal(log[0][k].length, 6, k);
-  assert.ok(log[0].notes.some(n => n.includes('完全在你的電腦上')));
+  const big = log.find(e => e.v === '4.0.0');
+  assert.ok(big, '4.0.0 entry');
+  for (const k of ['notes', 'notes_en', 'notes_ja']) assert.equal(big[k].length, 6, k);
+  assert.ok(big.notes.some(n => n.includes('完全在你的電腦上')));
+  for (const k of ['notes', 'notes_en', 'notes_ja']) assert.ok(log[0][k].length > 0, k);
   assert.ok(log[0].notes_en.some(n => n.includes('no account')));
   const pair = log.find(x => x.v === '3.4.2');
   assert.ok(pair.notes.some(n => n.includes('配對碼')));

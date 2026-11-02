@@ -1103,6 +1103,12 @@ function runCloudImport(token, onStep) {
       onStep(100, '雲端資料已搬到這台電腦');
       return { ok: true, counts: res.counts, backup: res.backup };
     } catch (e) {
+      if (e?.status === 409) {   // the account's data lives on its 主機 computer: nothing to move to this one
+        cfg = { ...cfg, cloudImport: { state: 'done', at: Date.now(), counts: {}, note: String(e.message || '') } };
+        writeCfg(cfg);
+        onStep(100, '這個帳號的資料在主機電腦上，這台電腦從空白開始');
+        return { ok: true, counts: {}, backup: '' };
+      }
       logError('cloud-import', e);
       cfg = { ...cfg, cloudImport: { ...(cfg.cloudImport || {}), token, state: 'failed', at: Date.now(), error: String(e?.message || e).slice(0, 300) } };
       writeCfg(cfg);

@@ -2107,6 +2107,8 @@ async function route({ request: req, env, params }) {
       // moves to whichever computer first starts OCTA 4.0 (not only the one chosen as 主機)
       const exportOk = path === 'host/export' && me.kind === 'runner';
       if (!isHostPc && !exportOk) return err('只有主機電腦可以使用', 403);
+      // 主機模式 accounts: the real data is on the host computer; the cloud copy is old, so other computers start empty
+      if (path === 'host/export' && +u.hmode === 1) return err('這個帳號的資料存在主機電腦上，不用從雲端搬', 409);
       if (path === 'host/register') {   // the host's tunnel address (sent when it changes and every 10 minutes)
         const addr = clean(body.url, 300).replace(/\/+$/, '');
         if (!/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/i.test(addr) || /^https:\/\/(localhost|\d+\.\d+\.\d+\.\d+)/i.test(addr)) return err('主機網址不正確');

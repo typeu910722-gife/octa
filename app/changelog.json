@@ -1,5 +1,18 @@
 [
  {
+  "v": "4.0.1",
+  "date": "2026-11-02",
+  "notes": [
+   "從 3.x 升級時，帳號資料存在主機電腦的話，其他電腦不再去搬雲端的舊資料，直接從空白開始"
+  ],
+  "notes_en": [
+   "When updating from 3.x, if the account kept its data on the host computer, other computers no longer pull the old cloud copy and start empty"
+  ],
+  "notes_ja": [
+   "3.x からの更新で、データがホストPCにあるアカウントでは、他のPCはクラウドの古いデータを取り込まず空の状態から始めます"
+  ]
+ },
+ {
   "v": "4.0.0",
   "date": "2026-11-02",
   "notes": [
