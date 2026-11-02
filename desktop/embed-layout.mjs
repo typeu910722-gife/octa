@@ -211,7 +211,7 @@ export function scrollScript(x, y, dx, dy) {
 }
 
 // While the person has control, the bot's live cursor stays out of the way: the page's tag script
-// (public/octa-runner.mjs) checks this flag and does not follow the person's mouse.
+// (desktop/runner/) checks this flag and does not follow the person's mouse.
 export function userFlagScript(on) {
   return on
     ? "window.__octaUser=true;try{var c=document.getElementById('__octa_cur');if(c)c.style.opacity='0'}catch(e){}"

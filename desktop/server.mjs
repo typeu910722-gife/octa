@@ -22,8 +22,8 @@ const pick = (...ps) => ps.find(p => existsSync(p));
 // When packaged, build.mjs copies the web app (app/) and the schema next to this file.
 // Fallbacks keep a checkout working while parts of the 4.0 layout are still on their way.
 const WEB = pick(join(here, 'web', 'index.html'), join(here, '..', 'app', 'index.html'), join(here, '..', 'public', 'index.html'))?.replace(/[\\/]index\.html$/, '') || join(here, 'web');
-const API = pick(join(here, 'api', 'index.mjs'), join(here, 'api.js'), join(here, '..', 'functions', 'api', '[[path]].js'));
-const RUNNER = pick(join(here, 'runner', 'index.mjs'), join(WEB, 'octa-runner.mjs'), join(here, 'web', 'octa-runner.mjs'), join(here, '..', 'public', 'octa-runner.mjs'));
+const API = join(here, 'api', 'index.mjs');
+const RUNNER = join(here, 'runner', 'index.mjs');
 export const loadRunner = () => import(pathToFileURL(RUNNER).href);
 const SCHEMA = pick(join(here, 'schema.sql'), join(here, '..', 'schema.sql'));
 export const APP_VERSION = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version;
