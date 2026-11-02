@@ -25,7 +25,7 @@ var pageBack=null;   // a page opened from another page goes back to it (button,
 function closeSheet(force){
   if(force!==true&&isDirty()&&DIRTY.el&&$('veil').contains(DIRTY.el)){leaveOk(()=>closeSheet(true));if(phoneUI()&&!$('veil').hidden&&NAV[NAV.length-1]!=='sheet')navPush('sheet');return}
   document.querySelector('.dguard')?.remove();if(DIRTY.el&&$('veil').contains(DIRTY.el))DIRTY.el=null;
-  if(typeof stopCodePoll==='function')stopCodePoll();$('veil').hidden=true;$('veil').innerHTML='';if(typeof rtEdit!=='undefined')rtEdit=null;pageBack=null}
+  if(typeof stopCodePoll==='function')stopCodePoll();$('veil').hidden=true;$('veil').innerHTML='';pageBack=null}
 $('veil').onclick=e=>{if(e.target.id==='veil')closeSheet()};
 /* a plain dialog: title, body, buttons. Everything in OCTA that floats above the chat goes through #veil */
 function openSheet(html,cls=''){$('veil').innerHTML=`<div class="sheet${cls?' '+cls:''}" role="dialog" aria-modal="true">${html}</div>`;$('veil').hidden=false;return $('veil').firstElementChild}
