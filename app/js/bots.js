@@ -126,7 +126,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
   DP.id=id;DP.sig=detailSig(c);rtEdit=null;addMem=null;
   const pinned=(S.pins||[]).includes(id),muted=!!(S.mute||{})[id];
   const q=(k,icon,label,on)=>`<button type="button" class="dq${on?' on':''}" data-dq="${k}">${ic(icon)}<span>${label}</span></button>`;
-  const quick=`<div class="dquick">${q('br','globe','瀏覽器')}${q('pin','pin',pinned?'已置頂':'置頂',pinned)}${q('mute',muted?'belloff':'bell',muted?'已靜音':'通知',muted)}${g?'':q('cmp','compress','壓縮')}${q('shots','image','畫面')}</div>`;
+  const quick=`<div class="dquick">${q('br','globe','瀏覽器')}${q('pin','pin',pinned?'已置頂':'置頂',pinned)}${q('mute',muted?'belloff':'bell',muted?'已靜音':'靜音',muted)}${g?'':q('cmp','compress','壓縮')}${q('shots','image','畫面')}</div>`;
   let body='';
   if(g){
     body+=dsec('task','協作','users',`<div class="field"><span>成員（由上到下依序執行）</span>${membersPicker(c)}</div>
@@ -143,7 +143,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
     const sel=(i,only)=>`<select id="sf_fb${i}"><option value="">不使用</option>${opts.filter(([v])=>!only||v.split('|')[0]===only).map(([v,l])=>`<option value="${esc(v)}"${fb[i]===v?' selected':''}>${esc(l)}${engState(v.split('|')[0])==='ok'?'':'（還沒連接）'}</option>`).join('')}</select>`;
     body+=dsec('ai','AI 與模型','sparkle',`<label class="field"><span>AI 引擎</span><select id="sf_e">${Object.entries(ENG).filter(([k,v])=>!v.hide||c.engine===k).map(([k,v])=>`<option value="${k}" ${(c.engine||'claude')===k?'selected':''}>${v.full}${engState(k)==='ok'?'　✓ 已連接':engState(k)==='no'?'　（還沒連接）':''}</option>`).join('')}</select></label>
       <label class="field"><span>模型</span><select id="sf_m"></select></label><p class="hmuted" id="sf_hint"></p>
-      <div class="field"><span>備援 AI</span><div class="stack">${sel(0)}${sel(1)}${sel(2,'opencode')}</div></div>
+      <div class="field"><span>備援 AI</span><div class="fbs"><label><small>第一備援</small>${sel(0)}</label><label><small>第二備援</small>${sel(1)}</label><label><small>本機 Ollama</small>${sel(2,'opencode')}</label></div></div>
       <p class="hmuted">第一、第二備援，以及可選的本機 Ollama。模型說流量不夠或額度用完，會立刻改叫下一個備援，接手後該查的頁面、該建的例行任務一樣要做；這台電腦沒裝的會跳過。HTTP 429 先重試一次再切換。登入或 API Key 無效不會重複呼叫。程式錯誤不會因此換模型。</p>`,false);
     body+=dsec('auth','做事權限','shield',`<div class="bchoice" id="sf_au">${[['auto','直接做','看得懂就直接做完，不用先給你看計畫。付款、刪除、改帳號還是會先問你。'],['report','做完告知（建議）','一般工作直接做，做完跟你說做了什麼。大任務先給你看計畫；送出訊息、刪除、付款前先問你。'],['ask','重要動作先問','送出訊息、提交表單、刪除、付款這類收不回來的事，每一次都先問你。大任務先給你看計畫。']].map(([v,t,d])=>`<label class="bc"><input type="radio" name="sf_au" value="${v}" ${(c.autonomy||'report')===v?'checked':''}><span><b>${t}</b><small>${d}</small></span></label>`).join('')}</div>
       ${((S.allow||{})[id]||[]).length?`<div class="field"><span>一律允許的事（機器人做這些不會再問你）</span><div class="picks" id="sf_al">${S.allow[id].map((t,i)=>`<div class="pick"><span data-u class="grow">${esc(t)}</span><button type="button" class="ib sm mv" data-unallow="${i}" aria-label="收回">${ic('x')}</button></div>`).join('')}</div></div>`:''}`,false);

@@ -132,10 +132,11 @@ ul.chg{margin:0;padding-left:20px;gap:4px}
 .dname small{color:var(--mute);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .emopick{padding:10px;background:var(--sunk);border-radius:var(--r)}
 .dquick{display:grid;grid-template-columns:repeat(auto-fit,minmax(58px,1fr));gap:6px;margin:2px 0 4px}
-.dq{display:grid;justify-items:center;gap:4px;padding:9px 4px 7px;border-radius:var(--r);background:var(--sunk);color:var(--ink2);font-size:11.5px;font-weight:550}
+.dq{display:grid;justify-items:center;gap:4px;padding:9px 4px 7px;min-width:0;border-radius:var(--r);background:var(--sunk);color:var(--ink2);font-size:11.5px;font-weight:550}
 .dq:hover{background:var(--press);color:var(--ink)}
 .dq.on{background:var(--accent-soft);color:var(--accent-ink)}
 .dq .icon{width:18px;height:18px}
+.dq span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsec{border-top:1px solid var(--line)}
 .dsec>summary{display:flex;align-items:center;gap:10px;padding:14px 2px 12px;font-weight:650;font-size:calc(14px * var(--fz))}
 .dsec>summary>span{flex:1}
@@ -146,6 +147,10 @@ ul.chg{margin:0;padding-left:20px;gap:4px}
 .dsb{display:grid;gap:12px;padding:0 0 18px}
 .dzone{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);padding-top:16px}
 .nbhero{display:flex;align-items:center;gap:14px}
+.fbs{display:grid;gap:8px}
+.fbs label{display:grid;grid-template-columns:84px minmax(0,1fr);align-items:center;gap:10px}
+.fbs small{color:var(--mute);font-weight:500;font-size:12.5px}
+.picks>p.hmuted{padding:6px 8px}
 
 /* ---------- first run ---------- */
 .onb{width:min(720px,100%);display:grid;gap:22px;margin:auto}
