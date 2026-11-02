@@ -21,7 +21,7 @@ async function start(){$('pair').hidden=true;
   $('app').hidden=false;
   focusBrowser();buddyBoot();
   boot.set(100,I18N.t('完成'));boot.hide();
-  if(cur&&!phoneUI()&&store.get('octa_detail')==='1')openDetail();
+  if(cur&&innerWidth>1180&&store.get('octa_detail')==='1')openDetail();   // a narrower window would cover the chat
   render(true);live();
   if(tourOn())startTour();else whatsNew()}
 (async()=>{boot.set(25,I18N.t('連線中…'));
