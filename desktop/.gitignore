@@ -1,6 +1,8 @@
 node_modules/
 dist/
-web/
-api.js
-model-route.mjs
-schema.sql
+# build.mjs output (anchored: desktop/lib/model-route.mjs and desktop/lib/connectors.mjs are real sources)
+/web/
+/api.js
+/model-route.mjs
+/connectors.mjs
+/schema.sql

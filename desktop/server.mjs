@@ -1,6 +1,6 @@
-// OCTA desktop server: the same web app and API as the cloud version, but on this computer.
+// OCTA desktop server: the web app and its API, entirely on this computer (4.0: no cloud server).
 // - Data lives in a local SQLite file (sql.js, no native build needed).
-// - No accounts: the app on this computer is trusted; phones pair with a one-time code.
+// - No accounts: the app on this computer is trusted; phones pair with a one-time code over a quick tunnel.
 // - The runner is built in and talks to this server over loopback.
 // Can run inside Electron (main.mjs) or on its own: `node server.mjs`.
 
@@ -12,16 +12,19 @@ import { spawn, spawnSync, execFile } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { createRequire } from 'node:module';
 import os from 'node:os';
-import { hostHandler, hostLink, importFromCloud } from './host-mode.mjs';
+import { importFromCloud } from './cloud-import.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const WIN = process.platform === 'win32';
 const pick = (...ps) => ps.find(p => existsSync(p));
 
-// When packaged, build.mjs copies the web app, API and schema next to this file.
-const WEB = pick(join(here, 'web'), join(here, '..', 'public'));
-const API = pick(join(here, 'api.js'), join(here, '..', 'functions', 'api', '[[path]].js'));
+// When packaged, build.mjs copies the web app (app/) and the schema next to this file.
+// Fallbacks keep a checkout working while parts of the 4.0 layout are still on their way.
+const WEB = pick(join(here, 'web', 'index.html'), join(here, '..', 'app', 'index.html'), join(here, '..', 'public', 'index.html'))?.replace(/[\\/]index\.html$/, '') || join(here, 'web');
+const API = pick(join(here, 'api', 'index.mjs'), join(here, 'api.js'), join(here, '..', 'functions', 'api', '[[path]].js'));
+const RUNNER = pick(join(here, 'runner', 'index.mjs'), join(WEB, 'octa-runner.mjs'), join(here, 'web', 'octa-runner.mjs'), join(here, '..', 'public', 'octa-runner.mjs'));
+export const loadRunner = () => import(pathToFileURL(RUNNER).href);
 const SCHEMA = pick(join(here, 'schema.sql'), join(here, '..', 'schema.sql'));
 export const APP_VERSION = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version;
 
@@ -69,7 +72,7 @@ async function openDb(file) {
     },
     exec: sql => { db.exec(sql); dirty(); },
     save,
-    close() { save(); closed = true; db.close(); }   // 主機模式 move: the file is replaced by the moved copy
+    close() { save(); closed = true; db.close(); }   // cloud import: the file is replaced by the imported copy
   };
   return d1;
 }
@@ -191,12 +194,11 @@ export async function startServer(opts = {}) {
   };
   let db = await prepDb(dbFile);
   const { onRequest } = await import(pathToFileURL(API).href);
-  const host = opts.host || { enabled: () => false };   // 主機模式 (main.mjs): { enabled, key, user, name, cloud, token, onKey, onMode, log }
 
   const tzOffset = -new Date().getTimezoneOffset();
   let runnerSeen = 0;
-  const remote = { on: false, url: '', code: '', fails: 0 };   // phone pairing (offline mode) over the tunnel
-  const base = { DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false', hostMode: () => (host.enabled() ? { name: host.name?.() || '' } : null) };
+  const remote = { on: false, url: '', code: '', fails: 0 };   // phone pairing over the tunnel
+  const base = { DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false' };
   const callApi = async (req, res, env, origin) => {
     const request = await toRequest(req, origin);
     const path = new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
@@ -205,7 +207,7 @@ export async function startServer(opts = {}) {
   };
 
   // local port: the desktop window and the built-in runner; trusted, no login
-  let localPort = 0, link = null;
+  let localPort = 0;
   const local = http.createServer(async (req, res) => {
     try {
       const host = req.headers.host || '';
@@ -216,7 +218,6 @@ export async function startServer(opts = {}) {
       if (req.method !== 'GET' && !(req.headers['content-type'] || '').includes('application/json')) { res.writeHead(415); return res.end(); }   // forces a CORS preflight for other sites
       if (req.url.startsWith('/api/desktop/')) return desktopApi(req, res);
       await callApi(req, res, { ...base, isLocal: true, runnerOnline: () => Date.now() - runnerSeen < 60000 }, `http://${host}`);
-      if (req.method !== 'GET') link?.poke();   // a routine may have got an external-event key: the cloud must know it
     } catch (e) { json(res, { error: e.message }, 500); }
   });
   // reuse last port so the window keeps its saved preferences (language, drafts)
@@ -226,19 +227,13 @@ export async function startServer(opts = {}) {
   localPort = await listen(local, want);
   try { writeFileSync(portFile, String(localPort)); } catch { }
 
-  // remote port: only reached through the tunnel. Requests the cloud signed (主機模式) are answered as this
-  // computer's user; a phone without an account must pair first (offline mode).
-  const fromCloud = hostHandler({
-    onRequest, env: () => ({ ...base, runnerOnline: () => Date.now() - runnerSeen < 60000 }),
-    enabled: () => host.enabled(), key: () => host.key?.() || '', expectUser: () => host.user?.() || '', onChange: () => link?.poke()
-  });
+  // remote port: only reached through the tunnel. A phone must pair first; external events (/api/hook/<key>,
+  // the key itself is the secret) come in without pairing while the tunnel is open.
   const remoteSrv = http.createServer(async (req, res) => {
     try {
       if (req.url === '/__octa_ping') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }   // is the tunnel still alive
-      if (req.headers['x-octa-sig']) {
-        const c = []; for await (const x of req) c.push(x);
-        return await fromCloud(req, res, Buffer.concat(c));
-      }
+      if (/^\/api\/hook\/[^/?]+(\?|$)/.test(req.url))
+        return await callApi(req, res, { ...base, isLocal: true, runnerOnline: () => Date.now() - runnerSeen < 60000 }, 'https://' + (req.headers.host || 'remote'));
       if (!remote.on) { res.writeHead(503); return res.end('遠端已關閉'); }
       if (!req.url.startsWith('/api/')) return serveStatic(req, res);
       if (req.url.startsWith('/api/desktop/') || req.url.startsWith('/api/runner')) { res.writeHead(403); return res.end(); }
@@ -254,7 +249,7 @@ export async function startServer(opts = {}) {
   });
   const remotePort = await listen(remoteSrv, localPort + 1);
 
-  // one Cloudflare quick tunnel to the remote port, shared by phone pairing and 主機模式
+  // one Cloudflare quick tunnel to the remote port (phone pairing and external events)
   const tunnel = { url: '', proc: null, starting: null };
   function ensureTunnel() {
     if (tunnel.url && tunnel.proc) return Promise.resolve(tunnel.url);
@@ -273,7 +268,6 @@ export async function startServer(opts = {}) {
       proc.on('exit', () => {
         if (tunnel.proc !== proc) return;
         Object.assign(tunnel, { url: '', proc: null }); Object.assign(remote, { on: false, url: '', code: '' });
-        if (link?.running) setTimeout(() => link?.poke(), 10000);   // 主機模式: a new tunnel, and the cloud is told its address
       });
       return url;
     })().finally(() => (tunnel.starting = null));
@@ -281,30 +275,16 @@ export async function startServer(opts = {}) {
   }
   function stopTunnel() { const p = tunnel.proc; Object.assign(tunnel, { url: '', proc: null }); p?.kill(); }
   async function setRemote(on) {
-    if (!on) { Object.assign(remote, { on: false, url: '', code: '' }); if (!link?.running) stopTunnel(); return { on: false }; }
+    if (!on) { Object.assign(remote, { on: false, url: '', code: '' }); stopTunnel(); return { on: false }; }
     if (remote.on && remote.url && tunnel.url) return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
     const url = await ensureTunnel();
     Object.assign(remote, { on: true, url, code: newCode(), fails: 0 });
     return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
   }
 
-  // ---------- 主機模式 ----------
-  // keep a tunnel open and tell the cloud its address (when it changes and every 10 minutes)
-  async function hostStart() {
-    if (link?.running) return null;
-    link = hostLink({
-      cloud: host.cloud, token: () => host.token?.() || '', tunnel: ensureTunnel,
-      ping: async u => { const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000); try { return (await fetch(u + '/__octa_ping', { signal: ctl.signal })).ok; } finally { clearTimeout(t); } },
-      restartTunnel: async () => { stopTunnel(); },
-      hooks: async () => (await base.DB.prepare('SELECT hook FROM routines WHERE hook IS NOT NULL').all()).results.map(r => r.hook),
-      onKey: k => host.onKey?.(k), onMode: m => host.onMode?.(m), log: e => host.log?.(e)
-    });
-    return link.start();
-  }
-  function hostStop() { link?.stop(); link = null; if (!remote.on) stopTunnel(); }
-  // copy the account's data from the cloud into a new database file, check it, then put it in place of this one.
-  // The old file is kept as a dated backup; a failure leaves everything as it was.
-  async function hostImport({ call, onProgress }) {
+  // 3.x cloud users: copy the account's data from the old cloud into a new database file, check it, then put it in
+  // place of this one. The old file is kept as a dated backup; a failure leaves everything as it was.
+  async function cloudImport({ call, onProgress }) {
     db.save();
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
     const backup = join(dataDir, `ebot.backup-${stamp}.sqlite`);
@@ -321,10 +301,6 @@ export async function startServer(opts = {}) {
     base.DB = db;
     return { ...out, backup };
   }
-  // what changed in the cloud while moving (messages written before the cloud started forwarding)
-  async function hostCatchUp({ call, after }) {
-    return importFromCloud({ call, db: base.DB, tables: ['messages'], start: { messages: after }, insert: 'ignore', verify: false });
-  }
   async function qr(text) { try { return await require('qrcode').toDataURL(text, { margin: 1, width: 360 }); } catch { return ''; } }
 
   const hooks = {
@@ -335,7 +311,7 @@ export async function startServer(opts = {}) {
     },
     openFolder: () => openExternal(dataDir),
     installEngine: async (key) => {   // opens a terminal window that installs the tool, then starts its sign-in
-      const { ENGINES } = await import(pathToFileURL(join(WEB, 'octa-runner.mjs')).href);
+      const { ENGINES } = await loadRunner();
       const e = ENGINES[key];
       if (!e) throw new Error('沒有這個 AI');
       const dir = join(dataDir, 'bin'); mkdirSync(dir, { recursive: true });
@@ -389,7 +365,7 @@ export async function startServer(opts = {}) {
   async function engineStatus(fresh) {
     if (!fresh && engCache && Date.now() - engAt < 60000) return engCache;
     if (engJob) return engJob;
-    const { ENGINES } = await import(pathToFileURL(join(WEB, 'octa-runner.mjs')).href);
+    const { ENGINES } = await loadRunner();
     const ver = bin => new Promise(ok => execFile(bin, ['--version'], { shell: WIN, timeout: 15000, windowsHide: true, encoding: 'utf8' },
       (err, out) => ok({ ok: !err, version: (out || '').trim().split(/\s/).find(x => /\d/.test(x)) || '' })));
     engJob = Promise.all(Object.entries(ENGINES).map(async ([k, e]) => { const v = await ver(e.bin); if (v.ok && e.also) v.ok = (await ver(e.also)).ok; return [k, v]; }))
@@ -402,7 +378,7 @@ export async function startServer(opts = {}) {
     const body = req.method === 'POST' ? await readJson(req) : {};
     if (p === 'status') {
       const engines = await engineStatus(!!body.fresh || new URL(req.url, 'http://x').searchParams.has('fresh'));
-      const { findChrome } = await import(pathToFileURL(join(WEB, 'octa-runner.mjs')).href);
+      const { findChrome } = await loadRunner();
       return json(res, {
         version: APP_VERSION,
         claude: engines.claude, engines,
@@ -416,7 +392,7 @@ export async function startServer(opts = {}) {
       if (p === 'login-claude') { hooks.loginClaude(); return json(res, { ok: true }); }
       if (p === 'install') { await hooks.installEngine(String(body.engine || '')); return json(res, { ok: true }); }
       if (p === 'open-folder') { hooks.openFolder(); return json(res, { ok: true }); }
-      // files that live on this computer: read, show or open them here instead of fetching a copy through the cloud
+      // files that live on this computer: read, show or open them
       if (p === 'file' || p === 'show-file' || p === 'open-file') {
         const rel = String(body.path || '').replace(/\\/g, '/');
         if (!rel || rel.split('/').includes('..') || /^([a-z]:|\/)/i.test(rel)) return json(res, { error: '路徑不正確' }, 400);
@@ -466,7 +442,7 @@ export async function startServer(opts = {}) {
     json(res, { error: '找不到' }, 404);
   }
 
-  // call the desktop API from the Electron main process (the cloud page reaches it through the preload bridge)
+  // call the desktop API from the Electron main process (the preload bridge's octaDesktop.call)
   async function callDesktop(p, body) {
     const r = await fetch(`http://127.0.0.1:${localPort}/api/desktop/${p}`, { method: body ? 'POST' : 'GET', headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     const d = await r.json().catch(() => ({}));
@@ -475,16 +451,17 @@ export async function startServer(opts = {}) {
   }
 
   // built-in runner
-  const { startRunner } = await import(pathToFileURL(join(WEB, 'octa-runner.mjs')).href);
+  const { startRunner } = await loadRunner();
   let bundled = {};
   try { bundled = { pwCli: join(dirname(require.resolve('@playwright/mcp/package.json')), 'cli.js'), nodeBin: process.execPath }; } catch { }
-  // the desktop app runs the runner itself when signed in to the cloud; local mode runs it here
+  // the Electron app starts the runner itself (runner: false) so it can hand over its embedded browsers
   const runner = opts.runner === false ? { stop() { } } : startRunner({ url: `http://127.0.0.1:${localPort}`, token: '', home: dataDir, getExtToken: () => hooks.getExtToken(), getStore: () => hooks.getStore(), openInstall: k => hooks.installEngine(k), ...bundled, ...opts.runnerOpts });
 
   return {
-    url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
-    hostStart, hostStop, hostImport, hostCatchUp,
-    async close() { runner.stop(); link?.stop(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
+    url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
+    desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
+    cloudImport,
+    async close() { runner.stop(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
   };
 }
 
