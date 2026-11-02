@@ -71,9 +71,9 @@ test('the window is always local: no cloud page, no cloud sign-in or 主機模�
   assert.match(server, /join\(here, 'web', 'index\.html'\), join\(here, '\.\.', 'app', 'index\.html'\)/);
 });
 
-test('build.mjs copies app/ (or public/ before app/ exists) into desktop/web', () => {
+test('build.mjs copies app/ into desktop/web', () => {
   const build = read('build.mjs');
-  assert.match(build, /existsSync\(join\(root, 'app', 'index\.html'\)\) \? join\(root, 'app'\) : join\(root, 'public'\)/);
+  assert.match(build, /cpSync\(join\(root, 'app'\), join\(here, 'web'\)/);
   assert.match(build, /join\(here, 'web'\)/);
 });
 

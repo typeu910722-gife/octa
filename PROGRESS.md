@@ -171,6 +171,11 @@
 - 3.4.1（2026-11-01）：一鍵壓縮對話。POST /api/compact（只限單一機器人、≥6 則、沒在工作）→ 加 sys「壓縮中」並派 via {k:'compact',from} 的工作（COMPACT_PROMPT：📌記住 + 目前進度）；runner/done 成功後刪 id<from 的訊息並留摘要；執行器 19.3 壓縮完關掉 AI 待機 session。UI：標題列 🗜 壓縮（手機隱藏，改在詳細資料頁）、更多選單、/壓縮對話。test/compact.test.mjs。複製機器人不帶記憶（未改）。
 - 3.4.2（2026-11-01）：主機模式顯示「手機遠端」（原本只在離線模式）。同一條 quick tunnel，未簽章請求走配對碼，配對 session 為 local 使用者＝主機資料。host-server.test 加假 cloudflared 驗證配對後看得到主機機器人、關掉不影響主機通道。教練連結仍走雲端（未改）。
 
-## 4.0.0 大改款（2026-11-02，進行中）
+## 4.0.0 大改款（2026-11-02）
 - 規格見 REDESIGN.md：純本機、介面改版、流程簡化、架構重整（app/、desktop/api、desktop/runner、desktop/lib、site/）。
-- [ ] 桌面路 [ ] API 路 [ ] 執行器路 [ ] UI 路 [ ] 合併整合測試 [ ] 發布
+- [x] 桌面：永遠本機，移除雲端/主機模式；3.x 雲端帳號第一次啟動自動搬回（cloud-import.mjs，先備份，失敗可重試）；hook 經通道免配對；site/ 下載頁；functions/ 凍結只留 host/export（任何該帳號桌面金鑰可匯出）；cron.yml 刪除
+- [x] API：desktop/api/ 19 個模組，移除帳號/主機/雲端排程/教練/xfer 等端點
+- [x] 執行器：desktop/runner/ 16 個模組、desktop/lib/；移除命令列入口與 token 檔
+- [x] 介面：app/（index.html＋css/＋js/ 18 檔），淺/深色、兩步驟引導、建機器人只要名字、設定單頁七區、手機配對畫面；docs/screens/ 截圖
+- [x] 測試 217 項，剩 4 項舊有失敗（browser-return refused、runner prompt 三項）；沙箱實測 新介面→API→執行器→真 Claude 回覆 26 秒
+- 未實測：Windows 實機安裝 4.0、3.x 雲端帳號實際搬家、Electron 主程式完整跑

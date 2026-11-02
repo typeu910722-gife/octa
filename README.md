@@ -17,86 +17,67 @@
 3. 下載 [OCTA-Setup.exe](https://github.com/typeu910722-gife/octa/releases/latest/download/OCTA-Setup.exe) 並安裝（或到 [octa.yzprojecttw.com](https://octa.yzprojecttw.com) 首頁按下載）
 4. 打開 OCTA，照「設定指引」完成，選一個範本試跑
 
-打開後登入 OCTA 帳號，這台電腦就是**主機**，負責執行所有機器人；手機、平板和其他電腦打開網頁版（octa.yzprojecttw.com）登入同一個帳號就能即時指揮、收通知。多台電腦都裝了 OCTA 時只有主機接工作，可在「設定 → 電腦與主機」切換。不想註冊也可以選「離線模式」，資料只存在這台電腦。第一次執行時 Windows 若顯示「Windows 已保護您的電腦」，按「其他資訊 → 仍要執行」（安裝檔未簽章）。
+打開就能用，不用註冊或登入，所有資料只存在這台電腦。想用手機指揮：設定 → 手機遠端，用網址加 8 碼配對碼連進來。第一次執行時 Windows 若顯示「Windows 已保護您的電腦」，按「其他資訊 → 仍要執行」（安裝檔未簽章）。3.x 用雲端帳號的人，第一次打開 4.0 會自動把資料搬回電腦。
 
 ## 能做什麼
 
 - **機器人**：每個機器人有自己的指定任務，並可選 Claude、ChatGPT、Gemini、Ollama 本機模型，或帶入 Grok Bot 的機器人
 - **群組**：把機器人拉進群組依序協作，或用 `@名字` 指定誰做
 - **分區**：區隔不同門市或專案；同分區的機器人可以互相詢問
-- **例行任務**：每天固定時間自動執行，可隨時開關；可選雲端排程（主機離線時排隊並通知）或電腦排程
+- **例行任務**：每天固定時間或每隔幾分鐘自動執行，可隨時開關（電腦需開著）
 - **瀏覽器**：每個機器人可用自己的獨立 Chrome（分頁、登入分開），或「使用我的 Chrome」直接用你已登入的網站與已儲存的密碼（透過 [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)，每個機器人有自己的分頁群組）；最多 3 個同時工作
 - **用聊天交代**：建立機器人只要取名字，直接傳訊息說要做什麼，它會自己整理成指定任務、建好例行任務（每天幾點或每隔幾分鐘）
 - **自主工作**：自己規劃步驟一路做完，做完列出需要你決定的事；登入時把它的瀏覽器叫到螢幕上幫它登入再按「繼續」
 - **記憶與技能**：📌 記住你的偏好和規則；🧩 把做順的流程存成技能，輸入 / 叫出指令選單
 - **核准按鈕**：發訊息、付款這類動作先擬好等你核准，可選「只這次」「一律允許」或「拒絕」；清單上會標「待你處理」
-- **檔案存在主機電腦**：附件、截圖、機器人放進「輸出」的檔案都存在主機的 OCTA 資料夾（每個機器人／群組一個資料夾，可互相讀取），也能改存到 Google 雲端硬碟；手機要看時即時從主機讀取
+- **檔案存在電腦**：附件、截圖、機器人放進「輸出」的檔案都存在 OCTA 資料夾（每個機器人／群組一個資料夾，可互相讀取），也能改存到 Google 雲端硬碟
 - **即時更新**：長輪詢，指示和回覆馬上出現；每個裝置都能跳通知
-- **帳號安全**：裝置清單（輸入密碼移除）、修改密碼、重設碼、登入失敗鎖定
 - **AI 剩餘流量**：AI 連線頁顯示 Claude、ChatGPT 方案剩餘比例，其他顯示 OCTA 今日使用次數
 - **分區資料／共用資料**：寫一次，機器人都會讀
 - **通知**：需要你處理時，跳電腦通知，也可以送到 Telegram 或 LINE
-- **離線模式手機遙控**：離線模式下，設定 → 電腦與主機 → 手機遠端，用網址加 8 碼配對碼連進來
+- **手機遠端**：設定 → 手機遠端，用網址加 8 碼配對碼連進來（通道由你自己的電腦開）
 - **工作紀錄**：每次執行的結果與花費時間
 - **多語介面**：繁體中文、English、简体中文、日本語（機器人也會用你選的語言回覆）
 
-## 雲端版（多帳號，自己架）
-
-適合想用網址登入、多人各自使用的情況。網站只負責存資料與排隊，AI 仍在每個人自己的電腦上執行。
+## 架構（4.0 起純本機）
 
 ```
-手機 / 電腦瀏覽器 ─► Cloudflare Pages（網頁 + API）─► D1 資料庫
-                              ▲
-                              │ 長輪詢領任務（有變動立刻回應）、回寫結果
-                    使用者電腦上的 octa-runner.mjs
-                              │
-                    claude -p ＋ 每個機器人的專屬 Chrome
+桌面版 OCTA（Electron）
+ ├─ 本機伺服器 desktop/server.mjs ── 本機 API desktop/api/ ── SQLite（sql.js）
+ ├─ 執行器 desktop/runner/ ── claude / codex / agy / ollama… ＋ 每個機器人的瀏覽器
+ └─ 手機遠端：cloudflared 快速通道 ＋ 8 碼配對碼（自己電腦開的，不經過 OCTA 伺服器）
 ```
 
-1. Fork 這個倉庫
-2. 建資料庫：
-   ```
-   npx wrangler d1 create octa
-   npx wrangler d1 execute octa --remote --file schema.sql
-   ```
-3. 把 `wrangler.toml` 的 `database_name`、`database_id` 換成你的
-4. Cloudflare → Workers 和 Pages → 建立 → Pages → 連接 Git，選你的 fork，其他保持預設
-5. 例行任務的雲端排程靠 `.github/workflows/cron.yml` 每 5 分鐘呼叫 `/api/cron`；網址不是 octa.yzprojecttw.com 的話，在 GitHub 倉庫設定變數 `OCTA_URL`
-6. `wrangler.toml` 可調整 `TZ_OFFSET_MIN`（例行任務時區）、`ALLOW_SIGNUP`（是否開放註冊）、`DOWNLOAD_URL`（首頁下載按鈕）
-
-使用者登入後，照網站上的「設定指引」下載執行器並連線（需要 Node 18+）。
+不需要帳號，也沒有雲端伺服器；資料只存在這台電腦。3.x 用雲端帳號的人，第一次打開 4.0 會自動把雲端資料搬回電腦（先備份）。octa.yzprojecttw.com 只剩下載介紹頁（`site/`）；`functions/` 是凍結的舊雲端 API，只留給舊資料搬家用。
 
 ## 開發
 
 ```
-# 雲端版
-npx wrangler d1 execute <你的資料庫名稱> --local --file schema.sql
-npx wrangler pages dev
-
-# 桌面版
 cd desktop
 npm install
 npm run serve      # 用 Node 直接跑，自動打開瀏覽器
 npm start          # Electron 視窗
 npm run dist       # 打包 Windows 安裝檔（Linux 需要 wine64 + wine32）
+node --test ../test/*.test.mjs
 ```
 
 在 Actions 執行「Desktop build」（或推送 `v*` 標籤），會在 Windows 上打包並發布成最新 Release；版本號取自 `desktop/package.json`。
 
 | 路徑 | 內容 |
 | --- | --- |
-| `public/index.html` | 網頁介面（雲端版與桌面版共用） |
-| `functions/api/[[path]].js` | API（雲端版與桌面版共用） |
-| `public/octa-runner.mjs` | 執行器：領任務、呼叫 Claude Code、管理每個機器人的瀏覽器 |
-| `desktop/` | 桌面版：本機 SQLite、Electron 視窗、手機遠端 |
+| `app/` | 網頁介面：`index.html`、`css/`、`js/`（不需建置） |
+| `desktop/api/` | 本機 API（`index.mjs` 匯出 `onRequest`） |
+| `desktop/runner/` | 執行器：領任務、呼叫 AI 工具、管理每個機器人的瀏覽器 |
+| `desktop/lib/` | 共用模組：模型路由、連接器、程式任務 |
+| `desktop/` 其他 | Electron 主程式、本機伺服器、內嵌瀏覽器、舊雲端資料搬家（`cloud-import.mjs`） |
 | `schema.sql` | 資料表 |
-| `public/i18n-core.js`、`i18n/` | 多語介面：在 `i18n/strings.py` 加翻譯，執行 `python3 i18n/build.py` 產生字典 |
+| `i18n/` | 多語：在 `i18n/strings.py` 加翻譯，執行 `python3 i18n/build.py` 產生 `app/i18n-dict.js` |
+| `site/` | octa.yzprojecttw.com 下載介紹頁 |
 
 ## 安全
 
 - 機器人預設不替你發訊息、付款、刪資料，會先請你核准
 - 執行器只允許瀏覽器、網路查詢，以及機器人自己資料夾內的讀寫
-- 雲端版密碼以 PBKDF2 儲存，登入與執行器金鑰只存雜湊
 - 桌面版只接受本機連線；手機遠端需要配對碼，猜錯 10 次自動換碼
 
 ## 授權
