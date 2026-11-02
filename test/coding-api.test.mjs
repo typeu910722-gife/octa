@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -8,8 +8,13 @@ import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { runCodingTask, selectProvider } from '../public/coding-runtime.mjs';
 
-const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
+const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;
 const { onRequest, schedulesFromTurn, calmReply } = await import(apiUrl);
+// the local API is split into modules: its source is all of desktop/api/*.mjs
+const apiSource = () => {
+  const dir = join(import.meta.dirname, '..', 'desktop', 'api');
+  return readdirSync(dir).filter(f => f.endsWith('.mjs')).sort().map(f => readFileSync(join(dir, f), 'utf8')).join('\n');
+};
 const schema = readFileSync(join(import.meta.dirname, '..', 'schema.sql'), 'utf8');
 
 function openD1() {
@@ -41,7 +46,13 @@ function openD1() {
 }
 
 let ip = 20;
+// 4.0: one local user and no accounts. The old sign-up / runner-key steps only make sure that user exists.
+async function localLogin(db) {
+  await db.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();
+  return { status: 200, data: { token: 'local' } };
+}
 async function call(db, method, path, { token, body, ipOverride, query } = {}) {
+  if (path === 'signup' || path === 'runner-token') return localLogin(db);
   const headers = { 'content-type': 'application/json', 'cf-connecting-ip': ipOverride || `203.0.113.${ip++}` };
   if (token) headers.authorization = 'Bearer ' + token;
   const url = new URL('http://octa.test/api/' + path);
@@ -51,7 +62,7 @@ async function call(db, method, path, { token, body, ipOverride, query } = {}) {
   });
   const res = await onRequest({
     request: req,
-    env: { DB: db, ALLOW_SIGNUP: 'true', TZ_OFFSET_MIN: '480', isLocal: false, OCTA_CODE_ALLOW_FIXTURE: '1' },
+    env: { DB: db, TZ_OFFSET_MIN: '480', isLocal: true, OCTA_CODE_ALLOW_FIXTURE: '1' },
     params: { path: path.split('/').filter(Boolean) }
   });
   const data = await res.json().catch(() => ({}));
@@ -74,8 +85,8 @@ test('existing account, bot, and message flow still works', async () => {
   const su = await call(db, 'POST', 'signup', { body: { name: 'ada', pw: 'correcthorsebattery' } });
   assert.equal(su.status, 200);
   assert.ok(su.data.token);
-  const bad = await call(db, 'POST', 'login', { body: { name: 'ada', pw: 'wrong-password' } });
-  assert.equal(bad.status, 401);
+  const gone = await call(db, 'POST', 'login', { body: { name: 'ada', pw: 'wrong-password' } });
+  assert.equal(gone.status, 404, '4.0 has no accounts');
   const bot = await call(db, 'POST', 'bots', { token: su.data.token, body: { name: '助理', task: '回答問題' } });
   assert.equal(bot.status, 200);
   const msg = await call(db, 'POST', 'messages', { token: su.data.token, body: { conv: bot.data.id, text: '你好' } });
@@ -84,7 +95,12 @@ test('existing account, bot, and message flow still works', async () => {
   assert.equal(state.status, 200);
   assert.equal(state.data.bots.length, 1);
   assert.equal(state.data.bots[0].name, '助理');
-  const anon = await call(db, 'GET', 'code/tasks');
+  // a phone that has not paired is turned away
+  const anon = await onRequest({
+    request: new Request('https://phone.test/api/code/tasks'),
+    env: { DB: db, TZ_OFFSET_MIN: '480', pairCheck: () => false },
+    params: { path: ['code', 'tasks'] }
+  });
   assert.equal(anon.status, 401);
 });
 
@@ -100,7 +116,7 @@ test('code routes reject fixture when the server flag is off and require auth', 
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + su.data.token, 'cf-connecting-ip': '198.51.100.8' },
       body: JSON.stringify({ repoId: repo.data.id, title: 't', prompt: 'p', criteria: '測試要通過', engine: 'fixture' })
     }),
-    env: { DB: db, ALLOW_SIGNUP: 'true', TZ_OFFSET_MIN: '0', isLocal: false },
+    env: { DB: db, TZ_OFFSET_MIN: '0', isLocal: true },
     params: { path: ['code', 'tasks'] }
   });
   assert.equal(blocked.status, 400);
@@ -174,6 +190,7 @@ test('queued coding tasks cancel before the host starts, and migrations add the 
   const db = openD1From(bare);
   const su = await call(db, 'POST', 'signup', { body: { name: 'dee', pw: 'correcthorsebattery' } });
   assert.equal(su.status, 200);
+  assert.equal((await call(db, 'GET', 'me', { token: su.data.token })).status, 200);
   assert.doesNotThrow(() => bare.prepare('SELECT id FROM code_tasks').get());
   const repo = await call(db, 'POST', 'code/repos', { token: su.data.token, body: { name: 'app', path: '/tmp/octa-cancel-repo' } });
   const task = await call(db, 'POST', 'code/tasks', { token: su.data.token, body: { repoId: repo.data.id, title: '稍後', prompt: '先不要做', criteria: '測試要通過', engine: 'ollama' } });
@@ -196,7 +213,7 @@ test('an old offline database keeps its messages and gains the reply column', as
       headers: { 'content-type': 'application/json', host: '127.0.0.1' },
       body: JSON.stringify({ conv: 'bot1', text: '新訊息' })
     }),
-    env: { DB: db, ALLOW_SIGNUP: 'false', TZ_OFFSET_MIN: '480', isLocal: true },
+    env: { DB: db, TZ_OFFSET_MIN: '480', isLocal: true },
     params: { path: ['messages'] }
   });
   const data = await sent.json();
@@ -213,13 +230,12 @@ test('local mode state loads when there is no host computer row', async () => {
   await db.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();
   const res = await onRequest({
     request: new Request('http://127.0.0.1/api/state', { headers: { host: '127.0.0.1' } }),
-    env: { DB: db, ALLOW_SIGNUP: 'false', TZ_OFFSET_MIN: '480', isLocal: true },
+    env: { DB: db, TZ_OFFSET_MIN: '480', isLocal: true },
     params: { path: ['state'] }
   });
   const data = await res.json();
   assert.equal(res.status, 200, data.error || '');
   assert.equal(data.local, true);
-  assert.equal(data.host, 'local');
   assert.equal(data.runnerOnline, true);
   assert.ok(Array.isArray(data.codeTasks));
 });
@@ -440,9 +456,8 @@ test('dragging a message copies it, and replace removes the original', async () 
   assert.equal(file.data.data, 'aGVsbG8=');
   const jobs = db.raw.prepare("SELECT conv, prompt FROM jobs WHERE kind IS NULL OR kind='chat' OR kind=''").all();
   assert.ok(jobs.some(j => j.conv === b.data.id && j.prompt === '照這張圖'));
-  const other = await call(db, 'POST', 'signup', { body: { name: 'copyb', pw: 'correcthorsebattery' } });
-  const stolen = await call(db, 'POST', 'messages/copy', { token: other.data.token, body: { to: b.data.id, from: a.data.id, id: msg.id, replace: true } });
-  assert.equal(stolen.status, 404);
+  const missing = await call(db, 'POST', 'messages/copy', { token, body: { to: b.data.id, from: a.data.id, id: 999999, replace: true } });
+  assert.equal(missing.status, 404);
   const replaced = await call(db, 'POST', 'messages/copy', { token, body: { to: b.data.id, from: a.data.id, id: msg.id, replace: true } });
   assert.equal(replaced.status, 200);
   assert.equal(replaced.data.replaced, true);
@@ -463,7 +478,7 @@ test('dragging a message copies it, and replace removes the original', async () 
   assert.match(page, /確定要複製？/);
   const runner = readFileSync(join(import.meta.dirname, '..', 'public', 'octa-runner.mjs'), 'utf8');
   assert.match(runner, /octa:open/);
-  const api = readFileSync(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js'), 'utf8');
+  const api = apiSource();
   assert.match(api, /body\.expand/);
 });
 
@@ -510,7 +525,7 @@ test('a phone can replace the address waiting on the computer, and the open resu
   assert.match(src, /rememberOpen/);
   assert.match(src, /browserSnapshot\(port\)/);
   assert.match(src, /\.\.\.\(page \? \{ page \} : \{\}\)/);
-  const api = readFileSync(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js'), 'utf8');
+  const api = apiSource();
   assert.match(api, /job\.kind === 'open'/);
   assert.match(api, /UPDATE jobs SET url=\?, conv=\?/);
 });
@@ -619,9 +634,8 @@ test('the host catches up one missed routine, and a fourth job waits', async () 
   const db = openD1();
   const su = await call(db, 'POST', 'signup', { body: { name: 'hosty', pw: 'correcthorsebattery' } });
   const token = su.data.token;
-  const state = await call(db, 'GET', 'state', { token });
-  assert.equal(state.data.sched, 'pc');
   const bot = await call(db, 'POST', 'bots', { token, body: { name: '房務', task: '看房' } });
+
   const id = bot.data.id;
   const uid = db.raw.prepare('SELECT id FROM users').get().id;
   db.raw.prepare('INSERT INTO routines (id,user_id,conv,name,prompt,times,enabled,fired,created) VALUES (?,?,?,?,?,?,1,?,?)')

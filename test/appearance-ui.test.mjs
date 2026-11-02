@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const api = readFileSync(new URL('../functions/api/[[path]].js', import.meta.url), 'utf8');
+// the local API is split into modules: its source is all of desktop/api/*.mjs
+const apiDir = new URL('../desktop/api/', import.meta.url);
+const api = readdirSync(apiDir).filter(f => f.endsWith('.mjs')).sort().map(f => readFileSync(new URL(f, apiDir), 'utf8')).join('\n');
 const log = JSON.parse(readFileSync(new URL('../public/changelog.json', import.meta.url), 'utf8'));
 const pkg = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8'));
 

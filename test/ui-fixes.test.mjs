@@ -1,6 +1,6 @@
 // Browser corner card, stale / outdated computers, and the extra templates.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
@@ -10,8 +10,9 @@ import { DOT_SIZE, dotBox, embedFrames, thumbBox } from '../desktop/embed-layout
 const root = join(import.meta.dirname, '..');
 const read = p => readFileSync(join(root, p), 'utf8');
 const page = read('public/index.html');
-const apiSrc = read('functions/api/[[path]].js');
-const { onRequest } = await import(pathToFileURL(join(root, 'functions', 'api', '[[path]].js')).href);
+// the local API is split into modules: its source is all of desktop/api/*.mjs
+const apiSrc = readdirSync(join(root, 'desktop', 'api')).filter(f => f.endsWith('.mjs')).sort().map(f => read(join('desktop', 'api', f))).join('\n');
+const { onRequest } = await import(pathToFileURL(join(root, 'desktop', 'api', 'index.mjs')).href);
 
 function openD1() {
   const db = new DatabaseSync(':memory:');
@@ -34,11 +35,17 @@ function openD1() {
   };
 }
 let ip = 60;
+// 4.0: one local user and no accounts. The old sign-up / runner-key steps only make sure that user exists.
+async function localLogin(db) {
+  await db.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();
+  return { status: 200, data: { token: 'local' } };
+}
 async function call(db, method, path, { token, body } = {}) {
+  if (path === 'signup' || path === 'runner-token') return localLogin(db);
   const headers = { 'content-type': 'application/json', 'cf-connecting-ip': `203.0.113.${ip++}` };
   if (token) headers.authorization = 'Bearer ' + token;
   const req = new Request('http://octa.test/api/' + path, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body || {}) });
-  const res = await onRequest({ request: req, env: { DB: db, ALLOW_SIGNUP: 'true', TZ_OFFSET_MIN: '480', isLocal: false }, params: { path: path.split('/').filter(Boolean) } });
+  const res = await onRequest({ request: req, env: { DB: db, TZ_OFFSET_MIN: '480', isLocal: true }, params: { path: path.split('/').filter(Boolean) } });
   return { status: res.status, data: await res.json().catch(() => ({})) };
 }
 

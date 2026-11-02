@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { googleLoginDone, googleLoginMark, googleSignedIn } from '../public/octa-runner.mjs';
 
@@ -39,7 +39,8 @@ test('the runner, the server and the page carry the way back from the Chrome win
   assert.match(runner, /export async function returnToEmbed\(bot, opts = \{\}\)/);
   assert.match(runner, /openBrowser\(bot, \{ noBack: true \}\)/, 'switching to Chrome must not bounce straight back');
   assert.match(runner, /api\('runner\/note'/);
-  const api = read('../functions/api/[[path]].js');
+  const apiDir = new URL('../desktop/api/', import.meta.url);
+  const api = readdirSync(apiDir).filter(f => f.endsWith('.mjs')).sort().map(f => readFileSync(new URL(f, apiDir), 'utf8')).join('\n');
   assert.match(api, /path === 'runner\/note' && m === 'POST'/);
   const page = read('../public/index.html');
   assert.match(page, /desktop\/browser-embed/);
