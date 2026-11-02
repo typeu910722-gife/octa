@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><title>OCTA 待機・打瞌睡</title><style>
+*{transform-box:view-box}
+.leg{transform-origin:var(--o)}
+.eye{transform-box:fill-box;transform-origin:center}
+@keyframes bob{50%{transform:translateY(-8px)}}
+@keyframes blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.12)}}
+@keyframes swayL{50%{transform:rotate(5deg)}}
+@keyframes swayR{50%{transform:rotate(-5deg)}}
+.bob{animation:bob 3s ease-in-out infinite}
+.l1,.l2{animation:swayL 3s ease-in-out infinite}
+.r1,.r2{animation:swayR 3s ease-in-out infinite}
+.l2,.r2{animation-delay:-1.5s}
+.eye{animation:blink 4.5s infinite}
+
+@keyframes nod{0%,30%{transform:rotate(0) translateY(0)}55%{transform:rotate(4deg) translateY(10px)}
+ 60%{transform:rotate(-1deg) translateY(-4px)}70%,100%{transform:rotate(0) translateY(0)}}
+.bob{transform-origin:256px 330px;animation:nod 4.5s ease-in-out infinite}
+.l1,.l2,.r1,.r2{animation-duration:4.5s}
+@keyframes zz{0%{transform:translate(0,0);opacity:0}20%{opacity:1}100%{transform:translate(46px,-90px);opacity:0}}
+.z{animation:zz 3s ease-out infinite}.z2{animation-delay:-1s}.z3{animation-delay:-2s}
+</style><g transform="translate(77 110) scale(.7)"><g class="bob"><g fill="none" stroke="#D6B27A" stroke-width="34" stroke-linecap="round"><path class="leg l1" style="--o:160px 300px" d="M 160 300 C 120 350 80 370 64 342 C 54 322 72 302 92 314"/><path class="leg l2" style="--o:210px 340px" d="M 210 340 C 196 410 168 440 140 430 C 120 422 124 398 144 400"/><path class="leg r1" style="--o:352px 300px" d="M 352 300 C 392 350 432 370 448 342 C 458 322 440 302 420 314"/><path class="leg r2" style="--o:302px 340px" d="M 302 340 C 316 410 344 440 372 430 C 392 422 388 398 368 400"/></g><circle cx="256" cy="215" r="140" fill="#D6B27A"/><g class="eyes" fill="none" stroke="#1c140a" stroke-width="11" stroke-linecap="round"><path transform="translate(208 236) rotate(-8)" d="M -26 -6 Q 0 16 26 -6"/><path transform="translate(304 236) rotate(8)" d="M -26 -6 Q 0 16 26 -6"/></g><g class="star"><path transform="translate(256 410) scale(0.7)" d="M 0 -26 Q 4 -4 26 0 Q 4 4 0 26 Q -4 4 -26 0 Q -4 -4 0 -26 Z" fill="#E2A93B"/></g><g fill="#D6B27A" font-family="system-ui,sans-serif" font-weight="800"><text class="z" x="368" y="140" font-size="46">z</text><text class="z z2" x="368" y="140" font-size="36">z</text><text class="z z3" x="368" y="140" font-size="28">z</text></g></g></g></svg>

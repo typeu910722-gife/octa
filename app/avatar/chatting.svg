@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"><title>OCTA 和機器人交流</title><style>
+*{transform-box:view-box}
+.leg{transform-origin:var(--o)}
+.eye{transform-box:fill-box;transform-origin:center}
+@keyframes bob{50%{transform:translateY(-8px)}}
+@keyframes blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.12)}}
+@keyframes swayL{50%{transform:rotate(5deg)}}
+@keyframes swayR{50%{transform:rotate(-5deg)}}
+.bob{animation:bob 3s ease-in-out infinite}
+.l1,.l2{animation:swayL 3s ease-in-out infinite}
+.r1,.r2{animation:swayR 3s ease-in-out infinite}
+.l2,.r2{animation-delay:-1.5s}
+.eye{animation:blink 4.5s infinite}
+
+@keyframes back{0%{transform:translate(256px,215px) var(--r0);opacity:1}
+ 14%{transform:translate(var(--tx),var(--ty)) var(--r0);opacity:1}
+ 14.5%,100%{transform:translate(var(--tx),var(--ty)) var(--r0);opacity:0}}
+@keyframes front{0%,14%{transform:translate(var(--tx),var(--ty)) var(--r0);opacity:0}
+ 14.5%{opacity:1}
+ 26%,84%{transform:translate(var(--fx),var(--fy)) var(--r1);opacity:1}
+ 92%,100%{transform:translate(var(--fx),var(--fy)) var(--r1);opacity:0}}
+@keyframes show{0%,24%{opacity:0}28%,84%{opacity:1}90%,100%{opacity:0}}
+.dev-b{animation:back 6s ease-in-out infinite}
+.dev-f{animation:front 6s ease-in-out infinite}
+.show{animation:show 6s linear infinite}
+@keyframes carry{0%{transform:rotate(0)}12%{transform:rotate(-75deg)}26%{transform:rotate(-15deg)}34%,100%{transform:rotate(0)}}
+.r1{animation:carry 6s ease-in-out infinite}
+@keyframes tap{50%{transform:translateY(-12px)}}
+.tapA{animation:tap .3s ease-in-out infinite}
+.tapB{animation:tap .3s ease-in-out infinite;animation-delay:-.15s}
+@keyframes glow{0%,100%{opacity:.25}50%{opacity:.45}}
+.glow{animation:glow 1.2s ease-in-out infinite}
+
+.dev{--r0:rotate(0deg);--r1:rotate(-12deg);--tx:372px;--ty:4px;--fx:338px;--fy:350px}
+@keyframes eyesTo{0%,20%{transform:translate(0,0)}30%,84%{transform:translate(12px,8px)}95%,100%{transform:translate(0,0)}}
+.eyes{animation:eyesTo 6s ease-in-out infinite}
+@keyframes msg{0%,100%{transform:scaleX(0)}15%,80%{transform:scaleX(1)}}
+.m{transform-box:fill-box;transform-origin:0 50%;animation:msg 1.8s ease-out infinite}
+.m2{transform-origin:100% 50%;animation-delay:.4s}.m3{animation-delay:.8s}
+</style><g transform="translate(77 110) scale(.7)"><g class="bob"><g class="dev dev-b"><rect x="-38" y="-66" width="76" height="132" rx="16" fill="#2e241a" stroke="#D6B27A" stroke-width="5"/><rect x="-29" y="-54" width="58" height="104" rx="8" fill="#FFF6E0"/><rect class="m m1" x="-23" y="-46" width="30" height="12" rx="6" fill="#D6B27A"/><rect class="m m2" x="-5" y="-28" width="30" height="12" rx="6" fill="#2e241a"/><rect class="m m3" x="-23" y="-10" width="36" height="12" rx="6" fill="#D6B27A"/><g fill="#D6B27A" opacity=".6"><rect x="-23" y="18" width="46" height="5" rx="2.5"/><rect x="-23" y="28" width="46" height="5" rx="2.5"/><rect x="-23" y="38" width="46" height="5" rx="2.5"/></g></g><g fill="none" stroke="#D6B27A" stroke-width="34" stroke-linecap="round"><path class="leg l1" style="--o:160px 300px" d="M 160 300 C 120 350 80 370 64 342 C 54 322 72 302 92 314"/><path class="leg l2" style="--o:210px 340px" d="M 210 340 C 196 410 168 440 140 430 C 120 422 124 398 144 400"/><path class="leg r1" style="--o:352px 300px" d="M 352 300 C 392 350 432 370 448 342 C 458 322 440 302 420 314"/><path class="leg r2" style="--o:302px 340px" d="M 302 340 C 316 410 344 440 372 430 C 392 422 388 398 368 400"/></g><circle cx="256" cy="215" r="140" fill="#D6B27A"/><g class="eyes"><g transform="translate(208 225) rotate(-14)"><path class="eye" d="M 0 -46 Q 27 0 0 46 Q -27 0 0 -46 Z" fill="#1c140a"/></g><g transform="translate(304 225) rotate(14)"><path class="eye" d="M 0 -46 Q 27 0 0 46 Q -27 0 0 -46 Z" fill="#1c140a"/></g></g><g class="dev dev-f"><rect x="-38" y="-66" width="76" height="132" rx="16" fill="#2e241a" stroke="#D6B27A" stroke-width="5"/><rect x="-29" y="-54" width="58" height="104" rx="8" fill="#FFF6E0"/><rect class="m m1" x="-23" y="-46" width="30" height="12" rx="6" fill="#D6B27A"/><rect class="m m2" x="-5" y="-28" width="30" height="12" rx="6" fill="#2e241a"/><rect class="m m3" x="-23" y="-10" width="36" height="12" rx="6" fill="#D6B27A"/><g fill="#D6B27A" opacity=".6"><rect x="-23" y="18" width="46" height="5" rx="2.5"/><rect x="-23" y="28" width="46" height="5" rx="2.5"/><rect x="-23" y="38" width="46" height="5" rx="2.5"/></g></g><g class="show" fill="none" stroke="#D6B27A" stroke-width="22" stroke-linecap="round"><path class="tapA" d="M 236 420 C 262 424 292 414 312 396"/></g></g></g></svg>
