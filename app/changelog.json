@@ -1,5 +1,30 @@
 [
  {
+  "v": "4.2.0",
+  "date": "2026-11-02",
+  "notes": [
+   "用手機操作機器人的瀏覽器：在手機打開機器人的「瀏覽器」分頁，就能即時看到它在電腦上看到的畫面",
+   "機器人需要你登入、輸入驗證碼或通過「我不是機器人」時，按「接手」就能直接在手機上點、捲動、打字；機器人會先暫停，好了按「我好了」它就接著做",
+   "手機上可以兩指放大畫面、改網址、上一頁、重新整理，也可以貼上剪貼簿裡的文字",
+   "需要你處理的通知點下去，會直接打開那個機器人的瀏覽器；開了手機遠端時，Telegram／LINE 通知也會附上用手機接手的連結",
+   "在手機接手時，電腦上的「僅觀看／取得控制權」也會跟著切換"
+  ],
+  "notes_en": [
+   "Use the bot's browser from your phone: open a bot's Browser tab on your phone to watch what it sees on the computer, live",
+   "When a bot needs you to sign in, enter a code or pass an \"I'm not a robot\" check, tap Take over and tap, scroll and type right on your phone; the bot pauses, and continues when you tap I'm done",
+   "Pinch to zoom the picture, change the address, go back, reload, or paste text from your clipboard",
+   "Tapping a \"needs you\" notification opens that bot's browser; with phone remote on, Telegram / LINE notices include a link to take over from your phone",
+   "Taking over on the phone also flips Watch only / Take control on the computer"
+  ],
+  "notes_ja": [
+   "スマホからボットのブラウザを操作：スマホでボットの「ブラウザ」タブを開くと、パソコンで見ている画面をリアルタイムで見られます",
+   "ログイン、認証コード、「ロボットではありません」の確認が必要なときは「引き継ぐ」を押して、スマホでそのままタップ・スクロール・入力できます。ボットは一時停止し、「完了しました」を押すと続きをします",
+   "2 本指で拡大、URL の変更、戻る、再読み込み、クリップボードの文字の貼り付けもできます",
+   "「対応が必要」の通知を押すと、そのボットのブラウザが開きます。スマホリモートがオンなら Telegram／LINE の通知にもスマホで引き継ぐリンクが付きます",
+   "スマホで引き継ぐと、パソコンの「見るだけ／操作権を取る」も切り替わります"
+  ]
+ },
+ {
   "v": "4.1.0",
   "date": "2026-11-02",
   "notes": [

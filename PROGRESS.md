@@ -190,3 +190,15 @@
 - [x] 瀏覽器分頁預留 #webCtl 給 4.2 手機遙控
 - [x] 測試 226 項（新增 test/work-panel.test.mjs），剩原本 4 項舊有失敗
 - 未實測：Windows 實機、真的 AI 工作時的瀏覽器狀態切換、高 DPI／縮放下的 dock 位置、手機實機
+
+## 4.2.0 手機遙控機器人的瀏覽器（像 Grok Bot 手機版，2026-11-02）
+- [x] 即時畫面：desktop/screen-cast.mjs 用 CDP Page.startScreencast（JPEG 60、依手機螢幕×DPR 決定大小、每張 ack），內建瀏覽器（經 cdp-bridge）和 Chrome 視窗兩種都支援；收不到 screencast 時改每 0.8 秒截圖；換頁/操作後 1 秒沒新畫面就再要一次。只在有人看時傳：離開分頁（/bye）或 30 秒沒人要畫面就停
+- [x] 傳輸：長輪詢 GET /api/screen/<bot>?after=<seq>，有新畫面立刻回 JPEG 本體（x-octa-seq / x-octa-meta / x-octa-handed 標頭），沒變就 204。走原本的 API 路徑（配對驗證、通道），不另開 WebSocket。本機實測 57–60 fps、伺服器到手機約 2 ms、點擊到新畫面約 50–90 ms（Chrome 模式；內建瀏覽器剛接手時多等到 0.7 秒）
+- [x] 接手後操作：POST /api/screen/<bot>/input（tap / scroll / text / key: Enter、Backspace、Tab）、/nav（go / back / reload），必須先接手（live.handed），每個機器人限流 20 次/秒；Chrome 視窗用 CDP Input.*，內建瀏覽器改用 Electron sendInputEvent（收在背景的頁面也收得到，CDP 滑鼠事件會掉）
+- [x] 接手／我好了沿用 handoff ＋「登入好了，繼續剛才的工作」流程（跟電腦上「僅觀看／取得控制權」同一套判斷）；handoff 會呼叫 env.onHandoff → 頁面 window.__octaUser、電腦的開關跟著切換；電腦切換時手機從 x-octa-handed 知道
+- [x] 手機介面（app/js/screen.js）：瀏覽器分頁滿版畫面、網址列（可改→前往）、上一頁、重新整理、點擊漣漪、單指拖曳＝捲動、雙指縮放/移動只放大手機上的畫面（座標換算 pure.js scrMap：置中留白、DPR、手機縮放、頁面縮放）、打字列（送出＝insertText、隱藏文字）、刪除/下一格/Enter/貼上、安全區、不會捲動或縮放 OCTA 本身
+- [x] 需要你登入：手機通知點下去直接開這個機器人的瀏覽器分頁、「接手」閃動提示；Telegram/LINE 通知在手機遠端開著時附「用手機接手」連結（…/#web=<bot>，未配對的手機配對後也會打開）
+- [x] 遠端埠權限：/api/screen/* 要配對，操作要接手；/api/runner、/api/desktop 仍 403；手機的點擊不會讓其他畫面重抓（NO_BUMP）
+- [x] 測試：test/phone-remote.test.mjs（座標換算、CDP 指令、串流開始/跟著分頁/改截圖/30 秒停、輸入限流、遠端權限、Electron 輸入、介面）
+- [x] 實測：xvfb 下 Electron（內建瀏覽器收在背景）＋ Playwright 手機 390×844 透過遠端埠配對：畫面、點按鈕、打字、Enter 送出表單、刪除、捲動、雙指縮放後點擊、網址列、上一頁、我好了；也測過 server.mjs ＋ 真 Chromium（Chrome 視窗模式）。截圖 docs/screens/phone-remote-*.png（淺/深色）
+- 未實測：真手機經真的 trycloudflare 通道（延遲、iOS Safari 的手勢與鍵盤）、Windows 實機、內建瀏覽器的頁面縮放（Ctrl+＋）時的座標、「使用我的 Chrome」（不支援，照舊顯示說明）
