@@ -34,6 +34,17 @@ const KEYS = {
   Backspace: { key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 },
   Tab: { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 }
 };
+// width and height of a JPEG, from its frame header
+export function jpegSize(buf) {
+  if (!buf || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
+  for (let i = 2; i + 9 < buf.length;) {
+    if (buf[i] !== 0xff) { i++; continue; }
+    const mk = buf[i + 1], len = buf.readUInt16BE(i + 2);
+    if (mk >= 0xc0 && mk <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(mk)) return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+    i += 2 + len;
+  }
+  return null;
+}
 const num = (v, lo, hi) => { const n = +v; return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : null; };
 // the phone's message → the CDP commands that do it (null: not a valid message)
 export function inputCommands(ev) {
@@ -129,16 +140,24 @@ export function createScreens({ resolvePort, connect = wsConnect, inputHook = nu
       const sid = s.sessionId;
       const m = await s.client.send('Page.getLayoutMetrics', {}, sid).catch(() => ({}));
       const vp = m.cssVisualViewport || m.cssLayoutViewport || {};
-      const w = +vp.clientWidth || 1280, h = +vp.clientHeight || 800;
-      const scale = Math.min(1, s.w / w, s.h / h);
-      const shot = await s.client.send('Page.captureScreenshot', { format: 'jpeg', quality: 60, ...(scale < 1 ? { clip: { x: +vp.pageX || 0, y: +vp.pageY || 0, width: w, height: h, scale } } : {}) }, sid);
-      if (s.alive && sid === s.sessionId && shot?.data) newFrame(s, Buffer.from(shot.data, 'base64'), { deviceWidth: w, deviceHeight: h, offsetTop: 0, pageScaleFactor: 1, scrollX: +vp.pageX || 0, scrollY: +vp.pageY || 0 });
+      const dpr = +(await s.client.send('Runtime.evaluate', { expression: 'devicePixelRatio', returnByValue: true }, sid).catch(() => ({})))?.result?.value || 1;
+      const shot = await s.client.send('Page.captureScreenshot', { format: 'jpeg', quality: 60 }, sid);
+      if (!s.alive || sid !== s.sessionId || !shot?.data) return;
+      const jpeg = Buffer.from(shot.data, 'base64'), size = jpegSize(jpeg);
+      // the picture's own size (it includes the scrollbar) decides where a tap lands
+      const w = size ? size.w / dpr : (+vp.clientWidth || 1280), h = size ? size.h / dpr : (+vp.clientHeight || 800);
+      newFrame(s, jpeg, { deviceWidth: w, deviceHeight: h, offsetTop: 0, pageScaleFactor: 1, scrollX: +vp.pageX || 0, scrollY: +vp.pageY || 0 });
     } catch { } finally { s.shooting = false; }
   }
-  // something changed on the page (a tap, a new address): if no new frame shows it within a second, take a screenshot
+  // something changed on the page (a tap, a new address): if no new frame shows it within a second, ask for one
   function kick(s) {
     const seq = s.seq;
-    timers.setTimeout(() => { if (s.alive && s.seq === seq) void shoot(s); }, 1000);
+    timers.setTimeout(() => {
+      if (!s.alive || s.seq !== seq) return;
+      if (s.mode !== 'cast' || !s.sessionId) return void shoot(s);
+      s.client.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: s.w, maxHeight: s.h, everyNthFrame: 1 }, s.sessionId).catch(() => { });
+      timers.setTimeout(() => { if (s.alive && s.seq === seq) void shoot(s); }, 800);
+    }, 1000);
   }
   async function look(s) {   // every 2 s: nobody watching → stop; the bot moved to another tab → follow it; no screencast → screenshot
     if (!s.alive) return;

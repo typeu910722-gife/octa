@@ -133,6 +133,7 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
             <div class="scr-in" id="scrIn"><img id="stPic" alt="電腦上這個機器人的瀏覽器" draggable="false"></div>
             <span class="scr-tag" id="scrTag" hidden></span>
             <button type="button" class="scr-z" id="scrZoom" hidden aria-label="還原大小">1×</button>
+            <span class="scr-hint" id="scrHint">雙指可以放大畫面</span>
           </div>
           <p class="scr-ask" id="scrAsk" hidden>機器人需要你幫忙（例如登入、輸入驗證碼）。按「接手」就能直接在手機上操作。</p>
           <div class="stact"><button type="button" class="btn sm" id="stHand">接手</button><button type="button" class="btn sm ok" id="stGo" hidden>我好了</button></div>
@@ -143,7 +144,7 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
       <div class="web-ctl" id="webCtl" hidden>
         <form class="scr-kb" id="scrKb">
           <input id="scrText" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="在這裡打字，按送出" aria-label="要輸入到網頁的文字">
-          <button type="button" class="ib" id="scrEye" aria-label="隱藏文字" title="隱藏文字（輸入密碼時）" aria-pressed="false" data-i="hide"></button>
+          <button type="button" class="ib" id="scrEye" aria-label="隱藏文字" title="隱藏文字（輸入密碼時）" aria-pressed="false" data-i="shield"></button>
           <button class="btn sm" id="scrSend">送出</button>
         </form>
         <div class="scr-keys">

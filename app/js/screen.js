@@ -58,7 +58,8 @@ function scrPaint(){const on=!!SCR.bot&&!SCR.none,h=SCR.hand;
   $('stHand').hidden=h;$('stGo').hidden=!h;$('stHold').hidden=!h;
   $('stage').classList.toggle('taken',h);
   const ask=!h&&SCR.ready===SCR.bot&&!!SCR.bot;$('scrAsk').hidden=!ask;$('stHand').classList.toggle('pulse',ask);
-  const tag=$('scrTag');tag.hidden=!on;$('stage').classList.toggle('live',on);tag.textContent=I18N.t(h?'你正在操作，機器人已暫停':'僅觀看');tag.classList.toggle('mine',h)}
+  const tag=$('scrTag');tag.hidden=!on;$('stage').classList.toggle('live',on);tag.textContent=I18N.t(h?'你正在操作，機器人已暫停':'僅觀看');tag.classList.toggle('mine',h);
+  $('scrHint').textContent=I18N.t(h?'點一下＝點擊　上下滑＝捲動　雙指＝放大':'雙指可以放大畫面')}
 async function scrTake(){const id=SCR.bot||webBot();if(!id)return;
   if(S.busy.some(x=>x.bot_id===id&&x.status==='running'))HAND_BUSY.add(id);
   try{await api('handoff','POST',{bot:id,on:true});SCR.hand=true;SCR.ready='';scrPaint();toast(I18N.t('已接手，機器人停止點擊'))}catch(e){toast(e.message)}}
@@ -74,7 +75,7 @@ $('stGo').onclick=()=>scrDone();
 
 /* ---------- touching the picture ---------- */
 // tap = click there · one finger drag = scroll the page · two fingers = zoom / move the picture on this phone only
-function scrApply(){const v=SCR.view;$('scrIn').style.transform=v.s>1.001||v.x||v.y?`translate(${v.x}px,${v.y}px) scale(${v.s})`:'';$('scrZoom').hidden=v.s<=1.01}
+function scrApply(){const v=SCR.view;$('scrIn').style.transform=v.s>1.001||v.x||v.y?`translate(${v.x}px,${v.y}px) scale(${v.s})`:'';$('scrZoom').hidden=v.s<=1.01;$('scrHint').hidden=v.s>1.01}
 function scrClamp(){const v=SCR.view,r=$('scr').getBoundingClientRect();v.s=Math.min(5,Math.max(1,v.s));
   v.x=Math.min(0,Math.max(r.width*(1-v.s),v.x));v.y=Math.min(0,Math.max(r.height*(1-v.s),v.y));if(v.s<=1.01)Object.assign(v,{s:1,x:0,y:0})}
 function scrAt(x,y,clamp){const im=$('stPic');if(!im.naturalWidth)return null;

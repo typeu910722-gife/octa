@@ -297,6 +297,7 @@ function setControl(bucket, on, relay) {
   if (!bucket) return false;
   const changed = next !== !!bucket.control;
   bucket.control = next;
+  if (changed) bucket.controlAt = Date.now();
   for (const v of bucket.tabs) flagPage(bucket, v.webContents);
   layoutEmbed();
   const page = bucket.active?.webContents;
@@ -1223,10 +1224,14 @@ async function start() {
         const wc = bucket?.pages.get(targetId)?.wc;
         const steps = wc && !wc.isDestroyed() ? phoneInput(ev) : null;
         if (!steps) return false;
+        // right after 接手 the page is re-laid out and focused; a tap in that moment can get lost
+        const settle = 700 - (Date.now() - (bucket.controlAt || 0));
+        if (settle > 0) await new Promise(r => setTimeout(r, settle));
         for (const st of steps) {
           if (st.input) wc.sendInputEvent(st.input);
           else if (st.text) wc.insertText(st.text);
           else if (st.script) await wc.executeJavaScript(st.script).catch(() => { });
+          else if (st.wait) await new Promise(r => setTimeout(r, st.wait));
         }
         return true;
       },

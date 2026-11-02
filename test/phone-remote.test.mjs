@@ -9,37 +9,38 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { pure, html, js, css, fnSrc } from './app-source.mjs';
+import { pure, html, js, css, fnSrc, read } from './app-source.mjs';
 
 const repo = join(import.meta.dirname, '..');
-const { createScreens, inputCommands, navUrl, livePage } = await import(pathToFileURL(join(repo, 'desktop/screen-cast.mjs')).href);
+const { createScreens, inputCommands, navUrl, livePage, jpegSize } = await import(pathToFileURL(join(repo, 'desktop/screen-cast.mjs')).href);
 let hasDeps = true;
 try { createRequire(join(repo, 'desktop', 'package.json')).resolve('sql.js'); } catch { hasDeps = false; }
 
 test('a touch on the live picture lands on the right spot of the page', () => {
   const { scrMap } = pure;
   const meta = { deviceWidth: 1200, deviceHeight: 800 };
-  // a 390-wide phone shows a 1200×800 page 0.325× at the top of a tall picture area
-  const box = { left: 0, top: 100, width: 390, height: 600 };
-  assert.deepEqual(scrMap({ x: 195, y: 100 + 130 }, { box, img: { w: 1200, h: 800 }, meta }), { x: 600, y: 400, per: 1200 / 390 });
-  // below the picture: nothing there (a drag may still start there and scroll: clamp)
-  assert.equal(scrMap({ x: 100, y: 100 + 400 }, { box, img: { w: 1200, h: 800 }, meta }), null);
-  assert.equal(scrMap({ x: 195, y: 100 + 400 }, { box, img: { w: 1200, h: 800 }, meta, clamp: true }).y, 800);
+  // a 390-wide phone shows a 1200×800 page 0.325× (260 px tall) in the middle of a taller picture area: bands above and below
+  const box = { left: 0, top: 100, width: 390, height: 600 };   // the picture runs from y=100+170 to 100+430
+  assert.deepEqual(scrMap({ x: 195, y: 270 + 130 }, { box, img: { w: 1200, h: 800 }, meta }), { x: 600, y: 400, per: 1200 / 390 });
+  assert.equal(scrMap({ x: 100, y: 100 + 100 }, { box, img: { w: 1200, h: 800 }, meta }), null, 'the band above');
+  assert.equal(scrMap({ x: 100, y: 100 + 500 }, { box, img: { w: 1200, h: 800 }, meta }), null, 'the band below');
+  // a drag that starts on a band still scrolls: clamp to the nearest edge
+  assert.equal(scrMap({ x: 195, y: 100 + 500 }, { box, img: { w: 1200, h: 800 }, meta, clamp: true }).y, 800);
   // a wide box (phone turned sideways): bands left and right of the picture
   const wide = { left: 0, top: 0, width: 800, height: 300 };   // 1200×800 → 450×300, starts at x=175
   assert.equal(scrMap({ x: 100, y: 150 }, { box: wide, img: { w: 1200, h: 800 }, meta }), null);
   assert.deepEqual(scrMap({ x: 175 + 225, y: 150 }, { box: wide, img: { w: 1200, h: 800 }, meta }).x, 600);
   // frames from a 2× screen are twice as big; the metadata (DIP) decides, or dpr without metadata
-  assert.deepEqual(scrMap({ x: 195, y: 230 }, { box, img: { w: 2400, h: 1600 }, meta }).x, 600);
-  assert.deepEqual(scrMap({ x: 195, y: 230 }, { box, img: { w: 2400, h: 1600 }, dpr: 2 }).x, 600);
-  // the person pinch-zoomed 2× around the top-left: the same screen point is half as far into the page
-  const z = scrMap({ x: 195, y: 230 }, { box, img: { w: 1200, h: 800 }, meta, view: { s: 2, x: 0, y: 0 } });
+  assert.deepEqual(scrMap({ x: 195, y: 400 }, { box, img: { w: 2400, h: 1600 }, meta }).x, 600);
+  assert.deepEqual(scrMap({ x: 195, y: 400 }, { box, img: { w: 2400, h: 1600 }, dpr: 2 }).x, 600);
+  // the person pinch-zoomed 2× around the top-left of the picture area: the same screen point is half as far in
+  const z = scrMap({ x: 195, y: 100 + 470 }, { box, img: { w: 1200, h: 800 }, meta, view: { s: 2, x: 0, y: 0 } });
   assert.deepEqual([z.x, z.y], [300, 200]);
   assert.equal(z.per, 1200 / 390 / 2, 'dragging while zoomed scrolls less');
   // …and moved the picture left by 100 px
-  assert.equal(scrMap({ x: 195, y: 230 }, { box, img: { w: 1200, h: 800 }, meta, view: { s: 2, x: -100, y: 0 } }).x, Math.round((300 + 100 / 2 / 0.325) * 10) / 10);
+  assert.equal(scrMap({ x: 195, y: 100 + 470 }, { box, img: { w: 1200, h: 800 }, meta, view: { s: 2, x: -100, y: 0 } }).x, Math.round((300 + 100 / 2 / 0.325) * 10) / 10);
   // the page's own zoom (150 %): CSS pixels are bigger than DIP
-  assert.equal(scrMap({ x: 195, y: 230 }, { box, img: { w: 1200, h: 800 }, meta, zoom: 1.5 }).x, 400);
+  assert.equal(scrMap({ x: 195, y: 400 }, { box, img: { w: 1200, h: 800 }, meta, zoom: 1.5 }).x, 400);
   assert.equal(scrMap({ x: 1, y: 1 }, { box, img: { w: 0, h: 0 }, meta }), null, 'no frame yet');
 });
 
@@ -57,6 +58,9 @@ test('phone messages become CDP input, anything else is refused', () => {
   assert.equal(navUrl('shopee.tw'), 'https://shopee.tw');
   assert.equal(navUrl('https://a.b/c?d'), 'https://a.b/c?d');
   assert.match(navUrl('台北 天氣'), /^https:\/\/www\.google\.com\/search\?q=/);
+  // a screenshot's own size decides the mapping (SOF0 header of a 37×21 JPEG)
+  assert.deepEqual(jpegSize(Buffer.from('ffd8ffc0001108001500250301220002110103110100', 'hex')), { w: 37, h: 21 });
+  assert.equal(jpegSize(Buffer.from('shot')), null);
   assert.equal(livePage([{ targetId: 'a', type: 'page', url: 'https://x/' }, { targetId: 'b', type: 'page', url: 'about:blank' }]).targetId, 'a');
 });
 
@@ -270,4 +274,23 @@ test('phone UI: full-screen live picture, 接手 / 我好了, keyboard row, deep
   assert.match(js, /if\(needsHand\(l\.text\)&&bot\(l\.by\)&&!window\.octaDesktop\?\.dock\)goWeb\(c,l\.by\)/, 'a sign-in notification opens the 瀏覽器 tab');
   assert.match(fnSrc('goWeb'), /SCR\.ready=id/);
   assert.match(js, /#web=/);
+});
+
+test('OCTA\'s own browser takes the phone\'s input through Electron (a parked page gets it too)', async () => {
+  const { phoneInput } = await import(pathToFileURL(join(repo, 'desktop/embed-layout.mjs')).href);
+  assert.deepEqual(phoneInput({ type: 'tap', x: 10.4, y: 20 }).filter(s => s.input).map(s => s.input.type), ['mouseMove', 'mouseDown', 'mouseUp']);
+  assert.deepEqual(phoneInput({ type: 'text', text: 'abc' }), [{ text: 'abc' }]);
+  assert.match(phoneInput({ type: 'scroll', x: 1, y: 1, dx: 0, dy: 300 })[0].script, /scrollBy/);
+  assert.deepEqual(phoneInput({ type: 'key', key: 'Enter' }).map(s => s.input.type), ['keyDown', 'char', 'keyUp']);
+  assert.equal(phoneInput({ type: 'key', key: 'Delete' }), null);
+  // the stream hands input to the hook first; CDP input only when the hook does not take it
+  const br = fakeBrowser(), clock = fakeClock(), got = [];
+  const sc = createScreens({ resolvePort: async () => 19011, connect: () => br.connect(), now: clock.now, timers: clock, inputHook: a => { got.push(a); return a.port === 19011; } });
+  await sc.frame('b1', { wait: 10 });
+  assert.deepEqual(await sc.input('b1', { type: 'tap', x: 3, y: 4 }), { ok: true });
+  assert.deepEqual([got[0].port, got[0].targetId, got[0].ev.type], [19011, 'T1', 'tap']);
+  assert.equal(br.sent.some(([m]) => m === 'Input.dispatchMouseEvent'), false);
+  sc.stopAll();
+  assert.match(read('desktop/main.mjs'), /screenInput: async \(\{ port, targetId, ev \}\) =>[\s\S]*?wc\.sendInputEvent\(st\.input\)/);
+  assert.match(read('desktop/main.mjs'), /onHandoff: \(id, on\) =>[\s\S]*?setControl\(bucket, !!on, false\)/, 'the computer\'s switch follows the phone');
 });

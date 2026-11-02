@@ -259,13 +259,14 @@ export function controlStage(on) {
 
 // 4.2 手機遙控 on OCTA's own browser: the phone's tap / scroll / typing as Electron input. webContents.sendInputEvent
 // reaches a page that is parked off screen (the 瀏覽器 tab closed on the computer), where CDP mouse events get lost.
-// Returns steps for main.mjs: { input } → sendInputEvent, { text } → insertText, { script } → executeJavaScript.
+// Returns steps for main.mjs: { input } → sendInputEvent, { text } → insertText, { script } → executeJavaScript, { wait } ms.
 export function phoneInput(ev) {
   const n = (v, lo, hi) => { const x = +v; return Number.isFinite(x) ? Math.round(Math.min(hi, Math.max(lo, x))) : null; };
   if (ev?.type === 'tap') {
     const x = n(ev.x, 0, 20000), y = n(ev.y, 0, 20000);
     if (x === null || y === null) return null;
-    return [{ input: { type: 'mouseMove', x, y } }, { input: { type: 'mouseDown', x, y, button: 'left', clickCount: 1 } }, { input: { type: 'mouseUp', x, y, button: 'left', clickCount: 1 } }];
+    // a short pause like a real finger: a press that lands in the same instant as the move is sometimes dropped
+    return [{ input: { type: 'mouseMove', x, y } }, { wait: 30 }, { input: { type: 'mouseDown', x, y, button: 'left', clickCount: 1 } }, { wait: 30 }, { input: { type: 'mouseUp', x, y, button: 'left', clickCount: 1 } }];
   }
   if (ev?.type === 'scroll') {
     const x = n(ev.x, 0, 20000), y = n(ev.y, 0, 20000), dx = n(ev.dx, -20000, 20000) || 0, dy = n(ev.dy, -20000, 20000) || 0;
