@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classifyModelFailure, decideRoute, replyIsProviderRefusal, providerFailureText } from '../public/model-route.mjs';
+import { classifyModelFailure, decideRoute, replyIsProviderRefusal, providerFailureText } from '../desktop/lib/model-route.mjs';
 
 const chain = [{ id: 'claude' }, { id: 'gemini' }, { id: 'opencode|qwen3' }];
 const now = 1_000_000;

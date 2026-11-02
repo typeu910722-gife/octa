@@ -11,7 +11,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { probeCodingHosts, runCodingTask, selectProvider } from '../public/coding-runtime.mjs';
+import { probeCodingHosts, runCodingTask, selectProvider } from '../desktop/lib/coding-runtime.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const web = join(root, 'public');

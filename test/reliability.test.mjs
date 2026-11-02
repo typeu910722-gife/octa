@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { classifyJobFailure, retryPrompt, stripRetryNote, failureNotice, autoRetryable, FAIL_KINDS } from '../public/model-route.mjs';
-import { buildPrompt, buildLocalPrompt } from '../public/octa-runner.mjs';
+import { classifyJobFailure, retryPrompt, stripRetryNote, failureNotice, autoRetryable, FAIL_KINDS } from '../desktop/lib/model-route.mjs';
+import { buildPrompt, buildLocalPrompt } from '../desktop/runner/index.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;
 const { onRequest } = await import(apiUrl);

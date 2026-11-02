@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { partialNote, PARTIAL_TAG, SAFE_WORK_RULES, limitSignal, buildPrompt } from '../public/octa-runner.mjs';
+import { partialNote, PARTIAL_TAG, SAFE_WORK_RULES, limitSignal, buildPrompt } from '../desktop/runner/index.mjs';
 import { googleRefused } from '../desktop/browser-catalog.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;

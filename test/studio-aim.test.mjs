@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { GOOGLE_HOME, OLLAMA_NUM_CTX, browserWindowAsk, buildBrowserPrompt, buildLocalPrompt, buildPrompt, fitLocal, forcedBrowseTask, keepBrowserTask, needsPage, ollamaContextModelfile, ollamaContextTag, planBrowserRound, scrubNotes, takeBrowserTask, takeWindowMarks, taskPrompt } from '../public/octa-runner.mjs';
+import { GOOGLE_HOME, OLLAMA_NUM_CTX, browserWindowAsk, buildBrowserPrompt, buildLocalPrompt, buildPrompt, fitLocal, forcedBrowseTask, keepBrowserTask, needsPage, ollamaContextModelfile, ollamaContextTag, planBrowserRound, scrubNotes, takeBrowserTask, takeWindowMarks, taskPrompt } from '../desktop/runner/index.mjs';
+import { runnerSource } from './runner-source.mjs';
 
 function prompt(extra = {}) {
   return buildPrompt({
@@ -78,7 +79,7 @@ test('a local model gets a short prompt and a larger context tag', () => {
   assert.ok(fitLocal('甲'.repeat(5000), 4000).length <= 4000);
   assert.match(ollamaContextModelfile('qwen3:latest'), new RegExp(`num_ctx ${OLLAMA_NUM_CTX}`));
   assert.equal(ollamaContextTag('qwen3:latest'), 'octa-ctx-qwen3-latest');
-  const src = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
+  const src = runnerSource();
   assert.match(src, /ensureOllamaContext\(name\)/);
   assert.match(src, /taskPrompt\(job, here\)/);
   assert.match(src, /refreshNotes\(job\)/);
@@ -232,7 +233,7 @@ test('a browsing round reads by snapshot ref and reports in text', () => {
   assert.equal(forcedBrowseTask({ bot: { task: '訂單', engine: 'grokbot' }, prompt: '看後台' }), null);
   assert.equal(forcedBrowseTask({ bot: { task: '房號' }, prompt: '關閉瀏覽器' }), null);
   assert.equal(forcedBrowseTask({ bot: { task: '回答' }, prompt: '你好' }), null);
-  const src = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
+  const src = runnerSource();
   assert.match(src, /const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep'/);
   assert.match(src, /const WORKER_TOOLS = 'mcp__browser,Read'/);
   assert.match(src, /--allowedTools', PARENT_TOOLS/);

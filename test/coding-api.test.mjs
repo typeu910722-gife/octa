@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { runCodingTask, selectProvider } from '../public/coding-runtime.mjs';
+import { runCodingTask, selectProvider } from '../desktop/lib/coding-runtime.mjs';
+import { runnerSource } from './runner-source.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;
 const { onRequest, schedulesFromTurn, calmReply } = await import(apiUrl);
@@ -421,7 +422,7 @@ test('a new bot that is told the quota is gone calls the backups in order', asyn
   assert.ok(kept.data.msgs.some(m => m.by === id && m.text === '人流量不夠，不建議開店'));
   const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
   assert.match(page, /模型說流量不夠或額度用完，會立刻改叫下一個備援/);
-  const runner = readFileSync(join(import.meta.dirname, '..', 'public', 'octa-runner.mjs'), 'utf8');
+  const runner = runnerSource();
   assert.match(runner, /replyIsProviderRefusal\(text\)/);
   assert.match(runner, /providerFailureText\(\[text, r\.err, r\.out\]\)/);
 });
@@ -476,7 +477,7 @@ test('dragging a message copies it, and replace removes the original', async () 
   assert.match(page, /messages\/copy/);
   assert.match(page, /加入群組/);
   assert.match(page, /確定要複製？/);
-  const runner = readFileSync(join(import.meta.dirname, '..', 'public', 'octa-runner.mjs'), 'utf8');
+  const runner = runnerSource();
   assert.match(runner, /octa:open/);
   const api = apiSource();
   assert.match(api, /body\.expand/);
@@ -521,7 +522,7 @@ test('a phone can replace the address waiting on the computer, and the open resu
   assert.equal(bad.status, 200);
   const msgs = await call(db, 'GET', 'messages', { token, query: { conv: id } });
   assert.ok(msgs.data.msgs.some(m => m.by === 'sys' && m.text.includes('無法打開')));
-  const src = readFileSync(join(import.meta.dirname, '..', 'public', 'octa-runner.mjs'), 'utf8');
+  const src = runnerSource();
   assert.match(src, /rememberOpen/);
   assert.match(src, /browserSnapshot\(port\)/);
   assert.match(src, /\.\.\.\(page \? \{ page \} : \{\}\)/);

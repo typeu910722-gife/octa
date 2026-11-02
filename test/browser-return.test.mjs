@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
-import { googleLoginDone, googleLoginMark, googleSignedIn } from '../public/octa-runner.mjs';
+import { googleLoginDone, googleLoginMark, googleSignedIn } from '../desktop/runner/index.mjs';
+import { runnerSource } from './runner-source.mjs';
 
 const read = rel => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const NOW = 1_800_000_000;
@@ -35,7 +36,7 @@ test('only a new Google sign-in in the Chrome window brings the bot back, not th
 });
 
 test('the runner, the server and the page carry the way back from the Chrome window', () => {
-  const runner = read('../public/octa-runner.mjs');
+  const runner = runnerSource();
   assert.match(runner, /export async function returnToEmbed\(bot, opts = \{\}\)/);
   assert.match(runner, /openBrowser\(bot, \{ noBack: true \}\)/, 'switching to Chrome must not bounce straight back');
   assert.match(runner, /api\('runner\/note'/);

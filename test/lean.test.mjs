@@ -1,7 +1,7 @@
 // 省 token: lean Claude Code flags and a shorter group history in the prompt
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { leanFlags, buildPrompt, GROUP_HISTORY } from '../public/octa-runner.mjs';
+import { leanFlags, buildPrompt, GROUP_HISTORY } from '../desktop/runner/index.mjs';
 
 test('lean flags only when this Claude Code knows them', () => {
   const help = '  --tools <tools...>  Specify the list\n  --disable-slash-commands  Disable all skills';
@@ -26,7 +26,7 @@ test('a group prompt keeps only the latest messages, shortened', () => {
 
 // a run whose tool never answers: stopped after the quiet time, even when something it started keeps the output pipe open
 test('a silent AI run is stopped and its slot is freed', { skip: process.platform === 'win32' }, async () => {
-  const { spawnCli } = await import('../public/octa-runner.mjs');
+  const { spawnCli } = await import('../desktop/runner/index.mjs');
   const { mkdtempSync, writeFileSync, chmodSync } = await import('node:fs');
   const { join } = await import('node:path');
   const { tmpdir } = await import('node:os');
