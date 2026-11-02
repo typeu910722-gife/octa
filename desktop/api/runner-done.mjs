@@ -578,14 +578,20 @@ export async function runnerDone(c) {
       body.shot.length < 900000
         ? body.shot
         : null;
+    // 4.2: it needs you to sign in and the phone remote is on: a link that opens its browser on the phone, ready to 接手
+    const link = env.remoteLink?.() || '';
+    const hand =
+      link && (loginStuck || /需要.{0,6}登入|接手/.test(text))
+        ? `\n\n📱 用手機接手：${link}/#web=${encodeURIComponent(job.bot_id)}`
+        : '';
     if (fail || loginStuck)
       await sendNotify(
         env,
         st,
-        failureNotice(who, job.prompt, fail ? fail.kind : 'not_logged_in', fail ? fail.msg : text),
+        failureNotice(who, job.prompt, fail ? fail.kind : 'not_logged_in', fail ? fail.msg : text) + hand,
         photo
       );
-    else if (!good || needsYou(text)) await sendNotify(env, st, `【OCTA】${who} 需要你處理：\n${text.slice(0, 600)}`);
+    else if (!good || needsYou(text)) await sendNotify(env, st, `【OCTA】${who} 需要你處理：\n${text.slice(0, 600)}${hand}`);
     else if (st.notifyAll && !JSON.parse(job.chain).length)
       await sendNotify(env, st, `【OCTA】${who} 完成：\n${text.slice(0, 600)}`);
   }

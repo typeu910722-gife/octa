@@ -33,6 +33,7 @@
       "server.mjs",
       "cloud-import.mjs",
       "cdp-bridge.mjs",
+      "screen-cast.mjs",
       "embed-layout.mjs",
       "browser-catalog.mjs",
       "preload.cjs",

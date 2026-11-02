@@ -35,7 +35,7 @@ async function scrLoop(gen){SCR.run=true;let fails=0;
     catch(e){fails++;await scrWait(Math.min(5000,400*fails))}}
   if(gen===SCR.gen)SCR.run=false}
 /* the browser is not open on the computer: the older picture (if any) and the 打開瀏覽器 button */
-function scrNone(d){SCR.none=true;SCR.hand=!!d.handed;$('wpWeb').classList.remove('scr-on');$('webCtl').hidden=true;
+function scrNone(d){SCR.none=true;SCR.hand=!!d.handed;$('wpWeb').classList.remove('scr-on');scrPaint();
   pollLive.force=true;pollLive()}
 function scrHead(r){const hand=r.headers.get('x-octa-handed')==='1';
   try{SCR.meta=JSON.parse(decodeURIComponent(r.headers.get('x-octa-meta')||'%7B%7D'))}catch(e){}
@@ -52,13 +52,13 @@ function scrShow(blob){const im=$('stPic'),old=im.dataset.blob,u=URL.createObjec
   const s=$('scr');s.dataset.fps=(SCR.times.length/3).toFixed(1);s.dataset.lat=String(SCR.lat);s.dataset.mode=SCR.meta.mode||'';
   if($('stage').hidden||!$('wpWeb').classList.contains('scr-on')){$('stage').hidden=false;$('wpWeb').classList.add('scr-on');scrPaint()}}
 /* watch only ↔ 接手: what the buttons, the address bar and the keyboard row show */
-function scrPaint(){const on=!!SCR.bot&&!SCR.none,h=on&&SCR.hand;
-  $('scrBar').hidden=!on;$('webCtl').hidden=!h;
+function scrPaint(){const on=!!SCR.bot&&!SCR.none,h=SCR.hand;
+  $('scrBar').hidden=!on;$('webCtl').hidden=!(on&&h);
   $('scrAddr').readOnly=!h;$('scrBack').disabled=!h;$('scrReload').disabled=!h;
   $('stHand').hidden=h;$('stGo').hidden=!h;$('stHold').hidden=!h;
   $('stage').classList.toggle('taken',h);
   const ask=!h&&SCR.ready===SCR.bot&&!!SCR.bot;$('scrAsk').hidden=!ask;$('stHand').classList.toggle('pulse',ask);
-  const tag=$('scrTag');tag.hidden=!on;tag.textContent=I18N.t(h?'你正在操作，機器人已暫停':'僅觀看');tag.classList.toggle('mine',h)}
+  const tag=$('scrTag');tag.hidden=!on;$('stage').classList.toggle('live',on);tag.textContent=I18N.t(h?'你正在操作，機器人已暫停':'僅觀看');tag.classList.toggle('mine',h)}
 async function scrTake(){const id=SCR.bot||webBot();if(!id)return;
   if(S.busy.some(x=>x.bot_id===id&&x.status==='running'))HAND_BUSY.add(id);
   try{await api('handoff','POST',{bot:id,on:true});SCR.hand=true;SCR.ready='';scrPaint();toast(I18N.t('已接手，機器人停止點擊'))}catch(e){toast(e.message)}}
@@ -77,8 +77,8 @@ $('stGo').onclick=()=>scrDone();
 function scrApply(){const v=SCR.view;$('scrIn').style.transform=v.s>1.001||v.x||v.y?`translate(${v.x}px,${v.y}px) scale(${v.s})`:'';$('scrZoom').hidden=v.s<=1.01}
 function scrClamp(){const v=SCR.view,r=$('scr').getBoundingClientRect();v.s=Math.min(5,Math.max(1,v.s));
   v.x=Math.min(0,Math.max(r.width*(1-v.s),v.x));v.y=Math.min(0,Math.max(r.height*(1-v.s),v.y));if(v.s<=1.01)Object.assign(v,{s:1,x:0,y:0})}
-function scrAt(x,y){const im=$('stPic');if(!im.naturalWidth)return null;
-  return scrMap({x,y},{box:$('scr').getBoundingClientRect(),img:{w:im.naturalWidth,h:im.naturalHeight},view:SCR.view,meta:SCR.meta,zoom:1,dpr:1})}
+function scrAt(x,y,clamp){const im=$('stPic');if(!im.naturalWidth)return null;
+  return scrMap({x,y},{box:$('scr').getBoundingClientRect(),img:{w:im.naturalWidth,h:im.naturalHeight},view:SCR.view,meta:SCR.meta,zoom:1,dpr:1,clamp})}
 function scrRipple(x,y,bad){const r=$('scr').getBoundingClientRect(),d=document.createElement('i');d.className='scr-rip'+(bad?' bad':'');
   d.style.left=(x-r.left)+'px';d.style.top=(y-r.top)+'px';$('scr').appendChild(d);setTimeout(()=>d.remove(),650)}
 // one at a time and in order; a page that does not answer drops the queue instead of piling up
@@ -93,7 +93,7 @@ function scrSend(path,body){const id=SCR.bot;if(!id)return Promise.resolve(null)
   const dist=()=>{const [a,b]=[...pts.values()];return Math.hypot(a.x-b.x,a.y-b.y)||1};
   const mid=()=>{const [a,b]=[...pts.values()];return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}};
   const sendScroll=()=>{flush=0;if(!g||g.kind!=='scroll'||(!acc.x&&!acc.y))return;
-    const p=scrAt(g.x0,g.y0);if(!p){acc={x:0,y:0};return}
+    const p=scrAt(g.x0,g.y0,true);if(!p){acc={x:0,y:0};return}
     const dx=Math.round(-acc.x*p.per),dy=Math.round(-acc.y*p.per);acc={x:0,y:0};
     if(dx||dy)scrSend('input',{type:'scroll',x:p.x,y:p.y,dx,dy})};
   el.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;e.preventDefault();try{el.setPointerCapture(e.pointerId)}catch(_){}
@@ -116,7 +116,7 @@ function scrSend(path,body){const id=SCR.bot;if(!id)return Promise.resolve(null)
     if(!pts.size)g=null;else if(g?.kind==='pinch')g={kind:'none'}};
   el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
   // a mouse wheel on the computer's own window scrolls the page too
-  el.addEventListener('wheel',e=>{if(!SCR.hand)return;e.preventDefault();const p=scrAt(e.clientX,e.clientY);if(p)scrSend('input',{type:'scroll',x:p.x,y:p.y,dx:Math.round(e.deltaX),dy:Math.round(e.deltaY)})},{passive:false});
+  el.addEventListener('wheel',e=>{if(!SCR.hand)return;e.preventDefault();const p=scrAt(e.clientX,e.clientY,true);if(p)scrSend('input',{type:'scroll',x:p.x,y:p.y,dx:Math.round(e.deltaX),dy:Math.round(e.deltaY)})},{passive:false});
   // no double-tap or pinch zoom of OCTA itself while the hands are on the picture (iOS ignores user-scalable)
   for(const t of ['gesturestart','gesturechange'])el.addEventListener(t,e=>e.preventDefault());
   $('scrZoom').onclick=()=>{SCR.view={s:1,x:0,y:0};scrApply()}})();

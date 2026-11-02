@@ -119,7 +119,7 @@ function notifyNew(prevTop){
     if(!document.hidden){if(cur&&conv(cur))showHint(c,needsYou(c)?'ask':'new','n:'+c+':'+l.id);else toast(who+'：'+l.text.slice(0,40))}
     if(notiOn()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||c!==cur)){
       try{const n=new Notification('OCTA · '+who,{body:l.text.replace(/\s+/g,' ').slice(0,180),icon:'/icon.png',tag:'octa-'+c});
-        n.onclick=()=>{window.focus();window.octaDesktop?.show?.();openConv(c);n.close()}}catch(e){}}}}
+        n.onclick=()=>{window.focus();window.octaDesktop?.show?.();if(needsHand(l.text)&&bot(l.by)&&!window.octaDesktop?.dock)goWeb(c,l.by);else openConv(c);n.close()}}catch(e){}}}}   // it needs you to sign in: its 瀏覽器 tab, ready to 接手
 /* 核准 nobody looked at for 15 minutes: one more notice on this device (Telegram / LINE are sent by the server) */
 const NAG_MS=15*60000;
 function apprNag(){if(!ready())return;let seen=[];try{seen=JSON.parse(store.get('octa_nag')||'[]')}catch(e){}

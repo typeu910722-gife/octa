@@ -186,9 +186,9 @@ function paintWeb(force){const ids=webIds(),id=webBot(),b=bot(id);
   setHTML($('webFt'),mine?'':live?`<button type="button" class="ghost sm" data-whide="${esc(id)}">${ic('hide')}<span>收到背景</span></button><button type="button" class="ghost sm" data-wurl="${esc(id)}">${ic('link')}<span>讓它打開網址…</span></button><button type="button" class="ghost sm" data-wshots>${ic('image')}<span>歷史畫面</span></button>`
     :`<form class="wurl" id="wurlf"><input id="wurlIn" inputmode="url" autocomplete="url" placeholder="${esc(I18N.t('不填就打開 Google'))}" aria-label="${esc(I18N.t('要打開的網址'))}"><button class="btn sm">${I18N.t('在電腦上打開')}</button></form><button type="button" class="ghost sm" data-wshots>${ic('image')}<span>歷史畫面</span></button>`);
   paintIcons($('webFt'));
-  if(!live&&!mine){pollLive.force=force||pollLive.force;pollLive()}else $('stage').hidden=true}
+  if(!live&&!mine){scrSync();if(!SCR.run||SCR.none){pollLive.force=force||pollLive.force;pollLive()}}else{$('stage').hidden=true;scrSync()}}
 $('wpWeb').addEventListener('click',e=>{const t=e.target;
-  const wb=t.closest('[data-wbot]');if(wb){WP.webBot[cur]=wb.dataset.wbot;pollLive.ts=0;renderPanel(true);return}
+  const wb=t.closest('[data-wbot]');if(wb){WP.webBot[cur]=wb.dataset.wbot;pollLive.ts=0;$('stage').hidden=true;renderPanel(true);return}
   const o=t.closest('[data-wopen]');if(o){o.disabled=true;openBrowser(o.dataset.wopen).finally(()=>{o.disabled=false});return}
   const h=t.closest('[data-whide]');if(h){openBrowser(h.dataset.whide,'',true);return}
   const u=t.closest('[data-wurl]');if(u){urlSheet(u.dataset.wurl);return}

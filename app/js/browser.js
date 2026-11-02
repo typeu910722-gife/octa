@@ -76,13 +76,13 @@ function browserModes(root){if(!DESK())return;root.querySelectorAll('[data-bm]')
       try{await api('desktop/browser-embed','POST',{bot:id,name:bot(id)?.name||''});toast(I18N.t('已改回內建瀏覽器'));el.innerHTML=''}
       catch(err){b.disabled=false;b.textContent=I18N.t('改回內建瀏覽器');toast(I18N.t(errText(err)))}}}).catch(()=>{})})}
 /* the phone (no embedded browser): a live picture of the bot's browser in the work panel's 瀏覽器 tab, with 接手 / 繼續 */
-$('stHand').onclick=()=>{const id=webBot();if(!id)return;api('handoff','POST',{bot:id,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(e=>toast(e.message))};
-$('stGo').onclick=()=>{const id=webBot();if(!id)return;api('handoff','POST',{bot:id,on:false}).catch(()=>{});sendMsg((isG(cur)?'@'+bot(id).name+' ':'')+'登入好了，繼續剛才的工作')};
+// 接手 / 我好了 are in screen.js (4.2): the same buttons work for the live stream and for the older pictures below
 async function pollLive(){
   const box=$('stage');if(!box)return;
   // only while the 瀏覽器 tab is open on a page without the embedded browser
   if(embedHere()||!cur||$('app').hidden||!panelOn()||WP.tab!=='web'){box.hidden=true;return}
   const key=webBot();if(!key||bot(key)?.browser==='mine'){box.hidden=true;return}
+  if(SCR.bot===key&&SCR.run&&!SCR.none)return;   // 4.2: the live stream (screen.js) draws the picture
   // only while the bot is working (or you took over) and this page is in front: an idle browser doesn't change
   const working=S.busy.some(x=>x.bot_id===key&&x.status==='running'),force=pollLive.force;pollLive.force=false;
   if(document.hidden||(!force&&!working&&!pollLive.hand&&pollLive.seen===key&&Date.now()-(pollLive.at||0)<60000))return;
@@ -90,17 +90,17 @@ async function pollLive(){
   let d={};try{d=await api('live/'+encodeURIComponent(key)+(pollLive.ts&&pollLive.tsFor===key?'?since='+pollLive.ts:''))}catch(e){return}
   if(webBot()!==key)return;
   pollLive.hand=!!d.handed;
-  if(d.same){box.hidden=false;$('stHold').hidden=!d.handed;return}
+  if(SCR.hand!==!!d.handed){SCR.hand=!!d.handed;scrPaint()}
+  if(d.same){box.hidden=false;return}
   if(!d.ts){box.hidden=!pollLive.shown||pollLive.tsFor!==key;if(box.hidden)lastShot(key);return}
   pollLive.ts=d.ts;pollLive.tsFor=key;pollLive.shown=true;
   box.hidden=false;
   $('stTitle').textContent=d.title||I18N.t('瀏覽器');
   $('stUrl').textContent=d.url||'';
   if(d.data)$('stPic').src='data:image/jpeg;base64,'+d.data;
-  $('stHold').hidden=!d.handed;
 }
 // nothing live: the last picture it took, so the tab is not empty
 function lastShot(id){const b=bot(id);if(!b?.shot_ts||lastShot.got===id+':'+b.shot_ts)return;lastShot.got=id+':'+b.shot_ts;
   api('shot/'+id).then(d=>d.file?fileData(d.file):d).then(d=>{if(!d.data||webBot()!==id||pollLive.tsFor===id)return;
-    $('stage').hidden=false;$('stTitle').textContent=I18N.t('最後的畫面');$('stUrl').textContent=shownPage(b.page)||'';$('stPic').src=`data:${d.mime};base64,${d.data}`;$('stHold').hidden=true}).catch(()=>{})}
+    $('stage').hidden=false;$('stTitle').textContent=I18N.t('最後的畫面');$('stUrl').textContent=shownPage(b.page)||'';$('stPic').src=`data:${d.mime};base64,${d.data}`}).catch(()=>{})}
 setInterval(()=>{if(!$('app').hidden)pollLive()},1500);

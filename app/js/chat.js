@@ -227,8 +227,8 @@ $('msgs').onclick=e=>{const t=e.target;
   const rt=t.closest('[data-retry]');if(rt){const ms=convMsgs(cur),i=ms.findIndex(x=>String(x.id)===rt.dataset.retry);
     const last=ms.slice(0,i).reverse().find(x=>x.by==='me');if(!last){toast(I18N.t('找不到上一則指示'));return}
     rt.disabled=true;sendMsg(last.text==='（附件）'?'':last.text,(last.files||[]).map(f=>f.id),last.files||[]);return}
-  const rs=t.closest('[data-resume]');if(rs){rs.disabled=true;window.octaDesktop?.control?.(rs.dataset.resume,false);api('handoff','POST',{bot:rs.dataset.resume,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作');return}   // the earlier instruction is already in the chat, don't send it again
-  const hd=t.closest('[data-hand]');if(hd){if(cur&&webIds().includes(hd.dataset.hand)){WP.webBot[cur]=hd.dataset.hand;openPanel('web',{user:true})}window.octaDesktop?.control?.(hd.dataset.hand,true);api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(err=>toast(err.message));return}
+  const rs=t.closest('[data-resume]');if(rs){rs.disabled=true;window.octaDesktop?.control?.(rs.dataset.resume,false);api('handoff','POST',{bot:rs.dataset.resume,on:false}).catch(()=>{});SCR.hand=false;scrPaint();sendMsg('登入好了，繼續剛才的工作');return}   // the earlier instruction is already in the chat, don't send it again
+  const hd=t.closest('[data-hand]');if(hd){if(cur&&webIds().includes(hd.dataset.hand)){WP.webBot[cur]=hd.dataset.hand;openPanel('web',{user:true})}window.octaDesktop?.control?.(hd.dataset.hand,true);api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));SCR.hand=true;SCR.ready='';scrPaint();pollLive()}).catch(err=>toast(err.message));return}
   const ob=t.closest('[data-openb]');if(ob){ob.disabled=true;openBrowser(ob.dataset.openb);return}
   const im=t.closest('img[data-file]');if(im)openFile(im.dataset.file);
   const fc=t.closest('[data-open-file]');if(fc)openFile(fc.dataset.openFile);

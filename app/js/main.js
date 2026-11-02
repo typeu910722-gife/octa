@@ -21,7 +21,7 @@ async function start(){$('pair').hidden=true;
   $('app').hidden=false;
   focusBrowser();
   boot.set(100,I18N.t('完成'));boot.hide();
-  render(true);live();
+  render(true);live();scrDeepLink();
   if(tourOn())startTour();else whatsNew()}
 (async()=>{boot.set(25,I18N.t('連線中…'));
   try{CFG=await (await fetch('/api/config')).json()}catch(e){}

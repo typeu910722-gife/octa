@@ -83,12 +83,14 @@ function msgPlace(m,bgKeys){if(!m)return 'work';
    view: the person's own pinch-zoom and pan of the picture {s,x,y} (transform: translate(x,y) scale(s), origin top-left)
    meta: the browser's screencast metadata {deviceWidth,deviceHeight} in DIP (frames from a 2× screen are 2× bigger:
    without metadata dpr says how many frame pixels make one DIP) · zoom: the page's own zoom (CSS px = DIP / zoom).
-   null when the touch is on the empty band around the picture. per: page CSS px moved per screen px dragged. */
+   null when the touch is on the empty band around the picture (clamp: the nearest edge of the picture instead, for
+   a drag that starts there). per: page CSS px moved per screen px dragged. */
 function scrMap(pt,o){const box=o.box,img=o.img,v=o.view||{s:1,x:0,y:0},meta=o.meta||{},zoom=+o.zoom||1,dpr=+o.dpr||1;
   if(!box||!img||!(img.w>0)||!(img.h>0)||!(box.width>0)||!(box.height>0))return null;
   const lx=(pt.x-box.left-v.x)/v.s,ly=(pt.y-box.top-v.y)/v.s;
   const k=Math.min(box.width/img.w,box.height/img.h),dw=img.w*k,dh=img.h*k,ox=(box.width-dw)/2;
-  const fx=(lx-ox)/dw,fy=ly/dh;
+  let fx=(lx-ox)/dw,fy=ly/dh;
+  if(o.clamp){fx=Math.min(1,Math.max(0,fx));fy=Math.min(1,Math.max(0,fy))}
   if(fx<0||fx>1||fy<0||fy>1)return null;
   const W=+meta.deviceWidth||img.w/dpr,H=+meta.deviceHeight||img.h/dpr;
   const r=n=>Math.round(n*10)/10;
