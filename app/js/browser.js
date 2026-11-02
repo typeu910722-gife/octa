@@ -18,7 +18,7 @@ function browserMenu(anchor){
     {open:id=>openBrowser(id),hide:id=>openBrowser(id,'',true),url:id=>urlSheet(id),shots:()=>shotSheet(ids),note:()=>toast(I18N.t('這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。'))})}
 $('browser').onclick=e=>{e.stopPropagation();browserMenu($('browser'))};
 function urlSheet(id){const b=bot(id);
-  $('veil').innerHTML=`<form class="sheet sm" id="uf">${sheetHead('讓它打開網址')}<p><span>用</span>「<span data-u>${esc(b.name)}</span>」<span>的瀏覽器打開，畫面在</span>${I18N.t(browserHint())}：</p>
+  $('veil').innerHTML=`<form class="sheet sm" id="uf">${sheetHead('讓它打開網址')}<p><span>用</span>「<span data-u>${esc(b.name)}</span>」<span>的瀏覽器打開，畫面在</span><span>${I18N.t(browserHint())}</span>：</p>
   <label class="field"><span>網址</span><input id="uu" placeholder="不填就打開 Google" value="${esc(b.page||'')}" inputmode="url"></label>
   <div class="acts"><button type="button" class="ghost" id="sx">取消</button><button class="btn">在電腦上開啟</button></div></form>`;
   $('veil').hidden=false;$('uu').focus();$('uu').select();$('sx').onclick=closeSheet;

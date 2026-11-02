@@ -1252,3 +1252,8 @@ P.extend([
  (r'^已在 Chrome 視窗登入 Google，瀏覽器已改回 OCTA 內建（帶入 (\d+) 筆網站登入），Chrome 視窗已關閉。$', 'Signed in to Google in the Chrome window. The browser is back in OCTA ($1 site sign-ins brought over) and the Chrome window is closed.', 'Chrome ウィンドウで Google にログインしました。ブラウザを OCTA 内蔵に戻し（サイトのログイン $1 件を移行）、Chrome ウィンドウを閉じました。'),
  (r'^這個機器人的 Chrome 視窗已經登入 Google，瀏覽器已改回 OCTA 內建（帶入 (\d+) 筆網站登入）。$', 'This bot’s Chrome window is already signed in to Google, so its browser is back in OCTA ($1 site sign-ins brought over).', 'このボットの Chrome ウィンドウは Google にログイン済みのため、ブラウザを OCTA 内蔵に戻しました（サイトのログイン $1 件を移行）。'),
 ])
+
+# 4.0 interface text lives in strings4.py (only adds what is missing here)
+from strings4 import T4, P4
+for _k, _v in T4.items(): T.setdefault(_k, _v)
+P.extend(P4)

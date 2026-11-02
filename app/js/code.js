@@ -31,7 +31,7 @@ async function openCode(focus){
       ${s.reason||s.error?`<p class="errmsg" data-u>${esc(s.reason||'')} ${esc(s.error||'')}</p>`:''}
       <p data-u>${esc(task.prompt)}</p>
       <div class="field"><span>驗收條件</span><div data-u>${(s.criteria||[]).map(c=>`<div>${c.met?'✓':'○'} ${esc(c.text)}${c.evidence?' — '+esc(c.evidence):''}</div>`).join('')||esc(task.criteria||'')}</div></div>
-      <div class="field"><span>測試</span>${tests.length?tests.map(t=>`<div class="log"><div class="lh"><span class="pill ${t.passed?'ok':'err'}">${t.passed?'通過':'失敗'} ${t.code??''}</span><b data-u>${esc(t.cmd)}</b></div><small data-u>${esc((t.stderr||t.stdout||'').slice(0,500))}</small></div>`).join(''):'<p class="hmuted">還沒有測試紀錄</p>'}</div>
+      <div class="field"><span>測試</span>${tests.length?tests.map(t=>`<div class="log"><div class="lh"><span class="pill ${t.passed?'ok':'err'}"><span>${t.passed?'通過':'失敗'}</span> ${t.code??''}</span><b data-u>${esc(t.cmd)}</b></div><small data-u>${esc((t.stderr||t.stdout||'').slice(0,500))}</small></div>`).join(''):'<p class="hmuted">還沒有測試紀錄</p>'}</div>
       <div class="field"><span>變更的檔案</span>${files.length?files.map(f=>`<div data-u class="mono">${esc(f.path)}</div>`).join(''):'<p class="hmuted">還沒有變更</p>'}</div>
       <div class="field"><span>git diff</span><pre class="code cdiff" data-u>${esc(s.diff||'（還沒有差異）')}</pre></div>
       <div class="field"><span>紀錄</span>${ev.length?ev.slice(-12).map(e=>`<div class="log"><div class="lh"><span class="pill">${esc(e.role||'')}</span><b data-u>${esc(e.kind||'')}</b></div><small data-u>${esc(e.text||'')}</small></div>`).join(''):'<p class="hmuted">還沒有紀錄</p>'}</div>

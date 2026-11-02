@@ -114,7 +114,7 @@ function subLine(c){const g=isG(c.id),fn=folderName(c.folder),rn=S.routines.filt
   const activeEng=runNow?String(runNow.eng).split('|')[0]:(c.engine||'claude');
   const activeModel=runNow?String(runNow.eng).split('|')[1]||'':(c.model||'');
   const modelHtml=g?`<span>${c.members.filter(bot).length} <span>位成員</span></span>`:`${esc(ENG_NAME(activeEng))}${activeModel?` <span data-u>${esc(activeModel)}</span>`:''}${activeEng!==(c.engine||'claude')?' · <span>換了備援</span>':''}`;
-  return (fn?`<span data-u>${esc(fn)}</span> · `:'')+modelHtml+(rn?` · <span>例行 ${rn}</span>`:'')+tkHtml}
+  return (fn?`<span data-u>${esc(fn)}</span> · `:'')+modelHtml+(rn?` · <span>例行</span> ${rn}`:'')+tkHtml}
 function welcomeHtml(c,g){const ex=g?['@'+(bot(c.members[0])?.name||'')+' 先整理今天的資料，再交給下一位']
     :['每天早上 9 點幫我整理今天的待辦','打開這個網站，看看有沒有新公告：','把我傳的檔案整理成表格'];
   return `<div class="welcome"><span class="av xl${g?' grp':''}"${g?'':' data-u'}>${g?gStack(c):avOf(c.id)}</span><h3 data-u>${esc(c.name)}</h3>
@@ -147,9 +147,9 @@ function renderChat(scroll){
   const acts=(m,mine)=>`<div class="mact" role="toolbar"><button type="button" data-reply="${m.id}" aria-label="回覆這則" title="回覆">${ic('reply')}</button><button type="button" data-copy-msg="${m.id}" aria-label="複製" title="複製">${ic('copy')}</button><button type="button" data-mmenu="${m.id}" aria-label="更多" title="更多">${ic('more')}</button></div>`;
   const row=(m,rk='')=>{
     if(m.by==='sys'){const t=String(m.text||''),first=t.split('\n')[0],long=t.length>70||t.includes('\n');
-      if(!long)return `<div class="sys"><span data-u>${esc(t)}</span><span class="ts">${hm(m.ts)}</span></div>`;
+      if(!long)return `<div class="sys"><span>${esc(t)}</span><span class="ts">${hm(m.ts)}</span></div>`;
       const head=first.length>48?first.slice(0,46)+'…':first;   // long background notes: one line, the rest on tap
-      return `<details class="sys sysd"${SYSOPEN.has(String(m.id))?' open':''} data-sid="${esc(String(m.id))}"><summary><span data-u>${esc(head)}</span><span class="ts">${hm(m.ts)}</span></summary><div class="sysfull" data-u>${esc(t)}</div></details>`}
+      return `<details class="sys sysd"${SYSOPEN.has(String(m.id))?' open':''} data-sid="${esc(String(m.id))}"><summary><span>${esc(head)}</span><span class="ts">${hm(m.ts)}</span></summary><div class="sysfull">${esc(t)}</div></details>`}
     if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}${rk}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'<span>傳送中…</span>':hm(m.ts)}</div></div>${m.tmp?'':acts(m,true)}</div>`;
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
     const body=APPR.test(m.text)?apprStrip(optText(m)):optText(m);
