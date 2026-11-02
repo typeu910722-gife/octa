@@ -387,7 +387,12 @@ export async function runnerDone(c) {
       .join('\n')
       .trim();
   }
-  if (shown && !(quiet && passed(shown) && !outs.length)) await addMsg(db, U, job.conv, job.bot_id, shown, outs);
+  // 4.1: what is not conversation goes to the work panel: answers to another bot's background request,
+  // a job that failed (a sign-in request stays: the person has to act on it), the compacted progress note
+  const vk = viaOf(job)?.k;
+  const msgKind =
+    vk === 'ask' || vk === 'give' || BG.test(job.prompt) ? 'bg' : !good && !LOGIN_WAIT.test(shown) ? 'fail' : vk === 'compact' ? 'note' : null;
+  if (shown && !(quiet && passed(shown) && !outs.length)) await addMsg(db, U, job.conv, job.bot_id, shown, outs, null, msgKind);
   if (job.routine && job.kind === 'chat') {
     // 排程看得到有沒有跑: this run's result goes on the routine
     const st0 = !good || body.stopped || LOGIN_WAIT.test(text) ? 'error' : passed(text) && !outs.length ? 'skipped' : 'done';

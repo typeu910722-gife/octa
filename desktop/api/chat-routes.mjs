@@ -7,6 +7,12 @@ import { ownApproval, routinesOut } from './routines.mjs';
 import { localNow } from './schedule.mjs';
 import { DAY, J, WAIT_MS, WARM, clean, err, now } from './util.mjs';
 
+// what is running now. bg: the bot is answering / doing what another bot asked (its avatar shows it chatting);
+// job: the id, for the work panel's timeline; created: when it was queued
+const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,eng,
+  CASE WHEN prompt LIKE '〔背景:%' OR via LIKE '%"k":"ask"%' OR via LIKE '%"k":"give"%' OR prompt LIKE '同事「%'
+    OR instr(substr(prompt,1,80),' 問你：')>0 OR instr(substr(prompt,1,80),'把工作交接給你：')>0 THEN 1 ELSE 0 END AS bg
+  FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')`;
 export async function chatRoutes(c) {
   const { env, db, path, m, url, body, me, U, ok } = c;
   // ---------- web app ----------
@@ -29,7 +35,7 @@ export async function chatRoutes(c) {
     const busy = (
       await db
         .prepare(
-          "SELECT conv,bot_id,status,kind,started,progress,eng FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')"
+          BUSY_SQL
         )
         .bind(U)
         .all()
@@ -42,10 +48,10 @@ export async function chatRoutes(c) {
     const convIds = [...all.bots.map(b => b.id), ...all.groups.map(g => g.id)];
     const [ur, busy, rev, ...lasts] = await db.batch([
       // recent bot replies, for unread counts and notifications
-      db.prepare("SELECT conv,id FROM messages WHERE user_id=? AND by_ NOT IN ('me','sys') ORDER BY id DESC LIMIT 100").bind(U), // D1 讀取量: every device reads this on each change
+      db.prepare("SELECT conv,id FROM messages WHERE user_id=? AND by_ NOT IN ('me','sys') AND kind IS NULL ORDER BY id DESC LIMIT 100").bind(U), // 4.1: work-panel messages are not unread conversation // D1 讀取量: every device reads this on each change
       db
         .prepare(
-          "SELECT conv,bot_id,status,kind,started,progress,eng FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')"
+          BUSY_SQL
         )
         .bind(U),
       db.prepare('SELECT rev, prog FROM users WHERE id=?').bind(U),
@@ -54,7 +60,7 @@ export async function chatRoutes(c) {
       ...convIds.map(c =>
         db
           .prepare(
-            "SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts,CASE WHEN by_<>'me' AND instr(text,'待確認')>0 THEN substr(text,instr(text,'待確認')-(CASE WHEN substr(text,instr(text,'待確認')-1,1)=' ' THEN 2 ELSE 1 END),200) END AS ask FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' ORDER BY id DESC LIMIT 1"
+            "SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts,CASE WHEN by_<>'me' AND instr(text,'待確認')>0 THEN substr(text,instr(text,'待確認')-(CASE WHEN substr(text,instr(text,'待確認')-1,1)=' ' THEN 2 ELSE 1 END),200) END AS ask FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' AND kind IS NULL ORDER BY id DESC LIMIT 1"
           )
           .bind(U, c)
       )
@@ -138,12 +144,12 @@ export async function chatRoutes(c) {
         after
           ? db
               .prepare(
-                'SELECT id,conv,by_ AS by,text,files,ts,reply FROM messages WHERE user_id=? AND conv=? AND id>? ORDER BY id LIMIT ?'
+                'SELECT id,conv,by_ AS by,text,files,ts,reply,kind FROM messages WHERE user_id=? AND conv=? AND id>? ORDER BY id LIMIT ?'
               )
               .bind(U, conv, after, lim)
           : db
               .prepare(
-                'SELECT * FROM (SELECT id,conv,by_ AS by,text,files,ts,reply FROM messages WHERE user_id=? AND conv=? AND id<? ORDER BY id DESC LIMIT ?) ORDER BY id'
+                'SELECT * FROM (SELECT id,conv,by_ AS by,text,files,ts,reply,kind FROM messages WHERE user_id=? AND conv=? AND id<? ORDER BY id DESC LIMIT ?) ORDER BY id'
               )
               .bind(U, conv, before || 9e15, lim)
       ).all()

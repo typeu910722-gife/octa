@@ -1,0 +1,98 @@
+/* OCTA 4.1: the octopus avatar (app/js/avatar.js) and the colour palette.
+   --oc is the bot's body colour, --os its star. Eyes and devices stay dark on any colour; a soft disc of the
+   bot's colour behind it keeps it readable on the light and the dark look. Still unless .live. */
+.oa{display:block;width:100%;height:100%;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--oc) 24%,var(--panel));flex:none}
+.av>.oa{position:absolute;inset:0}
+.av:has(>.oa){background:transparent;border-color:color-mix(in srgb,var(--oc,#D6B27A) 30%,var(--line))}
+.oa *{transform-box:view-box}
+.oa-legs{fill:none;stroke:var(--oc);stroke-width:34;stroke-linecap:round}
+.oa-body{fill:var(--oc)}
+.oa-eye{fill:#1c140a;transform-box:fill-box;transform-origin:center}
+.oa-shut{fill:none;stroke:#1c140a;stroke-width:11;stroke-linecap:round}
+.oa-star{fill:var(--os)}
+.oa-zs{fill:var(--oc);font-family:system-ui,sans-serif;font-weight:800}
+.oa-dk{fill:#2e241a;stroke:var(--oc);stroke-width:5}
+.oa-dm,.oa-m1,.oa-m3,.oa-ln{fill:var(--oc)}
+.oa-ln{opacity:.6}
+.oa-scr{fill:#FFF6E0}
+.oa-m2{fill:#2e241a}
+.oa-tap{fill:none;stroke:var(--oc);stroke-width:22;stroke-linecap:round}
+.oa-leg{transform-origin:var(--o)}
+.oa-o{transform-origin:256px 215px}
+.oa-m{transform-box:fill-box;transform-origin:0 50%}
+.oa-m2{transform-origin:100% 50%}
+
+/* the still pose of each state (also what reduced motion shows) */
+.oa-z1{opacity:.95;transform:translate(10px,-22px)}
+.oa-z2{opacity:.65;transform:translate(28px,-56px)}
+.oa-z3{opacity:.35;transform:translate(42px,-82px)}
+.s-thinking .oa-eyes{transform:translate(10px,-14px)}
+.oa-o1{transform:rotate(-137deg)}.oa-o2{transform:rotate(223deg)}.oa-o3{transform:rotate(-240deg)}.oa-o4{transform:rotate(260deg)}
+.oa-dev-b{opacity:0}
+.oa-dev-f{transform:translate(var(--fx),var(--fy)) var(--r1)}
+.s-browsing .oa-eyes{transform:translateY(-6px)}
+.s-chatting .oa-eyes{transform:translate(12px,8px)}
+
+/* moving */
+.oa.live .oa-bob{animation:oa-bob 3s ease-in-out infinite}
+.oa.live .oa-l1,.oa.live .oa-l2{animation:oa-swayL 3s ease-in-out infinite}
+.oa.live .oa-r1,.oa.live .oa-r2{animation:oa-swayR 3s ease-in-out infinite}
+.oa.live .oa-l2,.oa.live .oa-r2{animation-delay:-1.5s}
+.oa.live .oa-eye{animation:oa-blink 4.5s infinite}
+/* idle: nodding off */
+.oa.s-idle.live .oa-bob{transform-origin:256px 330px;animation:oa-nod 4.5s ease-in-out infinite}
+.oa.s-idle.live .oa-leg{animation-duration:4.5s}
+.oa.s-idle.live .oa-z{animation:oa-zz 3s ease-out infinite}
+.oa.s-idle.live .oa-z2{animation-delay:-1s}.oa.s-idle.live .oa-z3{animation-delay:-2s}
+/* working: quick bob, the star sparkles */
+.oa.s-working.live .oa-bob{animation:oa-bob 1.8s ease-in-out infinite}
+.oa.s-working.live .oa-leg{animation-duration:1.4s}
+.oa.s-working .oa-star{transform-box:fill-box;transform-origin:center}
+.oa.s-working.live .oa-star{animation:oa-spark 1s ease-in-out infinite}
+/* thinking: head tilted, stars circling */
+.oa.s-thinking.live .oa-bob{animation:oa-tilt 3s ease-in-out infinite;transform-origin:256px 300px}
+.oa.s-thinking.live .oa-eyes{animation:oa-look 3s ease-in-out infinite}
+.oa.s-thinking.live .oa-o0{animation:oa-orbit 3s linear 0s infinite}
+.oa.s-thinking.live .oa-o1{animation:oa-orbit 4.2s linear -1.6s infinite reverse}
+.oa.s-thinking.live .oa-o2{animation:oa-orbit 5s linear -3.1s infinite}
+.oa.s-thinking.live .oa-o3{animation:oa-orbit 3.6s linear -2.4s infinite reverse}
+.oa.s-thinking.live .oa-o4{animation:oa-orbit 6.5s linear -4.7s infinite}
+/* browsing (a laptop) and chatting (a phone): the device comes round to the front, tentacles tap */
+.oa.live .oa-dev-b{animation:oa-back 6s ease-in-out infinite}
+.oa.live .oa-dev-f{animation:oa-front 6s ease-in-out infinite}
+.oa.live .oa-show{animation:oa-show 6s linear infinite}
+.oa.s-browsing.live .oa-r1,.oa.s-chatting.live .oa-r1{animation:oa-carry 6s ease-in-out infinite}
+.oa.live .oa-tapA{animation:oa-tap .3s ease-in-out infinite}
+.oa.live .oa-tapB{animation:oa-tap .3s ease-in-out infinite;animation-delay:-.15s}
+.oa.s-chatting.live .oa-eyes{animation:oa-eyesTo 6s ease-in-out infinite}
+.oa.s-chatting.live .oa-m{animation:oa-msg 1.8s ease-out infinite}
+.oa.s-chatting.live .oa-m2{animation-delay:.4s}.oa.s-chatting.live .oa-m3{animation-delay:.8s}
+@keyframes oa-bob{50%{transform:translateY(-8px)}}
+@keyframes oa-blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.12)}}
+@keyframes oa-swayL{50%{transform:rotate(5deg)}}
+@keyframes oa-swayR{50%{transform:rotate(-5deg)}}
+@keyframes oa-nod{0%,30%{transform:rotate(0) translateY(0)}55%{transform:rotate(4deg) translateY(10px)}60%{transform:rotate(-1deg) translateY(-4px)}70%,100%{transform:rotate(0) translateY(0)}}
+@keyframes oa-zz{0%{transform:translate(0,0);opacity:0}20%{opacity:1}100%{transform:translate(46px,-90px);opacity:0}}
+@keyframes oa-spark{0%,100%{transform:scale(.6);opacity:.5}50%{transform:scale(1.1);opacity:1}}
+@keyframes oa-tilt{50%{transform:rotate(-4deg) translateY(-6px)}}
+@keyframes oa-look{0%,100%{transform:translate(10px,-14px)}50%{transform:translate(-8px,-16px)}}
+@keyframes oa-orbit{to{transform:rotate(360deg)}}
+@keyframes oa-back{0%{transform:translate(256px,215px) var(--r0);opacity:1}14%{transform:translate(var(--tx),var(--ty)) var(--r0);opacity:1}14.5%,100%{transform:translate(var(--tx),var(--ty)) var(--r0);opacity:0}}
+@keyframes oa-front{0%,14%{transform:translate(var(--tx),var(--ty)) var(--r0);opacity:0}14.5%{opacity:1}26%,84%{transform:translate(var(--fx),var(--fy)) var(--r1);opacity:1}92%,100%{transform:translate(var(--fx),var(--fy)) var(--r1);opacity:0}}
+@keyframes oa-show{0%,24%{opacity:0}28%,84%{opacity:1}90%,100%{opacity:0}}
+@keyframes oa-carry{0%{transform:rotate(0)}12%{transform:rotate(-75deg)}26%{transform:rotate(-15deg)}34%,100%{transform:rotate(0)}}
+@keyframes oa-tap{50%{transform:translateY(-12px)}}
+@keyframes oa-eyesTo{0%,20%{transform:translate(0,0)}30%,84%{transform:translate(12px,8px)}95%,100%{transform:translate(0,0)}}
+@keyframes oa-msg{0%,100%{transform:scaleX(0)}15%,80%{transform:scaleX(1)}}
+/* reduced motion: always the still pose */
+@media (prefers-reduced-motion:reduce){.oa *{animation:none!important}}
+
+/* ---------- the palette (Grok Bot style): round swatches, the picked one has a check ---------- */
+.pal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;max-width:340px}
+.sw8{position:relative;aspect-ratio:1;width:100%;max-width:40px;border-radius:50%;background:var(--oc);display:grid;place-items:center;color:#1c140a;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.08);transition:transform var(--t-fast) var(--ease),box-shadow var(--t-fast)}
+.sw8:hover{transform:scale(1.08)}
+.sw8 .icon{width:18px;height:18px;stroke-width:2.6;opacity:0;transition:opacity var(--t-fast)}
+.sw8.on{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--oc)}
+.sw8.on .icon{opacity:1}
+.sw8:focus-visible{border-radius:50%;box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}

@@ -1,7 +1,7 @@
 // How the in-app browser shares the OCTA window.
-// The chat always keeps the whole window. A thumbnail sits in the corner.
-// The opened browser is that bot's own side panel: it can be dragged and resized,
-// and it stays inside the window.
+// 4.1: the page has a work panel on the right; its 瀏覽器 tab tells the app its rectangle ('dock')
+// and the bot's browser sits exactly there. The older modes stay for a page that does not dock:
+// a thumbnail in the corner, or the bot's own side panel that can be dragged and resized.
 
 export const PAGE = { width: 1280, height: 800 };
 export const THUMB_RADIUS = 18;
@@ -147,6 +147,26 @@ export function resizeBox(winW, winH, box, edge, dx, dy) {
   return { x, y, width, height };
 }
 
+// The work panel's 瀏覽器 area, as the page measured it (CSS pixels × zoom = window pixels), kept inside the window.
+// Too small to use (a folded or squeezed panel): null, nothing is shown.
+export const DOCK_EDGE = 6;
+export const DOCK_MIN = 120;
+export function dockBox(w, h, rect, zoom) {
+  if (!rect) return null;
+  const z = Number.isFinite(+zoom) && +zoom > 0 ? +zoom : 1;
+  const n = v => (Number.isFinite(+v) ? +v * z : NaN);
+  let x = n(rect.x), y = n(rect.y), width = n(rect.width), height = n(rect.height);
+  if (![x, y, width, height].every(Number.isFinite)) return null;
+  w = Math.max(1, Math.round(w));
+  h = Math.max(1, Math.round(h));
+  x = Math.round(Math.max(0, x));
+  y = Math.round(Math.max(0, y));
+  width = Math.round(Math.min(width, w - x));
+  height = Math.round(Math.min(height, h - y));
+  if (width < DOCK_MIN || height < DOCK_MIN) return null;
+  return { x, y, width, height };
+}
+
 // thumb: a corner preview, the chat keeps the whole window. opts.dot shrinks it to a round button.
 // opts.covered: a dialog is open in the chat, so nothing is placed over it.
 // open: a side panel for this bot only. The chat stays full size underneath.
@@ -163,6 +183,20 @@ export function embedFrames(w, h, mode, at, opts) {
   }
   // a dialog in the chat is open: the browser views sit above the page, so they step aside until it closes
   if (mode === 'open' && opts?.covered) return { mode: 'hidden', main, page: null, chrome: null };
+  // dock: inside the work panel's 瀏覽器 tab. The frame (address bar, tabs, the watch/control switch) fills the
+  // area and the page sits inside it, a few pixels in from the edges. at = the area (dockBox).
+  if (mode === 'dock') {
+    const box = opts?.covered ? null : dockBox(w, h, at, opts?.zoom);
+    if (!box) return { mode: 'hidden', main, page: null, chrome: null };
+    const bar = OPEN_BAR + ENGINE_ROW + ((opts?.tabs || 0) > 0 ? TAB_ROW : 0);
+    const page = {
+      x: box.x + DOCK_EDGE,
+      y: box.y + bar,
+      width: Math.max(1, box.width - DOCK_EDGE * 2),
+      height: Math.max(1, box.height - bar - CONTROL_ROW - DOCK_EDGE)
+    };
+    return { mode: 'dock', main, box, chrome: { ...box }, page, shield: shieldFor('dock', page, opts?.control) };
+  }
   if (mode === 'open') {
     const box = sidebarBox(w, h, at);
     const edge = PANEL_EDGE;
@@ -185,10 +219,10 @@ export function embedFrames(w, h, mode, at, opts) {
   return { mode: 'hidden', main, page: null, chrome: null };
 }
 
-// Watch only is the default. The shield is the page's exact rectangle, only while the panel is open
+// Watch only is the default. The shield is the page's exact rectangle, only while the panel is open (or docked)
 // and the person has not taken control. A thumbnail's page is parked in a hidden window, so it needs none.
 export function shieldFor(mode, page, control) {
-  if (mode !== 'open' || !page || control) return null;
+  if ((mode !== 'open' && mode !== 'dock') || !page || control) return null;
   return { x: page.x, y: page.y, width: page.width, height: page.height };
 }
 

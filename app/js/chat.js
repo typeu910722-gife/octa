@@ -44,7 +44,7 @@ function loginHtml(m){const b=bot(m.by);if(!b||b.browser==='mine'||!NEEDLOGIN.te
   return `<div class="logincard"><div class="appr"><button type="button" class="btn sm" data-hand="${esc(m.by)}">${ic('hand')}<span>接手</span></button><button type="button" class="ghost sm" data-resume="${esc(m.by)}">${ic('play')}<span>繼續</span></button></div><small class="hint2">機器人已停止點擊。在旁邊的即時畫面上自己登入，再按繼續。密碼不要貼到聊天裡。</small></div>`}
 /* ✅待確認 as one clear card: what will be done, by whom, what it touches; once decided it says who decided and when */
 function apprHtml(m){if(!APPR.test(m.text||''))return '';
-  const ms=convMsgs(m.conv||cur),i=ms.findIndex(x=>x.id===m.id),after=i<0?[]:ms.slice(i+1).filter(x=>x.by!=='sys');
+  const ms=chatMsgs(m.conv||cur),i=ms.findIndex(x=>x.id===m.id),after=i<0?[]:ms.slice(i+1).filter(x=>x.by!=='sys');
   const d=apprDecision(m,after,nameOf(m.by));if(!d)return '';
   const who=esc(nameOf(m.by)),me=S.nick?`<span data-u>${esc(S.nick)}</span>`:'<span>你</span>';
   const head=(icon,lab)=>`<div class="aph"><span class="apic" aria-hidden="true">${icon}</span><span class="apt"><small>${lab}</small><b data-u>${esc(d.plan?I18N.t('照計畫執行'):d.act)}</b></span></div>`;
@@ -62,7 +62,7 @@ function apprHtml(m){if(!APPR.test(m.text||''))return '';
 // you asked to go there (a tap): open the chat and bring its waiting card into view
 function goAsk(id){if(id!==cur)openConv(id);const show=()=>{const c=[...document.querySelectorAll('#msgs .apcard.wait')].pop();if(c){c.scrollIntoView({block:'center',behavior:'smooth'});c.classList.add('qhit');setTimeout(()=>c.classList.remove('qhit'),1400)}return !!c};
   if(!show())setTimeout(show,500)}
-const lastOpen=m=>{const ms=convMsgs(m.conv||cur).filter(x=>!x.tmp&&x.by!=='sys');return ms.length&&ms[ms.length-1].id===m.id};
+const lastOpen=m=>{const ms=chatMsgs(m.conv||cur).filter(x=>!x.tmp&&x.by!=='sys');return ms.length&&ms[ms.length-1].id===m.id};
 // the choices are shown as a card: take them out of the question line so they don't appear twice
 function optText(m){if(!optsHtml(m))return m.text;const ls=String(m.text).split('\n');for(let i=ls.length-1;i>=0;i--)if(/❓|[？?]/.test(ls[i])&&/[A-Da-d][.．、)）]/.test(ls[i])){ls[i]=ls[i].replace(/\s*[（(]?[A-Da-d][.．、)）][\s\S]*$/,'');break}return ls.join('\n')}
 function optsHtml(m){if(!lastOpen(m)||!ASKRE.test(String(m.text)))return '';const o=askOpts(m.text);if(!o.length)return '';
@@ -74,28 +74,21 @@ function quoteHtml(m){if(!m?.reply)return '';
   const bit=src?String(src.text||'').replace(/\s+/g,' ').trim().slice(0,80):'';
   return `<button type="button" class="qref" data-jump="${m.reply}"><b data-u>${esc(who)}</b><span data-u>${esc(bit||I18N.t('（這則沒有留在目前畫面上）'))}</span></button>`}
 
-/* ---------- 幕後: what bots asked of / handed to each other, one folded line per stretch ---------- */
-const BS={},BSOPEN=new Set();
+/* ---------- 幕後: what bots asked of / handed to each other. Shown in the work panel (工作), never in the chat ---------- */
+const BS={};
 function loadBack(id){const real=convMsgs(id).filter(m=>!m.tmp),k=(real.length?real[real.length-1].id:0)+':'+busyIn(id).length,b=BS[id];
-  if(b&&(b.k===k||b.busy))return;BS[id]={items:b?.items||[],ok:!!b?.ok,k,busy:true};
-  api('backstage?conv='+encodeURIComponent(id)).then(d=>{BS[id]={items:d.items||[],ok:true,k,busy:false};if(cur===id)renderChat()}).catch(()=>{BS[id].busy=false})}
-function backFor(id,mc){
-  if(mc?.loaded)loadBack(id);
-  const b=BS[id],since=Date.now()-13*864e5;
-  if(!b?.ok)return{hide:()=>false,before:()=>'',rest:()=>''};
-  const first=convMsgs(id).find(m=>!m.tmp),items=b.items.filter(x=>!(mc?.more&&first&&x.created<first.ts));let i=0;
-  const take=t=>{const out=[];while(i<items.length&&(t==null||items[i].created<t))out.push(items[i++]);return out.length?backHtml(out):''};
-  return{hide:m=>m.by==='sys'&&/^🔁/.test(m.text)&&m.ts>since,before:m=>m.tmp?'':take(m.ts),rest:()=>take(null)}}
-function backHtml(list){const key=String(list[0].id),run=list.some(x=>x.status==='pending'||x.status==='running');
-  const dur=x=>x.status==='pending'?'排隊中':x.status==='running'?'進行中':x.ms==null?'':x.ms<60000?Math.max(1,Math.round(x.ms/1000))+' 秒':Math.round(x.ms/60000)+' 分鐘';
-  return `<details class="bstage" data-bs="${key}"${BSOPEN.has(key)?' open':''}><summary><span>🔁 幕後 ${list.length} 則</span>${run?' · <span>進行中</span>':''}</summary>${list.map(x=>`<div class="bsi"><b data-u>${esc(nameOf(x.from))}</b> → <b data-u>${esc(nameOf(x.to))}</b> · <span class="bsm">${x.kind==='give'?'交辦':'詢問'}</span>${dur(x)?` · <span class="bsm">${dur(x)}</span>`:''}${x.what?`<div data-u>${esc(x.what)}</div>`:''}${x.reply?`<div class="bsr" data-u>↳ ${esc(x.reply.length>500?x.reply.slice(0,500)+'…':x.reply)}</div>`:x.status==='error'?'<div class="bsm">沒有完成</div>':''}</div>`).join('')}</details>`}
-$('msgs').addEventListener('toggle',e=>{const d=e.target;if(d.dataset?.bs)d.open?BSOPEN.add(d.dataset.bs):BSOPEN.delete(d.dataset.bs)},true);
+  if(b&&(b.k===k||b.busy))return;BS[id]={items:b?.items||[],ok:!!b?.ok,k,busy:true,keys:b?.keys||new Set()};
+  api('backstage?conv='+encodeURIComponent(id)).then(d=>{const items=d.items||[];
+    BS[id]={items,ok:true,k,busy:false,keys:new Set(items.filter(x=>x.reply).map(x=>bgKey(x.to,x.reply)))};if(cur===id)render(false)}).catch(()=>{BS[id].busy=false})}
+// answers to another bot's background request (older messages carry no kind): matched by their first words
+const bgKeysFor=id=>BS[id]?.keys||null;
+const chatMsgs=id=>convMsgs(id).filter(m=>msgPlace(m,bgKeysFor(id))==='chat');
 
 /* ---------- render ---------- */
-function render(scroll){queueMicrotask(renderAsks);renderList();renderChat(scroll);if(typeof detailLive==='function')detailLive()}
+function render(scroll){queueMicrotask(renderAsks);renderList();renderChat(scroll);if(typeof renderPanel==='function')renderPanel()}
 /* a group: who is doing what right now — working with its progress line, queued, waiting on you, free */
 const GM_LABEL={run:'工作中',queue:'排隊中',ask:'等你核准',idle:'待命'};
-function groupAsks(id){const ms=convMsgs(id).filter(m=>m.by!=='sys');const out=[];
+function groupAsks(id){const ms=chatMsgs(id).filter(m=>m.by!=='sys');const out=[];
   ms.forEach((m,i)=>{if(m.by!=='me'&&!m.tmp&&APPR.test(m.text||'')&&apprDecision(m,ms.slice(i+1),nameOf(m.by))?.state==='wait')out.push(m.by)});return out}
 function paintMembers(c,g){const box=$('gmem');if(!g){box.hidden=true;return}
   const asks=[...groupAsks(c.id),...c.members.filter(id=>apprWait(id))];
@@ -125,13 +118,14 @@ function renderChat(scroll){
   const c=cur&&conv(cur);
   $('app').classList.toggle('has-conv',!!c);$('app').classList.toggle('tour',!c&&tourOn());
   ['ph','msgs','composer'].forEach(k=>$(k).hidden=!c);$('blank').hidden=!!c;
-  if(!c){$('offb').hidden=true;$('gmem').hidden=true;$('jump').hidden=true;renderBlank();$('mention').innerHTML='';setHTML($('quick'),'');paintReply();buddySync();return}
+  if(!c){$('offb').hidden=true;$('gmem').hidden=true;$('jump').hidden=true;$('failbar').hidden=true;renderBlank();$('mention').innerHTML='';setHTML($('quick'),'');paintReply();return}
   const g=isG(cur);
   paintMembers(c,g);
-  const pav=$('pav');pav.className='av'+(g?' grp':'')+(!g&&botRunning(cur)?' awake':'');setHTML(pav,g?gStack(c):avOf(c.id));pav.toggleAttribute('data-u',!g);
+  const pav=$('pav');pav.className='av'+(g?' grp':'');setHTML(pav,g?gStack(c,true):avOf(c.id,'always'));pav.setAttribute('data-u','');
   $('pname').textContent=c.name;
-  setHTML($('psub'),subLine(c));
-  $('detailBtn').setAttribute('aria-pressed',String(detailOpen()));
+  // while it works, the line under the name says what it is doing (the details are in the work panel)
+  const st=g?(busyIn(cur).some(x=>x.status==='running')?'working':''):stateOf(cur);
+  setHTML($('psub'),st&&st!=='idle'?`<span class="pst">${esc(I18N.t(STATE_LABEL[st]))}…</span> · ${subLine(c)}`:subLine(c));
   const off=!S.runnerOnline;$('offb').hidden=!off;
   if(off)setHTML($('offb'),`${ic('info')}<span>${DESK()?'機器人目前沒有在工作。訊息會先排著，OCTA 準備好就會做。':'電腦上的 OCTA 沒有在執行。訊息會先排著，電腦開機後就會做。'}</span>`);
   $('msg').placeholder=I18N.t(g&&!phoneUI()?'輸入指示，可用 @ 指定誰做':'輸入指示…');
@@ -154,21 +148,21 @@ function renderChat(scroll){
     const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
     const body=APPR.test(m.text)?apprStrip(optText(m)):optText(m);
     return `<div class="m bot${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx"><div class="mh"><b data-u>${esc(nameOf(m.by))}</b><span class="ts">${hm(m.ts)}</span></div>${quoteHtml(m)}${body||(m.files||[]).length?`<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(body)}${filesHtml(m.files)}</div>`:''}${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}</div>${acts(m,false)}</div>`};
-  const bs=backFor(cur,mc);   // 幕後: bot-to-bot requests, folded where they happened
-  // runs: messages from the same sender a few minutes apart show the name and face once
-  const shown=convMsgs(cur).filter(m=>!bs.hide(m)),same=(a,b)=>!!a&&!!b&&a.by!=='sys'&&a.by===b.by&&Math.abs((b.ts||0)-(a.ts||0))<5*60000&&new Date(a.ts).toDateString()===new Date(b.ts).toDateString();
+  loadBack(cur);   // 幕後 (for the work panel, and to tell older background answers apart)
+  // the conversation only: what you said, replies, pictures and files, approvals, questions. The rest is in the work panel.
+  const shown=chatMsgs(cur),same=(a,b)=>!!a&&!!b&&a.by!=='sys'&&a.by===b.by&&Math.abs((b.ts||0)-(a.ts||0))<5*60000&&new Date(a.ts).toDateString()===new Date(b.ts).toDateString();
   if(mc?.loaded&&!shown.length&&!busyIn(cur).length&&!mc.more)mh+=welcomeHtml(c,g);
-  mh+=shown.map((m,i)=>{const pre=bs.before(m);const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day"><span>${esc(dayLabel(m.ts))}</span></div>`}return pre+sep+row(m,(same(shown[i-1],m)&&!sep?' cont':'')+(same(m,shown[i+1])?'':' tail'))}).join('')+bs.rest();
-  const bz=busyIn(cur);
-  if(bz.length){const run=bz.find(b=>b.status==='running');
-    const what=run?(run.kind==='open'?esc(nameOf(run.bot_id))+' <span>的瀏覽器正在顯示…</span>':`<b data-u>${esc(nameOf(run.bot_id))}</b> <span>${run.kind==='code'?'程式任務':run.progress&&/搜尋/.test(run.progress)?'搜尋':run.progress&&/測試/.test(run.progress)?'測試':run.progress&&/修復|修改|寫入/.test(run.progress)?'修改':'處理'}中…</span>`+(run.progress?`<span class="prog" data-u>${esc(run.progress)}</span>`:'')+(run.eng&&run.eng.split('|')[0]!==(c.engine||'claude')?` · <span>備援</span> ${esc(ENG_NAME(run.eng.split('|')[0]))}`:'')):`<span>${S.runnerOnline?'排隊中…':'等電腦上的 OCTA 開始工作…'}</span>`;
-    mh+=`<div class="work"><span class="spinner" aria-hidden="true"></span><span class="wt">${run&&run.kind==='chat'&&run.started?`<span class="el" data-since="${run.started}">${elapsed(run.started)}</span> `:''}${what}</span><button type="button" class="ghost sm" id="stop">${ic('stop')}<span>停止</span></button></div>`}
+  mh+=shown.map((m,i)=>{const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day"><span>${esc(dayLabel(m.ts))}</span></div>`}return sep+row(m,(same(shown[i-1],m)&&!sep?' cont':'')+(same(m,shown[i+1])?'':' tail'))}).join('');
+  // it is answering you: a small "typing" bubble with its face, nothing more (progress, steps and 停止 are in the work panel)
+  const typing=busyIn(cur).filter(x=>x.status==='running'&&x.kind==='chat'&&!+x.bg&&bot(x.bot_id));
+  if(typing.length)mh+=typing.map(x=>`<button type="button" class="m bot typing" data-wgo="work" aria-label="${esc(nameOf(x.bot_id))} ${esc(I18N.t(STATE_LABEL[stateOf(x.bot_id)]||'工作中'))}"><span class="av sm" data-u>${avOf(x.bot_id,'always')}</span><span class="tdots" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('');
   const changed=setHTML(box,mh);if(changed){loadThumbs(box);paintIcons(box)}
   if(switched||scroll){box.scrollTop=box.scrollHeight;$('jump').hidden=true}
   else if(changed){if(atBottom)box.scrollTo({top:box.scrollHeight,behavior:'smooth'});else $('jump').hidden=false}
   if(atBottom||switched||scroll){markSeen(cur)}
   paintReply();
-  buddySync();
+  paintFail(c);
+  paintSend();
 }
 $('msgs').addEventListener('toggle',e=>{const d=e.target;if(d.dataset?.sid)d.open?SYSOPEN.add(d.dataset.sid):SYSOPEN.delete(d.dataset.sid)},true);
 
@@ -199,7 +193,7 @@ function openConv(id,opt){
   if(!$('app').classList.contains('chat'))navPush('chat');
   if(PEND[id]){pending=PEND[id];delete PEND[id]}
   renderAtt();loadDraft();render(true);$('app').classList.add('chat');
-  if(changed&&detailOpen())openDetail();
+  if(changed)panelConv();
   focusBrowser();
   loadMsgs(id,MSG[id]?.loaded?'new':'first').then(()=>{if(cur===id)render(true)}).catch(()=>{});
   publishFocus(id);
@@ -208,18 +202,17 @@ function openConv(id,opt){
 $('jump').onclick=()=>{const b=$('msgs');b.scrollTo({top:b.scrollHeight,behavior:'smooth'});$('jump').hidden=true};
 $('msgs').addEventListener('scroll',()=>{const b=$('msgs');if(b.scrollHeight-b.scrollTop-b.clientHeight<60){$('jump').hidden=true;if(cur&&unread(cur)){markSeen(cur);render(false)}}},{passive:true});
 $('back').onclick=()=>{saveDraft();$('app').classList.remove('chat');navPop('chat');focusBrowser()};
-$('who').onclick=()=>{if(cur)toggleDetail()};
+$('who').onclick=()=>{if(cur)toggleDetail()};   // the name opens 詳細資料 in the work panel
 // a big screen can fold the conversation list away (remembered on this device)
 function setRail(open){$('app').classList.toggle('rail-collapsed',!open);$('railToggle').setAttribute('aria-pressed',String(!open));store.set('octa_rail',open?null:'0')}
 $('railToggle').onclick=()=>{setRail($('app').classList.contains('rail-collapsed'));focusBrowser()};
 if(store.get('octa_rail')==='0')setRail(false);
-$('detailBtn').onclick=()=>toggleDetail();
 $('more2').onclick=e=>{e.stopPropagation();if(!cur)return;itemMenu($('more2'),cur)};
 
 /* ---------- clicks inside the conversation ---------- */
 const msgById=id=>convMsgs(cur).find(x=>String(x.id)===String(id));
 $('msgs').onclick=e=>{const t=e.target;
-  if(t.closest('#stop')){api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()});return}
+  if(t.closest('[data-wgo]')){openPanel(t.closest('[data-wgo]').dataset.wgo,{user:true});return}
   const jp=t.closest('[data-jump]');if(jp){const el=document.querySelector(`#msgs [data-mid="${jp.dataset.jump}"]`);if(el){el.scrollIntoView({block:'center',behavior:'smooth'});el.classList.add('qhit');setTimeout(()=>el.classList.remove('qhit'),1200)}return}
   if(t.id==='older'){const box=$('msgs'),h0=box.scrollHeight,id=cur;t.disabled=true;
     loadMsgs(id,'older').then(()=>{if(cur!==id)return;renderChat(false);box.scrollTop=box.scrollHeight-h0}).catch(()=>{t.disabled=false});return}
@@ -235,7 +228,7 @@ $('msgs').onclick=e=>{const t=e.target;
     const last=ms.slice(0,i).reverse().find(x=>x.by==='me');if(!last){toast(I18N.t('找不到上一則指示'));return}
     rt.disabled=true;sendMsg(last.text==='（附件）'?'':last.text,(last.files||[]).map(f=>f.id),last.files||[]);return}
   const rs=t.closest('[data-resume]');if(rs){rs.disabled=true;window.octaDesktop?.control?.(rs.dataset.resume,false);api('handoff','POST',{bot:rs.dataset.resume,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作');return}   // the earlier instruction is already in the chat, don't send it again
-  const hd=t.closest('[data-hand]');if(hd){window.octaDesktop?.control?.(hd.dataset.hand,true);api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(err=>toast(err.message));return}
+  const hd=t.closest('[data-hand]');if(hd){if(cur&&webIds().includes(hd.dataset.hand)){WP.webBot[cur]=hd.dataset.hand;openPanel('web',{user:true})}window.octaDesktop?.control?.(hd.dataset.hand,true);api('handoff','POST',{bot:hd.dataset.hand,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(err=>toast(err.message));return}
   const ob=t.closest('[data-openb]');if(ob){ob.disabled=true;openBrowser(ob.dataset.openb);return}
   const im=t.closest('img[data-file]');if(im)openFile(im.dataset.file);
   const fc=t.closest('[data-open-file]');if(fc)openFile(fc.dataset.openFile);
@@ -279,7 +272,7 @@ function pickTarget(m){const list=[...S.groups,...S.bots].filter(c=>c.id!==cur);
 
 /* ---------- a group member asks you something: a side card to answer that one bot ---------- */
 function askDismissed(){try{return JSON.parse(store.get('octa_askx')||'[]')}catch(e){return []}}
-function openAsks(){if(!cur||!isG(cur))return [];const c=conv(cur);if(!c)return [];const ms=convMsgs(cur).filter(m=>!m.tmp&&m.by!=='sys'),gone=askDismissed(),out=[];
+function openAsks(){if(!cur||!isG(cur))return [];const c=conv(cur);if(!c)return [];const ms=chatMsgs(cur).filter(m=>!m.tmp&&m.by!=='sys'),gone=askDismissed(),out=[];
   for(const id of c.members){const b=bot(id);if(!b)continue;let i=ms.length-1;while(i>=0&&ms[i].by!==id)i--;
     if(i<0||!ASKRE.test(String(ms[i].text))||/@\S/.test(String(ms[i].text).trim().split('\n').pop())||gone.includes(ms[i].id))continue;   // a question @ another member isn't for you
     const after=ms.slice(i+1),mine=after.filter(m=>m.by==='me');

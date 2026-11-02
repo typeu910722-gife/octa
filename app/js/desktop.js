@@ -7,7 +7,8 @@ function focusBrowser(){
   if($('app').hidden){window.octaDesktop?.focusBot?.('')?.catch?.(()=>{});return}
   const paneOn=!phoneUI()||$('app').classList.contains('chat');
   const id=paneOn&&cur&&bot(cur)?cur:'';
-  window.octaDesktop?.focusBot?.(id)?.catch?.(()=>{})}
+  window.octaDesktop?.focusBot?.(id)?.catch?.(()=>{});
+  if(typeof dockSync==='function')dockSync()}   // 4.1: the browser itself sits in the work panel's 瀏覽器 tab
 // the switch under the bot's browser. 取得控制權 = 接手 (the bot stops clicking), 僅觀看 = 繼續.
 // Going back to watching only asks the bot to carry on when it was in the middle of something (or waiting for a sign-in).
 const HAND_BUSY=new Set();
@@ -27,18 +28,18 @@ window.octaDesktop?.onStage?.(d=>{
   let pip=null,last=null,queued=false;
   const hit=(a,b)=>!!(a&&b)&&a.left<b.x+b.width&&a.right>b.x&&a.top<b.y+b.height&&a.bottom>b.y;
   const under=el=>{if(!pip||pip.mode!=='thumb'||!el||el.hidden)return 0;const r=el.getBoundingClientRect();return pip.x<r.right&&pip.x+pip.width>r.left?Math.max(0,Math.round(r.bottom-pip.y+8)):0};
-  const pad=()=>{const h=under($('msgs')),hd=under($('detail'));
+  const pad=()=>{const h=under($('msgs')),hd=under($('wp'));
     document.documentElement.classList.toggle('pip',h>0||hd>0);document.documentElement.style.setProperty('--pip',h+'px');document.documentElement.style.setProperty('--pipd',hd+'px')};
   const setPip=d=>{pip=d&&Number.isFinite(+d.x)?d:null;pad()};
   const check=()=>{queued=false;const b=$('boot'),menu=document.querySelector('.menu');
-    const on=!$('veil').hidden||!!document.querySelector('.mveil')||!!document.querySelector('.dguard')||(!!b&&!b.hidden&&!b.classList.contains('done'))||(!!menu&&hit(menu.getBoundingClientRect(),pip));
+    const on=!$('veil').hidden||!!document.querySelector('.mveil')||!!document.querySelector('.dguard')||(!!b&&!b.hidden&&!b.classList.contains('done'))||(!!menu&&(hit(menu.getBoundingClientRect(),pip)||hit(menu.getBoundingClientRect(),WP.dock)));
     if(on===last)return;const was=last;last=on;
     D.cover(on).then(()=>{if(!on&&was)return D.pip?.().then(setPip)}).catch(()=>{})};
   const soon=()=>{if(!queued){queued=true;requestAnimationFrame(check)}};
   const mo=new MutationObserver(soon);mo.observe(document.body,{childList:true});
   mo.observe($('veil'),{attributes:true,attributeFilter:['hidden']});if($('boot'))mo.observe($('boot'),{attributes:true,attributeFilter:['hidden','class']});
   D.onPip?.(d=>{if(!last)setPip(d)});D.pip?.().then(setPip).catch(()=>{});
-  addEventListener('resize',pad);if(window.ResizeObserver){new ResizeObserver(pad).observe($('msgs'));new ResizeObserver(pad).observe($('detail'))}check()})();
+  addEventListener('resize',pad);if(window.ResizeObserver){new ResizeObserver(pad).observe($('msgs'));new ResizeObserver(pad).observe($('wp'))}check()})();
 
 /* ---------- app updates (GitHub Releases, through the desktop app) ---------- */
 const UPD=window.octaDesktop?.update;

@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('octaDesktop', {
   call: (path, body) => ipcRenderer.invoke('octa:desk', path, body),   // this-computer features: status, install AI, autostart, phone remote…
   show: () => ipcRenderer.invoke('octa:show'),   // bring the window forward (notification clicked)
   focusBot: id => ipcRenderer.invoke('octa:focus-bot', id || ''),   // only this bot's browser stays on screen
+  dock: rect => ipcRenderer.invoke('octa:dock', rect || null),   // 4.1: the work panel's 瀏覽器 area {x, y, width, height, bot, theme} (CSS px); null hides the browser
   onStage: cb => ipcRenderer.on('octa:stage', (_e, d) => cb(d)),
   control: (id, on) => ipcRenderer.invoke('octa:control', String(id || ''), !!on),   // the chat's 接手/繼續 also flips the browser's watch-only switch
   cover: on => ipcRenderer.invoke('octa:cover', !!on),   // a dialog is open: the bot's browser steps aside

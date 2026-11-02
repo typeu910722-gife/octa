@@ -58,11 +58,13 @@ export const bump = (db, userId) =>
       return r;
     });
 
-export async function addMsg(db, userId, conv, by, text, files = null, reply = null) {
+// kind: null for conversation; 'bg' | 'fail' | 'note' go to the work panel instead of the chat (MSG_KINDS)
+export const MSG_KINDS = ['bg', 'fail', 'note'];
+export async function addMsg(db, userId, conv, by, text, files = null, reply = null, kind = null) {
   const rid = Number.isInteger(reply) && reply > 0 ? reply : null;
   await db
-    .prepare('INSERT INTO messages (user_id,conv,by_,text,files,ts,reply) VALUES (?,?,?,?,?,?,?)')
-    .bind(userId, conv, by, text, files && files.length ? JSON.stringify(files) : null, now(), rid)
+    .prepare('INSERT INTO messages (user_id,conv,by_,text,files,ts,reply,kind) VALUES (?,?,?,?,?,?,?,?)')
+    .bind(userId, conv, by, text, files && files.length ? JSON.stringify(files) : null, now(), rid, MSG_KINDS.includes(kind) ? kind : null)
     .run();
 }
 // chain: list of bot ids (all use `prompt`) or {b, p} steps
@@ -91,7 +93,7 @@ export async function loadAll(db, userId) {
   const [b, g, f, r] = await db.batch([
     db
       .prepare(
-        'SELECT id,name,task,folder,engine,model,avatar,browser,shot_ts,shot_file,page,bpc,fb,autonomy,stood FROM bots WHERE user_id=? ORDER BY created'
+        'SELECT id,name,task,folder,engine,model,avatar,color,browser,shot_ts,shot_file,page,bpc,fb,autonomy,stood FROM bots WHERE user_id=? ORDER BY created'
       )
       .bind(userId),
     db.prepare('SELECT id,name,task,members,folder FROM groups_ WHERE user_id=? ORDER BY created').bind(userId),
@@ -193,7 +195,10 @@ const MIGRATIONS = [
   'ALTER TABLE routines ADD COLUMN last_status TEXT',
   'ALTER TABLE routines ADD COLUMN last_job INTEGER',
   'ALTER TABLE routines ADD COLUMN last_text TEXT',
-  'ALTER TABLE jobs ADD COLUMN routine TEXT'
+  'ALTER TABLE jobs ADD COLUMN routine TEXT',
+  // 4.1: each bot's avatar colour; what is conversation and what goes to the work panel
+  'ALTER TABLE bots ADD COLUMN color TEXT',
+  'ALTER TABLE messages ADD COLUMN kind TEXT'
 ];
 const schemaReady = new WeakSet();
 export async function ensureSchema(db) {
@@ -217,7 +222,9 @@ export async function ensureSchema(db) {
         "SELECT id FROM jobs INDEXED BY job_created WHERE user_id='' AND created>0",
         'SELECT beat FROM jobs',
         'SELECT last_run, last_status, last_job, last_text FROM routines',
-        'SELECT routine FROM jobs'
+        'SELECT routine FROM jobs',
+        'SELECT color FROM bots',
+        'SELECT kind FROM messages'
       ].map(q => db.prepare(q + ' LIMIT 0'))
     );
     schemaReady.add(db);

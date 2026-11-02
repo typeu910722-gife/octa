@@ -328,6 +328,7 @@ export async function boardData(env, db, U) {
         id: b.id,
         name: b.name,
         avatar: b.avatar,
+        color: b.color || null,
         d7: pack(r.wd, r.wf, r.wms, r.wt, r.wtk, r.ww),
         d30: pack(r.md, r.mf, r.mms, r.mt, r.mtk, r.mw)
       };

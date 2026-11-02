@@ -168,6 +168,11 @@ let focusBotId = '';
 // a dialog or menu is open in the chat page: the browser views sit above the page, so they step aside
 let covered = false;
 let pipSent = 'null';
+// 4.1: the page docks the open bot's browser in its work panel (瀏覽器 tab). Once it has said so, the floating
+// thumbnail / side panel are not used: the browser shows only in that rectangle, and is hidden otherwise.
+let docking = false;
+let dockRect = null;
+let dockTheme = 'dark';
 const thumbDot = () => !!cfg.thumbDot;
 function fitView(view, bounds, visible) {
   if (!view || !bounds) return;
@@ -211,7 +216,7 @@ function sendFrame(bucket, extra) {
   const page = bucket.active?.webContents;
   const tabs = bucket.tabs.map((v, i) => ({ i, on: v === bucket.active, title: tabTitle(v.webContents) }));
   const engines = ENGINE_IDS.map(id => ({ id, label: ENGINE_LABEL[id], on: id === (bucket.engine || 'chrome'), state: bucket.downloading === id ? 'down' : (ownedExe(id) ? 'ready' : 'none') }));
-  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.shown || 'thumb', dot: thumbDot(), control: !!bucket.control, url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...extra });
+  wc.send('octa:browser-frame', { name: bucket.name, mode: bucket.docked ? 'dock' : bucket.shown || 'thumb', theme: dockTheme, dot: thumbDot(), control: !!bucket.control, url: shownUrl(page), canBack: canGoBack(page), tabs, engines, blocked: !!bucket.blocked, downloading: bucket.downloading || '', percent: bucket.percent || 0, error: bucket.engineError || '', ...extra });
 }
 function roundChrome(view, radius, solid) {
   if (!view) return;
@@ -309,7 +314,7 @@ function raiseView(view) {
   try { win.contentView.addChildView(view); } catch { }
 }
 function placeBucket(bucket, frames) {
-  const page = frames.mode === 'open' && frames.page ? bucket.active : null;
+  const page = (frames.mode === 'open' || frames.mode === 'dock') && frames.page ? bucket.active : null;
   for (const v of bucket.tabs) {
     if (v === page) continue;
     // the active tab stays visible off to the side, so a thumbnail can still photograph it
@@ -319,14 +324,14 @@ function placeBucket(bucket, frames) {
     // put the panel back above the chat every time, so a reload cannot cover it
     raiseView(bucket.chrome);
     fitView(bucket.chrome, frames.chrome, true);
-    roundChrome(bucket.chrome, frames.dot ? Math.floor(frames.chrome.width / 2) : THUMB_RADIUS, frames.mode === 'open');
+    roundChrome(bucket.chrome, frames.mode === 'dock' ? 12 : frames.dot ? Math.floor(frames.chrome.width / 2) : THUMB_RADIUS, frames.mode !== 'thumb');
   }
   // the page sits above the panel frame; the frame's edges stay outside the page and can still be grabbed
   if (page && frames.page && win) {
     try { bucket.host?.contentView.removeChildView(page); } catch { }
     raiseView(page);
     fitView(page, frames.page, true);
-    roundChrome(page, 12, true);
+    roundChrome(page, frames.mode === 'dock' ? 8 : 12, true);
   }
   // watch only: the shield goes on top of the page, exactly over it
   placeShield(bucket, page ? frames.shield : null);
@@ -342,11 +347,28 @@ function tellPip(pip) {
   pipSent = next;
   try { win.webContents.send('octa:pip', pip || null); } catch { }
 }
+// the work panel's 瀏覽器 tab: only the bot shown there, exactly in its rectangle; every other browser is parked
+function layoutDocked(w, h) {
+  const zoom = win.webContents.getZoomFactor?.() || 1;
+  for (const bucket of embeds.values()) {
+    const frames = bucket.shown && bucket.botId === focusBotId && dockRect   // 收到背景 (not shown) keeps it out of the tab
+      ? embedFrames(w, h, 'dock', dockRect, { tabs: bucket.tabs.length, control: !!bucket.control, covered, zoom })
+      : { mode: 'hidden' };
+    const was = !!bucket.docked;
+    bucket.docked = frames.mode === 'dock';
+    stopThumbs(bucket);
+    if (!bucket.docked) { holdOffscreen(bucket); continue; }
+    placeBucket(bucket, frames);
+    if (!was) sendFrame(bucket, {});
+  }
+  tellPip(null);
+}
 function layoutEmbed() {
   if (!win || win.isDestroyed()) return;
   const [w, h] = win.getContentSize();
   const main = win.contentView.children.find(v => v.webContents === win.webContents);
   fitView(main, { x: 0, y: 0, width: w, height: h }, true);
+  if (docking) { layoutDocked(w, h); return; }
   let pip = null;
   for (const bucket of embeds.values()) {
     if (!onScreen(bucket)) {
@@ -588,12 +610,15 @@ async function embedShow(port, show) {
   if (!bucket || !win || win.isDestroyed()) return;
   const mode = show === 'open' || show === 'thumb' ? show : (show ? (bucket.shown === 'open' ? 'open' : 'thumb') : false);
   bucket.shown = mode || false;
-  // an explicit open while no chat is focused still has to land on screen
-  if (mode && !focusBotId) focusBotId = bucket.botId;
+  // an explicit open while no chat is focused still has to land on screen (not when docking: the page decides)
+  if (mode && !focusBotId && !docking) focusBotId = bucket.botId;
+  // docking: the page puts a dot on its 瀏覽器 tab
+  if (mode && docking) try { win.webContents.send('octa:stage', { bot: bucket.botId, act: 'shown', mode }); } catch { }
   if (!mode) {
     detachChrome(bucket);
     for (const v of bucket.tabs) parkView(bucket, v, false);
-  } else if (mode === 'thumb') startThumbs(bucket);
+  } else if (docking) stopThumbs(bucket);
+  else if (mode === 'thumb') startThumbs(bucket);
   else { stopThumbs(bucket); sendFrame(bucket, { mode: 'open' }); }
   layoutEmbed();
 }
@@ -639,7 +664,7 @@ async function embedStart(bot, port) {
   const adapter = {
     list: () => [...bucket.pages].filter(([, p]) => !p.wc.isDestroyed()).map(([id, p]) => ({ id, title: p.wc.getTitle(), url: p.wc.getURL() || 'about:blank' })),
     bounds: () => {
-      if (bucket.shown === 'open') {
+      if (bucket.shown === 'open' || bucket.docked) {
         const b = bucket.active?.getBounds?.() || {};
         return { windowId: 1, bounds: { left: 0, top: 0, width: b.width > 50 ? b.width : PAGE.width, height: b.height > 50 ? b.height : PAGE.height, windowState: 'normal' } };
       }
@@ -768,7 +793,7 @@ function chromeBucket(sender) {
 ipcMain.on('octa:browser-toggle', e => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);
-  if (!bucket || bucket.dragging) return;
+  if (!bucket || bucket.dragging || docking) return;   // docked: the work panel folds it, not the frame
   embedShow(bucket.port, bucket.shown === 'open' ? 'thumb' : 'open');
 });
 ipcMain.on('octa:browser-back', e => {
@@ -960,7 +985,7 @@ ipcMain.on('octa:browser-drag-start', e => {
   try {
     if (!trusted(e) || !win || win.isDestroyed()) { e.returnValue = none; return; }
     const bucket = chromeBucket(e.sender);
-    if (!bucket || (bucket.shown !== 'thumb' && bucket.shown !== 'open') || covered || (bucket.shown === 'thumb' && thumbDot())) { e.returnValue = none; return; }
+    if (!bucket || docking || (bucket.shown !== 'thumb' && bucket.shown !== 'open') || covered || (bucket.shown === 'thumb' && thumbDot())) { e.returnValue = none; return; }
     const [w, h] = win.getContentSize();
     const box = panelFrom(bucket, w, h);
     bucket.dragging = true;
@@ -1023,7 +1048,21 @@ handle('octa:control', (_e, id, on) => {
   if (on && bucket.shown !== 'open') void embedShow(bucket.port, 'open');   // taking over to sign in: show the page to sign in on
   return setControl(bucket, !!on, false);
 });
+// 4.1: where the page's 瀏覽器 tab is ({x, y, width, height, bot, theme} in CSS pixels), or null to hide the browser.
+handle('octa:dock', (_e, d) => {
+  docking = true;
+  const ok = d && typeof d === 'object' && ['x', 'y', 'width', 'height'].every(k => Number.isFinite(+d[k]));
+  dockRect = ok ? { x: +d.x, y: +d.y, width: +d.width, height: +d.height } : null;
+  if (ok && typeof d.bot === 'string') focusBotId = d.bot.slice(0, 64);
+  const theme = d?.theme === 'light' ? 'light' : 'dark';
+  const themed = theme !== dockTheme;
+  dockTheme = theme;
+  layoutEmbed();
+  if (themed) for (const bucket of embeds.values()) sendFrame(bucket, {});
+  return !!dockRect;
+});
 handle('octa:focus-bot', (_e, id) => {
+  if (docking) return focusBotId;   // the work panel's dock call says which bot (a group member, too)
   const next = String(id || '');
   if (next === focusBotId) return focusBotId;
   focusBotId = next;

@@ -3,7 +3,8 @@
 const showBrowserLabel=()=>window.octaDesktop?'打開瀏覽器':'在電腦上打開瀏覽器';
 const browserHint=()=>window.octaDesktop?'這個視窗裡的瀏覽器':'電腦上 OCTA 的瀏覽器';
 async function openBrowser(id,url,hide){const b=bot(id);if(!b)return false;
-  if(!hide&&window.octaDesktop?.focusBot){try{await window.octaDesktop.focusBot(id)}catch(e){}}
+  if(!hide&&embedHere()&&cur&&webIds().includes(id)){WP.webBot[cur]=id;openPanel('web')}   // it opens inside the work panel's 瀏覽器 tab
+  else if(!hide&&window.octaDesktop?.focusBot){try{await window.octaDesktop.focusBot(id)}catch(e){}}
   try{await api('open','POST',{bot:id,conv:cur,url:url||'',hide:!!hide,expand:!hide});toast(I18N.t(!S.runnerOnline?'電腦上的 OCTA 沒有在執行，開始後就會處理':hide?'已收到背景':(window.octaDesktop?'已打開':'已請電腦打開瀏覽器')));refresh();return true}
   catch(e){toast(e.message);return false}}
 const phoneRemote=()=>phoneUI()&&!window.octaDesktop;
@@ -16,7 +17,6 @@ function browserMenu(anchor){
     :`${isG(cur)?`<div class="lab" data-u>${esc(b.name)}</div>`:''}${mi('open','monitor',showBrowserLabel(),id)}${mi('hide','hide','收到背景',id)}${isG(cur)?'':mi('url','link','讓它打開網址…',id)}`};
   popMenu(anchor,ids.map(one).join('<hr>')+'<hr>'+mi('shots','image','歷史畫面'),
     {open:id=>openBrowser(id),hide:id=>openBrowser(id,'',true),url:id=>urlSheet(id),shots:()=>shotSheet(ids),note:()=>toast(I18N.t('這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。'))})}
-$('browser').onclick=e=>{e.stopPropagation();browserMenu($('browser'))};
 function urlSheet(id){const b=bot(id);
   $('veil').innerHTML=`<form class="sheet sm" id="uf">${sheetHead('讓它打開網址')}<p><span>用</span>「<span data-u>${esc(b.name)}</span>」<span>的瀏覽器打開，畫面在</span><span>${I18N.t(browserHint())}</span>：</p>
   <label class="field"><span>網址</span><input id="uu" placeholder="不填就打開 Google" value="${esc(b.page||'')}" inputmode="url"></label>
@@ -75,26 +75,32 @@ function browserModes(root){if(!DESK())return;root.querySelectorAll('[data-bm]')
     el.querySelector('[data-embed]').onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent=I18N.t('切換中…');
       try{await api('desktop/browser-embed','POST',{bot:id,name:bot(id)?.name||''});toast(I18N.t('已改回內建瀏覽器'));el.innerHTML=''}
       catch(err){b.disabled=false;b.textContent=I18N.t('改回內建瀏覽器');toast(I18N.t(errText(err)))}}}).catch(()=>{})})}
-/* the phone (no embedded browser): a live picture of the bot's browser while it works, with 接手 / 繼續 */
-$('stHand').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(e=>toast(e.message))};
-$('stGo').onclick=()=>{if(!cur||isG(cur))return;api('handoff','POST',{bot:cur,on:false}).catch(()=>{});sendMsg('登入好了，繼續剛才的工作')};
+/* the phone (no embedded browser): a live picture of the bot's browser in the work panel's 瀏覽器 tab, with 接手 / 繼續 */
+$('stHand').onclick=()=>{const id=webBot();if(!id)return;api('handoff','POST',{bot:id,on:true}).then(()=>{toast(I18N.t('已接手，機器人停止點擊'));pollLive()}).catch(e=>toast(e.message))};
+$('stGo').onclick=()=>{const id=webBot();if(!id)return;api('handoff','POST',{bot:id,on:false}).catch(()=>{});sendMsg((isG(cur)?'@'+bot(id).name+' ':'')+'登入好了，繼續剛才的工作')};
 async function pollLive(){
   const box=$('stage');if(!box)return;
-  if(window.octaDesktop||!cur||isG(cur)||$('app').hidden){box.hidden=true;return}
+  // only while the 瀏覽器 tab is open on a page without the embedded browser
+  if(embedHere()||!cur||$('app').hidden||!panelOn()||WP.tab!=='web'){box.hidden=true;return}
+  const key=webBot();if(!key||bot(key)?.browser==='mine'){box.hidden=true;return}
   // only while the bot is working (or you took over) and this page is in front: an idle browser doesn't change
-  const working=busyIn(cur).some(x=>x.status==='running'),key=cur;
-  if(document.hidden||(!working&&!pollLive.hand&&pollLive.seen===key&&Date.now()-(pollLive.at||0)<60000))return;
+  const working=S.busy.some(x=>x.bot_id===key&&x.status==='running'),force=pollLive.force;pollLive.force=false;
+  if(document.hidden||(!force&&!working&&!pollLive.hand&&pollLive.seen===key&&Date.now()-(pollLive.at||0)<60000))return;
   pollLive.at=Date.now();pollLive.seen=key;
-  let d={};try{d=await api('live/'+encodeURIComponent(cur)+(pollLive.ts&&pollLive.tsFor===key?'?since='+pollLive.ts:''))}catch(e){return}
-  if(cur!==key)return;
+  let d={};try{d=await api('live/'+encodeURIComponent(key)+(pollLive.ts&&pollLive.tsFor===key?'?since='+pollLive.ts:''))}catch(e){return}
+  if(webBot()!==key)return;
   pollLive.hand=!!d.handed;
   if(d.same){box.hidden=false;$('stHold').hidden=!d.handed;return}
-  if(!d.ts){box.hidden=true;return}
-  pollLive.ts=d.ts;pollLive.tsFor=key;
+  if(!d.ts){box.hidden=!pollLive.shown||pollLive.tsFor!==key;if(box.hidden)lastShot(key);return}
+  pollLive.ts=d.ts;pollLive.tsFor=key;pollLive.shown=true;
   box.hidden=false;
   $('stTitle').textContent=d.title||I18N.t('瀏覽器');
   $('stUrl').textContent=d.url||'';
   if(d.data)$('stPic').src='data:image/jpeg;base64,'+d.data;
   $('stHold').hidden=!d.handed;
 }
+// nothing live: the last picture it took, so the tab is not empty
+function lastShot(id){const b=bot(id);if(!b?.shot_ts||lastShot.got===id+':'+b.shot_ts)return;lastShot.got=id+':'+b.shot_ts;
+  api('shot/'+id).then(d=>d.file?fileData(d.file):d).then(d=>{if(!d.data||webBot()!==id||pollLive.tsFor===id)return;
+    $('stage').hidden=false;$('stTitle').textContent=I18N.t('最後的畫面');$('stUrl').textContent=shownPage(b.page)||'';$('stPic').src=`data:${d.mime};base64,${d.data}`;$('stHold').hidden=true}).catch(()=>{})}
 setInterval(()=>{if(!$('app').hidden)pollLive()},1500);

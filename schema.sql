@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS bots (
   bpc TEXT,                      -- the computer that has its browser (logins)
   fb TEXT,                       -- backup AIs: JSON ["engine|model", …], used in order when the AI runs out of quota
   autonomy TEXT,                 -- 'auto' (just do it) | 'report' (do it, then tell; default) | 'ask' (ask before important actions)
-  stood INTEGER                  -- 1: 24-hour standby was set once (by the person or by default); never turned on again by itself
+  stood INTEGER,                 -- 1: 24-hour standby was set once (by the person or by default); never turned on again by itself
+  color TEXT                     -- 4.1: the octopus avatar's body colour (#RRGGBB, one of the palette); null = default gold
 );
 CREATE TABLE IF NOT EXISTS groups_ (
   id TEXT PRIMARY KEY,
@@ -93,7 +94,8 @@ CREATE TABLE IF NOT EXISTS messages (
   text TEXT NOT NULL,
   files TEXT,                    -- JSON [{id,name,mime}]
   ts INTEGER NOT NULL,
-  reply INTEGER                  -- id of the message in this conversation this one answers
+  reply INTEGER,                 -- id of the message in this conversation this one answers
+  kind TEXT                      -- 4.1: null = conversation; 'bg' background bot-to-bot, 'fail' a failed job, 'note' long system context (shown in the work panel, not the chat)
 );
 CREATE INDEX IF NOT EXISTS msg_user ON messages(user_id, id);
 CREATE INDEX IF NOT EXISTS msg_conv ON messages(user_id, conv, id);

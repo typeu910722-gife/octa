@@ -15,7 +15,7 @@ const ready=()=>!!(S.loaded&&!$('app').hidden);
 
 const HEAVY=/^(template|pair|engine-test|desktop\/install|desktop\/remote|desktop\/autostart)/;
 async function api(path,method='GET',body){
-  const quiet=/^(state|wait|busy|job\/|file\/|messages|shot\/|ai-usage|code\/|focus$|live\/|backstage|settings$)/.test(path);
+  const quiet=/^(state|wait|busy|job\/|file\/|messages|shot\/|ai-usage|code\/|focus$|live\/|backstage|logs\?|settings$)/.test(path);
   if(!quiet)ybar.on(HEAVY.test(path));
   try{return await api_(path,method,body)}finally{if(!quiet)ybar.off()}
 }
@@ -81,7 +81,6 @@ const bot=id=>S.bots.find(b=>b.id===id);
 const conv=id=>bot(id)||S.groups.find(g=>g.id===id);
 const isG=id=>!!id&&id.startsWith('g-');
 const init=n=>esc((n||'?').slice(0,1));
-const avOf=id=>{const b=bot(id);return b?.avatar?`<span class="emo">${esc(b.avatar)}</span>`:init(b?b.name:nameOf(id))};
 const nameOf=by=>by==='me'?I18N.t('你'):by==='sys'?I18N.t('系統'):(bot(by)?.name||I18N.t('已刪除'));
 const convMsgs=id=>MSG[id]?.list||[];
 const busyIn=id=>S.busy.filter(b=>b.conv===id);
@@ -97,11 +96,11 @@ function markSeen(id){const ids=[...convMsgs(id).filter(m=>!m.tmp).map(m=>m.id),
 const needsYou=id=>{const l=lastOf(id);return !!l&&l.by!=='me'&&l.by!=='sys'&&(/✅\s*待確認/.test(l.ask||l.text)||/需要使用者在電腦上登入/.test(l.text))};   // ask: the ✅ line even when it is past the preview's 140 characters
 const apprWait=id=>{if((S.gask||{})[id])return true;const l=lastOf(id);return !!l&&l.by!=='me'&&l.by!=='sys'&&(APPR.test(l.ask||'')||APPR.test(l.text||''))};   // gask: a group's open card even when someone spoke after it
 const apprConvs=()=>[...S.bots,...S.groups].filter(x=>apprWait(x.id));
-function preview(id){const ms=convMsgs(id).filter(x=>x.by!=='sys'&&!x.tmp),l=lastOf(id),m=ms.length&&(!l||ms[ms.length-1].id>=l.id)?ms[ms.length-1]:l;
+function preview(id){const ms=convMsgs(id).filter(x=>!x.tmp&&msgPlace(x)==='chat'&&x.by!=='sys'),l=lastOf(id),m=ms.length&&(!l||ms[ms.length-1].id>=l.id)?ms[ms.length-1]:l;
   if(!m)return conv(id).task||'';
   const plain=m.by==='me'?m.text:m.text.replace(/```[\s\S]*?```/g,' ').replace(/^#{1,4}\s+|^\s*[-*•>]\s+|\*\*|__|`|~~/gm,'').replace(/\|/g,' ').replace(/\s+/g,' ').trim();
   return (m.by==='me'?I18N.t('你：'):isG(id)?nameOf(m.by)+'：':'')+plain}
-function listTime(id){const l=lastOf(id),ms=convMsgs(id).filter(m=>!m.tmp),m=ms[ms.length-1],ts=Math.max(l?.ts||0,m?.ts||0);if(!ts)return '';
+function listTime(id){const l=lastOf(id),ms=convMsgs(id).filter(m=>!m.tmp&&msgPlace(m)==='chat'),m=ms[ms.length-1],ts=Math.max(l?.ts||0,m?.ts||0);if(!ts)return '';
   const d=new Date(ts),n=new Date(),y=new Date(n);y.setDate(n.getDate()-1);
   if(d.toDateString()===n.toDateString())return hm(ts);if(d.toDateString()===y.toDateString())return I18N.t('昨天');
   if(n-d<6*864e5)return d.toLocaleDateString(I18N.lang,{weekday:'short'});

@@ -1,7 +1,7 @@
 // Routes that manage bots, groups, folders (分區), routines and templates.
 import { NAME_SPACE, NAME_SPACE_ERR, STANDBY, autoStandby, autonomyOk, noSpaces } from './chat.mjs';
 import { addMsg, getSettings, loadAll } from './db.mjs';
-import { avatarOk, engineOk, fbOk, modelOk } from './engines.mjs';
+import { PALETTE, avatarOk, colorOk, engineOk, fbOk, modelOk } from './engines.mjs';
 import { ROUTINE_NEEDS_PROMPT, tidyScan, triggerFrom } from './routines.mjs';
 import { cleanTimes, isEvery, localNow } from './schedule.mjs';
 import { TEMPLATES_I18N, TEMPLATE_AVATARS } from './templates.mjs';
@@ -31,11 +31,13 @@ export async function manageRoutes(c) {
       }
     }
     const map = {};
-    for (const b of t.bots) {
+    // each template bot gets its own colour, so a team is easy to tell apart
+    const used = (await loadAll(db, U)).bots.length;
+    for (const [i, b] of t.bots.entries()) {
       map[b.k] = uid();
       await db
-        .prepare('INSERT INTO bots (id,user_id,name,task,folder,avatar,created) VALUES (?,?,?,?,?,?,?)')
-        .bind(map[b.k], U, b.name, b.task, folder, TEMPLATE_AVATARS[b.k] || null, now())
+        .prepare('INSERT INTO bots (id,user_id,name,task,folder,avatar,color,created) VALUES (?,?,?,?,?,?,?,?)')
+        .bind(map[b.k], U, b.name, b.task, folder, TEMPLATE_AVATARS[b.k] || null, PALETTE[(used + i) % PALETTE.length], now())
         .run();
     }
     for (const g of t.groups)
@@ -111,11 +113,13 @@ export async function manageRoutes(c) {
     if (NAME_SPACE.test(name)) return err(NAME_SPACE_ERR);
     const { folders, bots } = await loadAll(db, U);
     if (bots.some(b => b.name === name)) return err('已經有同名的機器人，名字要不同才能用 @ 叫它');
+    const color = colorOk(body.color);
+    if (color === undefined) return err('顏色不正確');
     const id = uid(),
       engine = engineOk(body.engine);
     await db
       .prepare(
-        'INSERT INTO bots (id,user_id,name,task,folder,engine,model,avatar,browser,created,fb,autonomy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+        'INSERT INTO bots (id,user_id,name,task,folder,engine,model,avatar,color,browser,created,fb,autonomy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
       )
       .bind(
         id,
@@ -126,6 +130,7 @@ export async function manageRoutes(c) {
         engine,
         modelOk(engine, body.model),
         avatarOk(body.avatar),
+        color,
         body.browser === 'mine' ? 'mine' : null,
         now(),
         fbOk(body.fb),
@@ -149,9 +154,11 @@ export async function manageRoutes(c) {
       const engine = engineOk(body.engine);
       const fb = body.fb === undefined ? JSON.stringify(old?.fb || []) : fbOk(body.fb);
       const autonomy = body.autonomy === undefined ? old?.autonomy || null : autonomyOk(body.autonomy);
+      const color = body.color === undefined ? old?.color || null : colorOk(body.color); // left out: keep the colour it has
+      if (color === undefined) return err('顏色不正確');
       await db
         .prepare(
-          'UPDATE bots SET name=?,task=?,folder=?,engine=?,model=?,avatar=?,browser=?,fb=?,autonomy=? WHERE id=? AND user_id=?'
+          'UPDATE bots SET name=?,task=?,folder=?,engine=?,model=?,avatar=?,color=?,browser=?,fb=?,autonomy=? WHERE id=? AND user_id=?'
         )
         .bind(
           name,
@@ -159,7 +166,8 @@ export async function manageRoutes(c) {
           folderOk(folders, body.folder),
           engine,
           modelOk(engine, body.model),
-          avatarOk(body.avatar),
+          body.avatar === undefined ? old?.avatar || null : avatarOk(body.avatar),
+          color,
           body.browser === 'mine' ? 'mine' : null,
           fb,
           autonomy,

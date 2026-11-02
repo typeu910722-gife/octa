@@ -45,3 +45,35 @@ const nameProblem=(v,old)=>{v=String(v||'').trim();if(!v)return '請填名稱';i
 const pairCode=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 // a name for a new bot that no other bot has yet
 const freeName=(base,taken)=>{const s=new Set(taken);if(!s.has(base))return base;for(let n=2;;n++)if(!s.has(base+n))return base+n};
+/* ---------- 4.1: the octopus avatar, its colour, and what it is doing ---------- */
+// the palette a bot's colour is picked from (desktop/api/engines.mjs has the same list); the first is the default gold
+const PALETTE=[['#D6B27A','金'],['#E8A87C','杏桃'],['#D98B5F','陶土'],['#E58C8A','珊瑚'],['#E79AB5','玫瑰'],['#C58BC8','梅紫'],['#B9A3E3','丁香'],
+  ['#9DB4F0','長春花'],['#7EC4E6','天空'],['#6CC5B8','湖水'],['#9BD39A','薄荷'],['#BFCB7A','抹茶'],['#C8B6A0','奶茶'],['#9FAAB8','石板']];
+const OC_DEFAULT='#D6B27A',OC_STAR='#E2A93B';
+const colorHex=c=>{const v=String(c||'').trim().toUpperCase();return /^#[0-9A-F]{6}$/.test(v)?v:''};
+// the star under the octopus: the same hue as its body, richer and a little darker (the default gold keeps its own star)
+function accentOf(c){const hex=colorHex(c)||OC_DEFAULT;if(hex===OC_DEFAULT)return OC_STAR;
+  const n=parseInt(hex.slice(1),16),r=(n>>16&255)/255,g=(n>>8&255)/255,b=(n&255)/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2,d=mx-mn;
+  let h=0,s=0;if(d){s=d/(1-Math.abs(2*l-1));h=(mx===r?((g-b)/d+6)%6:mx===g?(b-r)/d+2:(r-g)/d+4)*60}
+  const s2=Math.min(.78,s+.14),l2=Math.max(.45,l-.08),a=s2*Math.min(l2,1-l2);
+  const ch=k=>{const q=(k+h/30)%12;return Math.round((l2-a*Math.max(-1,Math.min(q-3,9-q,1)))*255).toString(16).padStart(2,'0')};
+  return ('#'+ch(0)+ch(8)+ch(4)).toUpperCase()}
+// what a bot is doing, for its avatar: idle · thinking (started, nothing to show yet) · working · browsing · chatting (with another bot)
+const BROWSE_RE=/^(第 \d+ 步：|打開 \S|點擊「|在「[^」]*」輸入|填寫表單|讀取網頁(內容|資料)?$|截圖|選擇選項|切換分頁|等待網頁載入|按鍵盤|回上一頁|操作瀏覽器|自己重新登入)/;
+function botState(id,busy){const run=(busy||[]).find(x=>x.bot_id===id&&x.status==='running');if(!run)return 'idle';
+  if(+run.bg)return 'chatting';
+  if(run.kind==='open')return 'browsing';
+  const p=String(run.progress||'').trim();
+  if(!p||/^(開始工作|AI 沒有回應)/.test(p))return 'thinking';
+  return BROWSE_RE.test(p)?'browsing':'working'}
+/* what belongs in the conversation and what goes to the work panel (工作) beside it.
+   The chat keeps what you said, the bots' replies, pictures, files, approval cards and questions for you.
+   bgKeys: "bot|first 60 characters" of answers to background requests (older messages carry no kind). */
+const LOGIN_NOTE=/需要你在電腦上登入|需要使用者在電腦上登入/;
+const bgKey=(by,text)=>by+'|'+String(text||'').replace(/\s+/g,' ').trim().slice(0,60);
+function msgPlace(m,bgKeys){if(!m)return 'work';
+  if(m.tmp||m.by==='me')return 'chat';
+  if(m.kind==='bg'||m.kind==='fail'||m.kind==='note')return 'work';
+  if(m.by==='sys')return LOGIN_NOTE.test(String(m.text||''))?'chat':'work';
+  if(bgKeys&&bgKeys.has(bgKey(m.by,m.text)))return 'work';
+  return 'chat'}

@@ -59,6 +59,20 @@
   /* the switch stays centred under the page; the short note sits to its right when there is room */
   .ctlnote { position: absolute; left: calc(50% + 100px); right: 4px; font-size: 11px; color: #e7d3a1; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   @media (max-width: 640px) { .ctlnote { display: none; } }
+  /* 4.1 docked in the work panel's 瀏覽器 tab: no dragging, no 收回 (the panel folds it), and it follows the light look */
+  body.dock #card { border-radius: 12px; }
+  body.dock .edges, body.dock #collapse { display: none !important; }
+  body.dock .bar { cursor: default; }
+  body.light { color: #1f1d1a; }
+  body.light #card { background: #ffffff; border-color: #e7e3da; }
+  body.light .bar { background: #ffffff; }
+  body.light .tool, body.light .back { border-color: #d8d3c7; color: #4f4b44; }
+  body.light .tab { border-color: #d8d3c7; }
+  body.light .tab.on, body.light .engines button.on { background: #96661a; border-color: #96661a; color: #fff; }
+  body.light input { background: #f3f1ec; border-color: #d8d3c7; color: #1f1d1a; }
+  body.light .engines.warn { background: #f6ecd8; }
+  body.light .ctlnote { color: #7c776d; }
+  body.light .ctl { background: #f3f1ec; border-color: #d8d3c7; box-shadow: none; }
   /* while you have control the frame turns brighter, so it is clear the bot has stopped */
   body.open.mine #card { border-color: #f0c674; box-shadow: inset 0 0 0 1px #f0c674; }
 </style>
@@ -133,7 +147,7 @@
     }
     function track(el, edge) {
       el.addEventListener('pointerdown', e => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || document.body.classList.contains('dock')) return;
         if (!edge && (document.body.classList.contains('open') ? e.target.closest('button, input, a') : false)) return;
         if (!edge && document.body.classList.contains('open') === false && el !== hit) return;
         if (edge && !document.body.classList.contains('open')) return;
@@ -237,10 +251,13 @@
       }
     }
     if (api()) api().onFrame(d => {
-      document.body.classList.toggle('open', d.mode === 'open');
-      document.body.classList.toggle('dot', !!d.dot && d.mode !== 'open');
+      const open = d.mode === 'open' || d.mode === 'dock';
+      document.body.classList.toggle('open', open);
+      document.body.classList.toggle('dock', d.mode === 'dock');
+      document.body.classList.toggle('light', d.mode === 'dock' && d.theme === 'light');
+      document.body.classList.toggle('dot', !!d.dot && !open);
       if (d.name) document.getElementById('dot').title = d.name + '：展開瀏覽器預覽';
-      hit.setAttribute('aria-label', d.mode === 'open' ? '收回瀏覽器' : '打開瀏覽器');
+      hit.setAttribute('aria-label', open ? '收回瀏覽器' : '打開瀏覽器');
       if (d.name) name.textContent = d.name;
       paintControl(!!d.control);
       if (d.jpeg) pic.src = 'data:image/jpeg;base64,' + d.jpeg;

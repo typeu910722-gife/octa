@@ -6,10 +6,10 @@ document.addEventListener('keydown',e=>{
   if(mod&&e.key===','&&app){e.preventDefault();openSettings()}
   if(app&&((mod&&k==='n'&&window.octaDesktop)||(e.altKey&&k==='n'))){e.preventDefault();newBotSheet()}
   if(mod&&k==='k'&&app){e.preventDefault();focusSearch()}
-  if(mod&&k==='i'&&app&&cur){e.preventDefault();toggleDetail()}
+  if(mod&&k==='i'&&app&&cur){e.preventDefault();togglePanel()}
   if(e.key==='Escape'&&document.querySelector('.dguard')){document.querySelector('.dguard').remove();return}
   if(e.key==='Escape'&&!$('veil').hidden&&!document.querySelector('.menu')){closeSheet();return}
-  if(e.key==='Escape'&&detailOpen()&&$('veil').hidden&&!document.querySelector('.menu')&&$('detail').contains(document.activeElement))closeDetail()});
+  if(e.key==='Escape'&&panelOn()&&$('veil').hidden&&!document.querySelector('.menu')&&$('wp').contains(document.activeElement))closePanel()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cur)renderChat(false)});
 addEventListener('resize',()=>{focusBrowser()});
 async function start(){$('pair').hidden=true;
@@ -19,9 +19,8 @@ async function start(){$('pair').hidden=true;
     boot.set(50,I18N.t('連不上 OCTA，重試中…'));setTimeout(start,3000);return}
   if(cur)await loadMsgs(cur,'first').catch(()=>{});
   $('app').hidden=false;
-  focusBrowser();buddyBoot();
+  focusBrowser();
   boot.set(100,I18N.t('完成'));boot.hide();
-  if(cur&&innerWidth>1180&&store.get('octa_detail')==='1')openDetail();   // a narrower window would cover the chat
   render(true);live();
   if(tourOn())startTour();else whatsNew()}
 (async()=>{boot.set(25,I18N.t('連線中…'));

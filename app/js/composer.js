@@ -12,7 +12,10 @@ function paintTo(){const el=$('sendTo');if(!el)return;const t=cur&&sendTargets(c
   el.hidden=false;el.dataset.to=cur;$('f').dataset.to=cur;const g=isG(cur);
   setHTML(el,`<span class="stl">傳給：</span><span class="av xs${g?' grp':''}"${g?'':' data-u'}>${g?ic('users'):avOf(cur)}</span><b data-u>${esc(t.c.name)}</b>${t.names.length?`<span class="stm" data-u>→ ${t.names.map(n=>'@'+esc(n)).join(' ')}</span>`:''}`)}
 let pending=[];
-function grow(){const t=$('msg');$('f').classList.toggle('empty',!t.value.trim()&&!pending.length);if(!t.offsetParent){t.style.height='';return}t.style.height='auto';t.style.height=Math.min(Math.max(t.scrollHeight,24),200)+'px'}   // hidden (phone list view): measure later
+// while it works and the box is empty, the send button is a stop button (like Claude); typing turns it back into 送出
+function paintSend(){const f=$('f'),run=!!cur&&busyIn(cur).some(x=>x.status==='running'),on=run&&!$('msg').value.trim()&&!pending.length;
+  if(f.classList.contains('stopping')===on)return;f.classList.toggle('stopping',on);$('sendBtn').setAttribute('aria-label',I18N.t(on?'停止':'送出'));$('sendBtn').title=on?I18N.t('停止目前的工作'):''}
+function grow(){const t=$('msg');$('f').classList.toggle('empty',!t.value.trim()&&!pending.length);paintSend();if(!t.offsetParent){t.style.height='';return}t.style.height='auto';t.style.height=Math.min(Math.max(t.scrollHeight,24),200)+'px'}   // hidden (phone list view): measure later
 $('msg').addEventListener('input',()=>{grow();clearTimeout(grow.t);grow.t=setTimeout(saveDraft,400);paintTo()});
 
 /* "/" at the start: built-in actions, saved instructions and the bot's skills; "@" in a group: members */
@@ -85,6 +88,7 @@ async function sendMsg(v,files=[],meta,reply,to){const c=to||cur,fs=meta||pendin
   try{await api('messages','POST',{conv:c,text:v,files,reply:reply||undefined});refresh();return true}
   catch(err){mc.list=mc.list.filter(m=>!m.tmp);render(false);toast(err.message);return false}}
 $('f').onsubmit=async e=>{e.preventDefault();let v=$('msg').value.trim();
+  if($('f').classList.contains('stopping')&&!v&&!pending.length){$('sendBtn').disabled=true;api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()}).catch(err=>toast(err.message)).finally(()=>{$('sendBtn').disabled=false});return}
   // the chat named in 傳給 when the key is pressed; if it changed a moment ago, ask for one more press
   const to=$('f').dataset.to||cur;
   if(!to||to!==cur||(TO.prev&&Date.now()-TO.at<700)){TO.prev='';paintTo();toast(I18N.t('傳送對象剛換了，確認「傳給」後再按一次送出'));return}
@@ -130,7 +134,7 @@ function plusMenu(){const c=conv(cur);if(!c)return;const g=isG(cur),qk=(S.quick|
    {file:()=>$('fileIn').click(),slash:startSlash,
     at:v=>{const i=$('msg');i.value=(i.value.trimEnd()+' @'+v+' ').trimStart();grow();paintTo();i.focus()},
     q:v=>{const q=qk[+v];if(!q)return;const i=$('msg');if(i.value.trim()){i.value+='\n'+q;grow();i.focus()}else sendMsg(q)}})}
-// the ↓ button and 小八 float just above the box, whatever its height
+// the ↓ button floats just above the box, whatever its height
 if(window.ResizeObserver)new ResizeObserver(()=>{const h=$('composer').offsetHeight;if(h)$('pane').style.setProperty('--compH',h+'px')}).observe($('composer'));
 // keep the newest message in view when the keyboard (or anything else) makes the list shorter
 (()=>{const box=$('msgs');let stick=true;box.addEventListener('scroll',()=>{stick=box.scrollHeight-box.scrollTop-box.clientHeight<80},{passive:true});

@@ -51,14 +51,13 @@ SEC.look=()=>{
   block('sLang','語言','介面文字和機器人回覆用的語言。').innerHTML=`<div class="row2">${I18N.select('sLangSel')}</div>`;
   const nick=block('sNick','怎麼稱呼你','沒填的話，機器人會直接用「你」稱呼你。規則或資料裡寫的「老闆」，機器人也會當成是你。');
   nick.innerHTML=`<div class="row2"><input id="nick" maxlength="20" class="grow" value="${esc(S.nick||'')}" placeholder="例如：Yz、阿哲"><button class="btn sm" id="nickGo">儲存</button></div><span class="dflag" data-dirty-flag hidden>有未儲存的變更</span>`;
-  block('sBuddy','小八','輸入框旁邊的章魚小幫手：機器人在工作時跟著忙，做好了會跳一下告訴你，有機器人等你回覆會舉手。點他可以看誰在工作、跳到要回覆的對話。').innerHTML=toggleRow('buddyOn','顯示小八',buddyOn());
   document.querySelectorAll('[data-set-theme]').forEach(x=>x.addEventListener('click',()=>x.parentNode.querySelectorAll('[role=radio]').forEach(r=>r.setAttribute('aria-checked',String(r===x)))));
   $('sLangSel').onchange=e=>setLang(e.target.value);
   $('fsRange').oninput=e=>applyFs(e.target.value);
   const save=async()=>{const v=$('nick').value.trim();try{await api('settings','PUT',{nick:v});S.nick=v;cleanDirty();return true}catch(e){toast(e.message);return false}};
   trackDirty(nick,save);
   $('nickGo').onclick=async()=>{if(await save())toast(I18N.t('已儲存 ✓'))};
-  $('buddyOn').onclick=e=>{const on=!buddyOn();buddyStore('octa_buddy',on?'1':'0');swSet(e.currentTarget,on);buddySync()}};
+};
 
 /* ---------- 瀏覽器 ---------- */
 SEC.browser=async()=>{

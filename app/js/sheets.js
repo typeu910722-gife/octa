@@ -80,7 +80,7 @@ new MutationObserver(()=>{if(!$('veil').hidden){if(NAV[NAV.length-1]!=='sheet')n
 (function(){let sx=0,sy=0,on=false;
 document.addEventListener('touchstart',e=>{const t=e.touches[0];on=false;if(!phoneUI()||t.clientX>=28||document.querySelector('.menu'))return;
   if(!$('veil').hidden&&$('veil').querySelector('.sheet.page'))on='page';   // a full page slides back the same way
-  else if($('veil').hidden&&$('app').classList.contains('detail-on'))on='detail';
+  else if($('veil').hidden&&$('app').classList.contains('wp-on'))on='detail';
   else if($('veil').hidden&&$('app').classList.contains('chat'))on='chat';
   sx=t.clientX;sy=t.clientY},{passive:true});
 document.addEventListener('touchend',e=>{if(!on)return;const k=on;on=false;const t=e.changedTouches[0];if(t.clientX-sx<70||Math.abs(t.clientY-sy)>=60)return;

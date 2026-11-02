@@ -81,6 +81,15 @@ export const avatarOk = a => {
   const v = clean(a, 16);
   return v && !/[<>&"']/.test(v) ? v : null;
 };
+// 4.1: every bot is the OCTA octopus in a colour picked from this palette (app/js/pure.js has the same list).
+// A custom #RRGGBB is accepted too. null = the default gold.
+export const PALETTE = ['#D6B27A', '#E8A87C', '#D98B5F', '#E58C8A', '#E79AB5', '#C58BC8', '#B9A3E3', '#9DB4F0', '#7EC4E6', '#6CC5B8', '#9BD39A', '#BFCB7A', '#C8B6A0', '#9FAAB8'];
+// '' / null → null (default); a palette value or #rrggbb → upper-case #RRGGBB; anything else → undefined (refused)
+export const colorOk = c => {
+  if (c == null || String(c).trim() === '') return null;
+  const v = String(c).trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(v) ? v : undefined;
+};
 // grokbot: the model field holds the Grok Bot's name. opencode is only used with local Ollama models (no paid APIs): "qwen3" → "ollama/qwen3"
 export const modelOk = (engine, m) => {
   const v = clean(m, 80) || null;

@@ -1,12 +1,13 @@
 /* OCTA web app — the sidebar: conversations by 分區, pins, approvals, search, drag and drop, row menus. */
 'use strict';
 let FOLDED=new Set();try{FOLDED=new Set(JSON.parse(store.get('octa_folded')||'[]'))}catch(e){}
-const gStack=g=>{const ms=g.members.filter(bot).slice(0,3);return ms.length?`<span class="gst" aria-hidden="true">${ms.map(id=>`<span class="gsa" data-u>${avOf(id)}</span>`).join('')}</span>`:ic('users')};
+const gStack=(g,live)=>{const ms=g.members.filter(bot).slice(0,3);return ms.length?`<span class="gst" aria-hidden="true">${ms.map(id=>`<span class="gsa">${avOf(id,live)}</span>`).join('')}</span>`:ic('users')};
 function listTag(id){return apprWait(id)?'<i class="need ap">待你核准</i>':needsYou(id)?'<i class="need">待你處理</i>':cur!==id&&unread(id)?`<i class="ub">${unread(id)}</i>`:''}
-function rowHtml(c){const g=isG(c.id),on=cur===c.id,run=g?busyIn(c.id).length:botRunning(c.id),muted=(S.mute||{})[c.id];
+// a bot's face moves only while it is doing something (many rows: the idle ones stay still)
+function rowHtml(c){const g=isG(c.id),on=cur===c.id,muted=(S.mute||{})[c.id],st=g?'':stateOf(c.id);
   return `<div class="iw" draggable="true" data-drag="${c.id}" data-dragname="${esc(c.name)}" data-dropbot="${c.id}"><button class="item${on?' on':''}" data-id="${c.id}"${on?' aria-current="true"':''}>
-    <span class="av${g?' grp':''}"${g?'':' data-u'}>${g?gStack(c):avOf(c.id)}${run?'<i class="dot" title="工作中"></i>':''}</span>
-    <span class="t"><span class="l1"><b data-u>${esc(c.name)}</b>${muted?`<span class="mut" title="已關閉通知">${ic('belloff')}</span>`:''}<span class="tm">${listTime(c.id)}</span></span><span class="l2"><small data-u>${esc(preview(c.id))}</small>${listTag(c.id)}</span></span>
+    <span class="av${g?' grp':''}" data-u${st&&st!=='idle'?` title="${esc(I18N.t(STATE_LABEL[st]))}"`:''}>${g?gStack(c,true):avOf(c.id,true)}</span>
+    <span class="t"><span class="l1"><b data-u>${esc(c.name)}</b>${muted?`<span class="mut" title="已關閉通知">${ic('belloff')}</span>`:''}<span class="tm">${listTime(c.id)}</span></span><span class="l2">${st&&st!=='idle'&&!apprWait(c.id)?`<small class="lw">${esc(I18N.t(STATE_LABEL[st]))}…</small>`:`<small data-u>${esc(preview(c.id))}</small>`}${listTag(c.id)}</span></span>
   </button><button class="more" data-more="${c.id}" aria-label="更多">${ic('more')}</button></div>`}
 function renderList(){
   $('online').classList.toggle('on',!!S.runnerOnline);

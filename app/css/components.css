@@ -147,7 +147,7 @@ blockquote.quote{margin:0;border-left:3px solid var(--line2);padding:4px 12px;co
 /* a group's face: two members, one behind the other */
 .av.grp{container-type:size}
 .gst{position:absolute;inset:0}
-.gsa{position:absolute;display:grid;place-items:center;width:66%;height:66%;border-radius:50%;background:var(--panel);border:1.5px solid var(--side);color:var(--ink2);font-size:30cqw;font-weight:650;line-height:1;overflow:hidden}
+.gsa{position:absolute;display:grid;place-items:center;width:70%;height:70%;border-radius:50%;background:var(--panel);border:1.5px solid var(--side);color:var(--ink2);font-size:30cqw;font-weight:650;line-height:1;overflow:hidden}
 .gsa:first-child{left:0;top:0}
 .gsa:nth-child(2){right:0;bottom:0}
 .gsa:nth-child(3){display:none}
@@ -171,13 +171,6 @@ blockquote.quote{margin:0;border-left:3px solid var(--line2);padding:4px 12px;co
 .tplc.done{border-color:var(--ok)}
 .tplc.done small{color:var(--ok)}
 
-/* ---------- emoji picker ---------- */
-.emos{display:flex;flex-wrap:wrap;gap:4px}
-.emo-b{width:36px;height:36px;border-radius:var(--r-sm);font-size:19px;display:grid;place-items:center;border:1px solid transparent}
-.emo-b:hover{background:var(--hover)}
-.emo-b.on{border-color:var(--accent);background:var(--accent-soft)}
-.emo-l{font-size:15px;font-weight:650;color:var(--ink2)}
-.emos .emo-in{width:78px!important;height:36px;padding:6px 8px!important;text-align:center}
 
 /* ---------- menus (popover on a computer, action sheet on a phone) ---------- */
 .menu{position:fixed;z-index:60;min-width:220px;max-width:min(340px,calc(100vw - 16px));max-height:min(70vh,560px);overflow:auto;background:var(--raised);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-3);padding:5px;animation:pop .12s var(--ease)}

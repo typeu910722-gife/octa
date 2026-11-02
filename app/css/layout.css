@@ -1,8 +1,10 @@
-/* OCTA 4.0 layout: sidebar · conversation · detail panel. Phone: list ↔ chat ↔ details. */
-.app{position:fixed;inset:0;display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);background:var(--bg)}
-.app.detail-on{grid-template-columns:var(--side-w) minmax(0,1fr) var(--detail-w)}
+/* OCTA 4.1 layout: sidebar · conversation · work panel (工作 · 瀏覽器 · 詳細資料). Phone: list ↔ chat ↔ panel. */
+.app{position:fixed;inset:0;display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);background:var(--bg);--wpw:400px;--wpw-web:clamp(480px,42vw,820px)}
+.app.wp-on{grid-template-columns:var(--side-w) minmax(0,1fr) var(--wpw)}
+.app.wp-on.wp-web{grid-template-columns:var(--side-w) minmax(0,1fr) var(--wpw-web)}
 .app.rail-collapsed.has-conv{grid-template-columns:0 minmax(0,1fr)}
-.app.rail-collapsed.has-conv.detail-on{grid-template-columns:0 minmax(0,1fr) var(--detail-w)}
+.app.rail-collapsed.has-conv.wp-on{grid-template-columns:0 minmax(0,1fr) var(--wpw)}
+.app.rail-collapsed.has-conv.wp-on.wp-web{grid-template-columns:0 minmax(0,1fr) var(--wpw-web)}
 .app.rail-collapsed.has-conv .side{visibility:hidden;overflow:hidden;border:0}
 
 /* ---------- sidebar ---------- */
@@ -84,7 +86,7 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
 .who .t{display:grid;min-width:0;gap:1px}
 #pname{font-weight:650;font-size:calc(15.5px * var(--fz));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #psub{color:var(--mute);font-size:calc(12.5px * var(--fz));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.av.awake::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:2px solid var(--ok);border-top-color:transparent;animation:spin 1.2s linear infinite}
+#psub .pst{color:var(--accent-ink);font-weight:600}
 .ph-act{display:flex;gap:2px;align-items:center}
 .blank{flex:1;overflow:auto;display:grid;place-items:center;padding:32px 24px}
 .empty-state{max-width:640px;text-align:center;display:grid;gap:12px;justify-items:center;color:var(--ink2)}
@@ -97,21 +99,16 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
 .tips>div{display:flex;align-items:center;gap:10px}
 .tips kbd{min-width:56px;text-align:center}
 
-/* ---------- detail panel ---------- */
-.detail{background:var(--panel);border-left:1px solid var(--line);min-height:0;min-width:0;display:flex;flex-direction:column;z-index:30}
+/* ---------- 詳細資料 (inside the work panel) ---------- */
 .dp{display:flex;flex-direction:column;height:100%;min-height:0}
-.dp-hd{display:flex;align-items:center;gap:6px;height:var(--head-h);padding:0 10px 0 18px;border-bottom:1px solid var(--line);flex:none}
-.dp-hd h2{flex:1;font-size:calc(15px * var(--fz));font-weight:650}
-.dp-hd .back2{display:none}
-.dp-body{flex:1;overflow:auto;padding:18px 18px calc(24px + var(--pipd,0px));display:grid;gap:12px;align-content:start;overscroll-behavior:contain}
+.dp-body{flex:1;overflow:auto;padding:18px 18px 24px;display:grid;gap:12px;align-content:start;overscroll-behavior:contain}
 .dp-ft{display:none;align-items:center;gap:8px;padding:10px 14px calc(10px + var(--safe-b));border-top:1px solid var(--line);background:var(--panel);box-shadow:0 -6px 16px rgba(0,0,0,.04)}
 .dp-ft.on{display:flex;animation:sheetup .18s var(--ease)}
 
 /* ---------- medium screens: the detail panel floats over the chat ---------- */
 @media (max-width:1180px) and (min-width:761px){
-  .app.detail-on{grid-template-columns:var(--side-w) minmax(0,1fr)}
-  .app.rail-collapsed.has-conv.detail-on{grid-template-columns:0 minmax(0,1fr)}
-  .detail{position:fixed;top:0;right:0;bottom:0;width:min(var(--detail-w),92vw);box-shadow:var(--sh-3);animation:slidein .2s var(--ease)}
+  .app.wp-on,.app.wp-on.wp-web{grid-template-columns:var(--side-w) minmax(0,1fr)}
+  .app.rail-collapsed.has-conv.wp-on,.app.rail-collapsed.has-conv.wp-on.wp-web{grid-template-columns:0 minmax(0,1fr)}
 }
 @keyframes slidein{from{transform:translateX(24px);opacity:.5}}
 @media (max-width:960px) and (min-width:761px){:root{--side-w:248px}}
@@ -121,15 +118,14 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
   :root{--head-h:56px}
   body{font-size:calc(15.5px * var(--fz))}
   input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select{font-size:max(16px,calc(15px * var(--fz)))!important}   /* no zoom on focus */
-  .app,.app.detail-on,.app.rail-collapsed.has-conv,.app.rail-collapsed.has-conv.detail-on{grid-template-columns:1fr}
+  .app,.app.wp-on,.app.wp-on.wp-web,.app.rail-collapsed.has-conv,.app.rail-collapsed.has-conv.wp-on,.app.rail-collapsed.has-conv.wp-on.wp-web{grid-template-columns:1fr}
   .app.rail-collapsed.has-conv .side{visibility:visible}
   .side{border-right:0;padding-top:var(--safe-t)}
   .side-hd{padding:10px 10px 4px 16px}
   .kbd{display:none}
   .item{min-height:66px;padding:10px 8px}
   .item.on{background:transparent;box-shadow:none}
-  .av{width:44px;height:44px;font-size:17px}.av .emo{font-size:23px}
-  .item .av .dot{width:12px;height:12px}
+  .item .av{width:44px;height:44px;font-size:17px}
   .iw>.more{display:none}
   .iw:hover .tm{visibility:visible}
   .pane{position:fixed;inset:0;z-index:10;transform:translateX(100%);transition:transform .26s var(--ease);visibility:hidden;padding-top:var(--safe-t)}
@@ -138,11 +134,7 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
   .ph .back{display:inline-grid}
   .who{padding:4px 4px}
   .who .av{width:36px;height:36px}
-  #detailBtn,#railToggle{display:none}
-  .detail{position:fixed;inset:0;z-index:40;border-left:0;padding-top:var(--safe-t);animation:slidein .22s var(--ease)}
-  .dp-hd{padding:0 8px 0 4px}
-  .dp-hd .back2{display:inline-grid}
-  .dp-hd .x{display:none}
+  #railToggle{display:none}
   .dp-body{padding:16px 16px 28px}
   .blank{display:none}
   .app.tour .pane{transform:none;visibility:visible}

@@ -9,7 +9,7 @@ import { localNow } from './schedule.mjs';
 import { J, JOB_MAX, WARM, clean, err, jobMaxOk, now, uid } from './util.mjs';
 
 export async function settingsRoutes(c) {
-  const { env, db, path, m, body, me, U, ok } = c;
+  const { env, db, path, m, url, body, me, U, ok } = c;
   if (path === 'grokbot/list' && m === 'POST') {
     // ask the host computer for the bots in the user's Grok Bot
     const r = await db
@@ -220,13 +220,14 @@ export async function settingsRoutes(c) {
   }
   if (path === 'logs' && m === 'GET') {
     const { bots, groups } = await loadAll(db, U);
+    // ?conv=: one conversation's work, for its work panel (jobs it ran, and jobs its bot ran elsewhere)
+    const conv = clean(url.searchParams.get('conv'), 64);
+    const cols = 'SELECT id,conv,bot_id,prompt,status,kind,url,created,started,finished,err_kind,err_msg,shot,retry_of,routine FROM jobs';
     const rows = (
-      await db
-        .prepare(
-          'SELECT id,conv,bot_id,prompt,status,kind,url,created,started,finished,err_kind,err_msg,shot,retry_of FROM jobs WHERE user_id=? ORDER BY id DESC LIMIT 100'
-        )
-        .bind(U)
-        .all()
+      await (conv
+        ? db.prepare(cols + " WHERE user_id=? AND (conv=? OR bot_id=?) AND kind<>'test' ORDER BY id DESC LIMIT 40").bind(U, conv, conv)
+        : db.prepare(cols + ' WHERE user_id=? ORDER BY id DESC LIMIT 100').bind(U)
+      ).all()
     ).results;
     const retried = new Set(rows.map(r => r.retry_of).filter(Boolean));
     return J({

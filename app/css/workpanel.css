@@ -1,0 +1,126 @@
+/* OCTA 4.1 work panel (right side, like Claude's): 工作 · 瀏覽器 · 詳細資料.
+   Big screens: a column beside the chat (drag its edge to resize). 761–1180px: it floats over the chat. Phone: a full page. */
+.wp{position:relative;background:var(--panel);border-left:1px solid var(--line);min-height:0;min-width:0;display:flex;flex-direction:column;z-index:30}
+.wp-grip{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:2}
+.wp-grip::after{content:"";position:absolute;left:3px;top:50%;width:2px;height:40px;margin-top:-20px;border-radius:2px;background:var(--line2);opacity:0;transition:opacity var(--t-fast)}
+.wp-grip:hover::after,.wp-grip:focus-visible::after,.app.wp-drag .wp-grip::after{opacity:1}
+.app.wp-drag{cursor:col-resize;user-select:none}
+.app.wp-drag iframe,.app.wp-drag .web-stage{pointer-events:none}
+.wp-hd{display:flex;align-items:center;gap:4px;height:var(--head-h);padding:0 8px 0 12px;border-bottom:1px solid var(--line);flex:none}
+.wp-hd .back2{display:none}
+.wp-tabs{flex:1;min-width:0;display:flex;gap:2px;background:var(--sunk);border-radius:var(--r);padding:3px}
+.wp-tabs [role=tab]{position:relative;flex:1;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 10px;border-radius:7px;color:var(--ink2);font-size:calc(13px * var(--fz));font-weight:550;white-space:nowrap;transition:background var(--t-fast),color var(--t-fast)}
+.wp-tabs [role=tab]:hover{color:var(--ink)}
+.wp-tabs [role=tab].on{background:var(--panel);color:var(--ink);box-shadow:var(--sh-1)}
+.wp-tabs [role=tab]>span{overflow:hidden;text-overflow:ellipsis}
+.tdot,.wbadge{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;font-style:normal}
+.tdot.err,.wbadge.err{background:var(--err)}
+.tdot.run,.wbadge.run{background:var(--ok);animation:wpulse 1.6s ease-in-out infinite}
+@keyframes wpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 45%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 0%,transparent)}}
+.wpbtn{position:relative}
+.wbadge{position:absolute;top:6px;right:6px;width:8px;height:8px;box-shadow:0 0 0 2px var(--panel)}
+.wbadge.run{box-shadow:0 0 0 2px var(--panel)}
+.wp-pane{flex:1;min-height:0;display:flex;flex-direction:column}
+.wp-pane.wk{overflow:auto;padding:14px 14px 28px;display:block;overscroll-behavior:contain}
+.wp-pane.detail{display:flex}
+.wp-pane[hidden]{display:none!important}
+/* the group question card moves left of the panel */
+.app.wp-on~.askp{right:calc(var(--wpw) + 20px)}
+.app.wp-on.wp-web~.askp{right:calc(var(--wpw-web) + 20px)}
+
+/* ---------- 工作 ---------- */
+.wcur{border:1px solid var(--line);border-radius:var(--r-lg);padding:12px;background:var(--panel);box-shadow:var(--sh-1);display:grid;gap:10px;margin-bottom:10px}
+.wcur.idle{box-shadow:none;background:var(--sunk);border-color:transparent}
+.wch{display:flex;align-items:center;gap:12px;min-width:0}
+.wch .av{width:44px;height:44px}
+.wch .t{flex:1;min-width:0;display:grid;gap:1px}
+.wch b{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wch small{color:var(--mute);font-size:calc(12.5px * var(--fz));line-height:1.45}
+.wch .pst{color:var(--accent-ink);font-weight:600}
+.wch .el{font-variant-numeric:tabular-nums}
+.wsub{color:var(--mute);font-size:12.5px;padding-left:56px}
+.wsteps{list-style:none;margin:0;padding:0 0 0 22px;display:grid;gap:0;position:relative}
+.wsteps::before{content:"";position:absolute;left:7px;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--line)}
+.wsteps li{position:relative;font-size:calc(12.5px * var(--fz));color:var(--mute);padding:3px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsteps li::before{content:"";position:absolute;left:-19px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:var(--panel);border:2px solid var(--line2)}
+.wsteps li.now{color:var(--ink);font-weight:550}
+.wsteps li.now::before{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.wcur .link{justify-self:start;font-size:13px}
+.wq{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border-radius:var(--r);background:var(--warn-soft);color:var(--ink2);font-size:calc(12.5px * var(--fz))}
+.wq .icon{color:var(--warn);width:16px;height:16px}
+.wsec{margin-top:16px}
+.wsh{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:calc(12px * var(--fz));font-weight:650;letter-spacing:.02em;margin:0 2px 8px}
+.wsh .icon{width:14px;height:14px}
+.wrts{display:grid;gap:4px}
+.wrt{display:grid;gap:1px;text-align:left;padding:8px 12px;border-radius:var(--r);background:var(--sunk);min-width:0}
+.wrt:hover{background:var(--press)}
+.wrt b{font-weight:600;font-size:calc(13px * var(--fz));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wrt small{color:var(--mute);font-size:12px;font-variant-numeric:tabular-nums}
+.wrt.off{opacity:.65}
+.wrt i{font-style:normal;font-weight:650}.wrt .bad{color:var(--err)}.wrt .good{color:var(--ok)}
+.wempty{color:var(--mute);font-size:calc(13px * var(--fz));line-height:1.6;padding:6px 2px}
+/* the timeline */
+.tl{list-style:none;margin:0;padding:0;display:grid}
+.wday{color:var(--faint);font-size:11.5px;font-weight:650;padding:10px 2px 4px}
+.wi{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)}
+.wi:last-child{border-bottom:0}
+.wic{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--sunk);color:var(--mute)}
+.wic .icon{width:14px;height:14px}
+.wi.ok .wic{background:var(--ok-soft);color:var(--ok)}
+.wi.err .wic{background:var(--err-soft);color:var(--err)}
+.wi.warn .wic{background:var(--warn-soft);color:var(--warn)}
+.wi.bg .wic{background:var(--info-soft);color:var(--info)}
+.wb{min-width:0;display:grid;gap:2px}
+.wtt{display:flex;align-items:baseline;gap:6px;font-size:calc(12.5px * var(--fz));font-weight:600;color:var(--ink);min-width:0}
+.wtt time{margin-left:auto;color:var(--faint);font-weight:500;font-size:11.5px;font-variant-numeric:tabular-nums;flex:none}
+.wi.err .wtt{color:var(--err)}
+.wtx{color:var(--ink2);font-size:calc(13px * var(--fz));line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.wmore>summary{color:var(--ink2);font-size:calc(13px * var(--fz));line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.wmore>summary::after{content:" ›";color:var(--faint)}
+.wmore[open]>summary{display:block;-webkit-line-clamp:unset}
+.wmore[open]>summary::after{content:""}
+.wfull{white-space:pre-wrap;color:var(--ink2);font-size:calc(12.5px * var(--fz));background:var(--sunk);border-radius:var(--r-sm);padding:8px 10px;margin-top:6px;max-height:340px;overflow:auto;overflow-wrap:anywhere}
+.wact{display:flex;gap:6px;margin-top:4px}
+
+/* ---------- 瀏覽器 ---------- */
+.wp-pane.web{padding:10px 12px 12px;gap:8px}
+.web-hd:empty,.web-ft:empty{display:none}
+.wbots{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.wbot{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 4px;border:1px solid var(--line);border-radius:var(--r-full);font-size:12.5px;flex:none;color:var(--ink2)}
+.wbot.on{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.web-stage{position:relative;flex:1;min-height:200px;border-radius:12px;background:var(--sunk);overflow:hidden;display:grid}
+.wp-pane.web.docked .web-stage{background:#1c1814}
+.web-ph{place-self:center;padding:24px}
+.wph{display:grid;justify-items:center;text-align:center;gap:8px;max-width:320px}
+.wph b{font-weight:650}
+.wph .av.xl{width:84px;height:84px}
+.wp-pane.web.docked .wph b{color:#f3ead3}
+.wp-pane.web.docked .wph .hmuted{color:#b9ae98}
+.web-stage>.stage{position:absolute;inset:0;margin:0;border:0;border-radius:0;box-shadow:none;background:var(--panel);display:flex;flex-direction:column;padding:0;gap:0}
+.web-stage>.stage .sthd{padding:8px 10px;border-bottom:1px solid var(--line)}
+.web-stage>.stage img{flex:1;min-height:0;width:100%;max-height:none;object-fit:contain;object-position:top;border-radius:0;background:var(--sunk)}
+.web-stage>.stage .stact{padding:8px;border-top:1px solid var(--line);justify-content:center}
+.web-stage>.stage .hold{padding:0 10px 8px;text-align:center}
+.web-ft{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.wurl{display:flex;gap:6px;flex:1;min-width:220px}
+.wurl input{flex:1;min-width:0;height:32px;padding:4px 10px!important}
+
+/* ---------- 761–1180px: it floats over the chat ---------- */
+@media (max-width:1180px) and (min-width:761px){
+  .wp{position:fixed;top:0;right:0;bottom:0;width:min(var(--wpw),92vw);box-shadow:var(--sh-3);animation:slidein .2s var(--ease)}
+  .app.wp-web .wp{width:min(var(--wpw-web),92vw)}
+  .app.wp-on~.askp,.app.wp-on.wp-web~.askp{right:20px}
+}
+
+/* ---------- phone: a full page with ‹ and the three tabs ---------- */
+@media (max-width:760px){
+  .wp{position:fixed;inset:0;z-index:40;border-left:0;padding-top:var(--safe-t);animation:slidein .22s var(--ease)}
+  .wp-grip{display:none}
+  .wp-hd{padding:0 8px 0 4px;gap:6px}
+  .wp-hd .back2{display:inline-grid}
+  .wp-hd .x{display:none}
+  .wp-tabs [role=tab]{padding:0 6px}
+  .wp-pane.wk{padding:12px 12px calc(28px + var(--safe-b))}
+  .wp-pane.web{padding:8px 8px calc(8px + var(--safe-b))}
+  .app.wp-on~.askp,.app.wp-on.wp-web~.askp{right:8px}
+}

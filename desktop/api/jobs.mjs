@@ -23,7 +23,7 @@ export async function continueJob(db, U, job, kind, msg) {
     chat = !job.kind || job.kind === 'chat';
   const who = (await db.prepare('SELECT name FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first())?.name || '機器人';
   if (!chat || n > MAX_AUTO_RETRY || String(job.via || '').includes('"side"')) {
-    await addMsg(db, U, job.conv, job.bot_id, `⚠ ${msg}`);
+    await addMsg(db, U, job.conv, job.bot_id, `⚠ ${msg}`, null, null, 'fail');
     if (job.routine)
       await db
         .prepare("UPDATE routines SET last_status='error', last_text=? WHERE id=? AND last_job=?")
