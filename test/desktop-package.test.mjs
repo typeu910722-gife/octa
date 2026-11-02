@@ -1,22 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, normalize, relative } from 'node:path';
 import { test } from 'node:test';
 
 const root = join(import.meta.dirname, '..');
-const pkg = JSON.parse(readFileSync(join(root, 'desktop', 'package.json'), 'utf8'));
-const build = readFileSync(join(root, 'desktop', 'build.mjs'), 'utf8');
-
-// Apply the same string rewrites as desktop/build.mjs, then require every
-// relative import to be on the electron-builder file list. 3.0.0 packed
-// api.js and left model-route.mjs out, so the installed app could not start.
-function desktopApiSource() {
-  let src = readFileSync(join(root, 'functions', 'api', '[[path]].js'), 'utf8');
-  for (const match of build.matchAll(/\.replaceAll\("((?:\\.|[^"\\])*)", "((?:\\.|[^"\\])*)"\)/g)) {
-    src = src.replaceAll(JSON.parse(`"${match[1]}"`), JSON.parse(`"${match[2]}"`));
-  }
-  return src;
-}
+const desk = join(root, 'desktop');
+const pkg = JSON.parse(readFileSync(join(desk, 'package.json'), 'utf8'));
+const read = rel => readFileSync(join(desk, rel), 'utf8');
 
 function packaged(rel) {
   return pkg.build.files.some(pattern => {
@@ -24,26 +14,79 @@ function packaged(rel) {
     return pattern === rel;
   });
 }
+const relImports = src => [...src.matchAll(/(?:from|import\()\s*'(\.{1,2}\/[^']+)'/g)].map(m => m[1]);
 
-test('the desktop installer packs every file the rewritten API imports', () => {
-  const src = desktopApiSource();
-  const specs = [...src.matchAll(/from '(\.[^']+)'/g)].map(m => m[1]);
-  assert.deepEqual(specs, ['./model-route.mjs', './connectors.mjs']);
-  for (const spec of specs) {
-    const rel = spec.slice(2);
-    assert.equal(packaged(rel), true, `${rel} is imported by desktop api.js but missing from electron-builder files`);
-    readFileSync(join(root, 'public', rel));
+test('4.0 desktop package: version, the new folders on the file list, the 3.x cloud pieces gone', () => {
+  assert.equal(pkg.version, '4.0.0');
+  for (const f of ['api/**', 'runner/**', 'lib/**', 'web/**', 'cloud-import.mjs', 'schema.sql', 'main.mjs', 'server.mjs', 'preload.cjs', 'splash.html'])
+    assert.ok(pkg.build.files.includes(f), f + ' must be packed');
+  for (const f of ['host-mode.mjs', 'api.js', 'model-route.mjs', 'connectors.mjs'])
+    assert.ok(!pkg.build.files.includes(f), f + ' is not part of 4.0');
+  assert.equal(existsSync(join(desk, 'host-mode.mjs')), false);
+});
+
+test('the desktop installer packs every file the Electron main process and the server import', () => {
+  for (const file of ['main.mjs', 'server.mjs']) {
+    const specs = relImports(read(file));
+    assert.ok(specs.length >= 1, file);
+    for (const spec of specs) {
+      const rel = spec.slice(2);
+      assert.equal(packaged(rel), true, `${rel} is imported by desktop/${file} but missing from electron-builder files`);
+      readFileSync(join(desk, rel));
+    }
+  }
+  assert.ok(relImports(read('main.mjs')).includes('./cdp-bridge.mjs'));
+  assert.ok(relImports(read('main.mjs')).includes('./cloud-import.mjs'));
+});
+
+// once the API / runner / shared modules live in desktop/, every relative import inside them must stay in packed folders
+test('desktop/api, desktop/runner and desktop/lib only import packed files', () => {
+  const dirs = ['api', 'runner', 'lib'].filter(d => existsSync(join(desk, d)));
+  const walk = d => readdirSync(d).flatMap(f => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : /\.m?js$/.test(f) ? [p] : []; });
+  for (const d of dirs) for (const file of walk(join(desk, d))) {
+    for (const spec of relImports(readFileSync(file, 'utf8'))) {
+      const target = normalize(join(dirname(file), spec));
+      const rel = relative(desk, target).replace(/\\/g, '/');
+      assert.ok(!rel.startsWith('..'), `${relative(root, file)} imports ${spec}, outside desktop/ (not in the installer)`);
+      assert.equal(packaged(rel), true, `${relative(root, file)} imports ${rel}, which is not packed`);
+      assert.ok(existsSync(target), `${relative(root, file)} imports missing ${rel}`);
+    }
   }
 });
 
-test('the desktop installer packs every file the Electron main process imports', () => {
-  const src = readFileSync(join(root, 'desktop', 'main.mjs'), 'utf8');
-  const specs = [...src.matchAll(/from '(\.[^']+)'/g)].map(m => m[1]);
-  assert.ok(specs.includes('./cdp-bridge.mjs'));
-  assert.ok(specs.includes('./server.mjs'));
-  for (const spec of specs) {
-    const rel = spec.slice(2);
-    assert.equal(packaged(rel), true, `${rel} is imported by desktop/main.mjs but missing from electron-builder files`);
-    readFileSync(join(root, 'desktop', rel));
-  }
+test('the window is always local: no cloud page, no cloud sign-in or 主機模式 bridges', () => {
+  const main = read('main.mjs'), preload = read('preload.cjs'), server = read('server.mjs'), splash = read('splash.html');
+  assert.doesNotMatch(main, /loadURL\(CLOUD\)|octa:(offline|cloud'|connect|disconnect|working|host-move|host-back)|hostToCloud|hostStart|runner-token/);
+  assert.doesNotMatch(preload, /useOffline|useCloud|hostMove|hostBack|onHostProgress|connect:|disconnect:|working:/);
+  assert.doesNotMatch(server, /hostHandler|hostLink|x-octa-sig|hostMode/);
+  assert.doesNotMatch(splash, /useCloud|useOffline/);
+  // the one-time import of a 3.x cloud account, retryable from settings
+  assert.match(main, /handle\('octa:cloud-import'/);
+  assert.match(main, /handle\('octa:cloud-import-status'/);
+  assert.match(preload, /cloudImport: \{/);
+  assert.match(main, /migrateConfig\(cfg\)/);
+  // API, runner and web app: the 4.0 locations first
+  assert.match(server, /join\(here, 'api', 'index\.mjs'\)/);
+  assert.match(server, /join\(here, 'runner', 'index\.mjs'\)/);
+  assert.match(server, /join\(here, 'web', 'index\.html'\), join\(here, '\.\.', 'app', 'index\.html'\)/);
+});
+
+test('build.mjs copies app/ (or public/ before app/ exists) into desktop/web', () => {
+  const build = read('build.mjs');
+  assert.match(build, /existsSync\(join\(root, 'app', 'index\.html'\)\) \? join\(root, 'app'\) : join\(root, 'public'\)/);
+  assert.match(build, /join\(here, 'web'\)/);
+});
+
+test('the legacy cloud keeps only what old desktops need to move their data home', () => {
+  const api = readFileSync(join(root, 'functions', 'api', '[[path]].js'), 'utf8');
+  const specs = relImports(api);
+  assert.deepEqual(specs, ['../_lib/model-route.mjs', '../_lib/connectors.mjs']);
+  for (const s of specs) assert.ok(existsSync(join(root, 'functions', 'api', s)), s);
+  const wrangler = readFileSync(join(root, 'wrangler.toml'), 'utf8');
+  assert.match(wrangler, /^pages_build_output_dir = "site"$/m);
+  assert.equal(existsSync(join(root, '.github', 'workflows', 'cron.yml')), false);
+  const site = readFileSync(join(root, 'site', 'index.html'), 'utf8');
+  assert.match(site, /releases\/latest\/download\/OCTA-Setup\.exe/);
+  assert.match(site, /請盡快打開桌面版/);
+  assert.ok(existsSync(join(root, 'site', 'icon.png')));
 });

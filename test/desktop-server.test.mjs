@@ -1,7 +1,9 @@
-// 主機模式 with the real desktop server (desktop/server.mjs on sql.js): move from the cloud API, answer signed
-// requests the cloud forwards. Needs the desktop app's packages (cd desktop && npm install); skipped without them.
+// The real desktop server (desktop/server.mjs on sql.js), 4.0: always local. A 3.x cloud account's data is imported
+// from a fake old cloud over HTTP; phones pair over the tunnel; external events reach /api/hook/* without pairing.
+// Needs the desktop app's packages (cd desktop && npm ci --ignore-scripts); skipped without them.
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import http from 'node:http';
+import { readFileSync, mkdtempSync, readdirSync, rmSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,79 +14,103 @@ const repo = join(import.meta.dirname, '..');
 let hasDeps = true;
 try { createRequire(join(repo, 'desktop', 'package.json')).resolve('sql.js'); } catch { hasDeps = false; }
 
-test('desktop server: move the data in, then answer through the cloud', { skip: !hasDeps && 'desktop packages not installed' }, async () => {
-  const cloudApi = await import(pathToFileURL(join(repo, 'functions/api/[[path]].js')).href + '?cloud');
-  const { startServer } = await import(pathToFileURL(join(repo, 'desktop/server.mjs')).href);
-  const schema = readFileSync(join(repo, 'schema.sql'), 'utf8');
-  function openD1() {
-    const db = new DatabaseSync(':memory:'); db.exec(schema);
-    const norm = a => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? +v : v));
-    class Stmt { constructor(sql) { this.sql = sql; this.args = []; } bind(...a) { this.args = norm(a); return this; }
-      async first() { return db.prepare(this.sql).get(...this.args) ?? null; } async all() { return { results: db.prepare(this.sql).all(...this.args) }; }
-      _run() { const i = db.prepare(this.sql).run(...this.args); return { success: true, meta: { changes: Number(i.changes), last_row_id: Number(i.lastInsertRowid) } }; }
-      async run() { return this._run(); } _exec() { return /^\s*(SELECT|WITH)/i.test(this.sql) ? { results: db.prepare(this.sql).all(...this.args) } : { results: [], ...this._run() }; } }
-    return { prepare: s => new Stmt(s), async batch(st) { db.exec('BEGIN'); try { const o = st.map(s => s._exec()); db.exec('COMMIT'); return o; } catch (e) { db.exec('ROLLBACK'); throw e; } }, exec: s => db.exec(s), raw: db };
-  }
-  const cloud = openD1();
-  async function call(method, path, { token, body } = {}) {
-    const headers = { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.' + Math.floor(Math.random() * 200) };
-    if (token) headers.authorization = 'Bearer ' + token;
-    const req = new Request('http://octa.test/api/' + path, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body || {}) });
-    const res = await cloudApi.onRequest({ request: req, env: { DB: cloud, ALLOW_SIGNUP: 'true', TZ_OFFSET_MIN: '480', isLocal: false }, params: { path: path.split('?')[0].split('/').filter(Boolean) } });
-    return { status: res.status, data: await res.json().catch(() => ({})) };
-  }
-  const token = (await call('POST', 'signup', { body: { name: 'smoke', pw: 'correcthorsebattery' } })).data.token;
-  const uid = (await call('GET', 'me', { token })).data.id;
-  const rt = (await call('POST', 'runner-token', { token, body: { label: 'desktop:pc' } })).data.token;
-  await call('POST', 'runner/next', { token: rt, body: { wait: false } });
-  const bot = (await call('POST', 'bots', { token, body: { name: '助理', task: '' } })).data.id;
-  for (let i = 0; i < 1203; i++) cloud.raw.prepare("INSERT INTO messages (user_id,conv,by_,text,ts) VALUES (?,?,'me',?,?)").run(uid, bot, 'm' + i, Date.now());   // more than two pages
-  await call('POST', 'host/register', { token: rt, body: { url: 'https://x.trycloudflare.com' } });
-  const hkey = cloud.raw.prepare('SELECT hkey FROM users WHERE id=?').get(uid).hkey;
+function openD1(schema) {
+  const db = new DatabaseSync(':memory:'); db.exec(schema);
+  const norm = a => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? +v : v));
+  class Stmt { constructor(sql) { this.sql = sql; this.args = []; } bind(...a) { this.args = norm(a); return this; }
+    async first() { return db.prepare(this.sql).get(...this.args) ?? null; } async all() { return { results: db.prepare(this.sql).all(...this.args) }; }
+    _run() { const i = db.prepare(this.sql).run(...this.args); return { success: true, meta: { changes: Number(i.changes), last_row_id: Number(i.lastInsertRowid) } }; }
+    async run() { return this._run(); } _exec() { return /^\s*(SELECT|WITH)/i.test(this.sql) ? { results: db.prepare(this.sql).all(...this.args) } : { results: [], ...this._run() }; } }
+  return { prepare: s => new Stmt(s), async batch(st) { db.exec('BEGIN'); try { const o = st.map(s => s._exec()); db.exec('COMMIT'); return o; } catch (e) { db.exec('ROLLBACK'); throw e; } }, exec: s => db.exec(s), raw: db };
+}
+const jpost = (url, body, headers = {}) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body || {}) });
 
-  const cfg = { mode: 'cloud' };
-  const dataDir = mkdtempSync(join(tmpdir(), 'octa-smoke-'));
-  const s = await startServer({ dataDir, runner: false, host: { enabled: () => cfg.mode === 'host', key: () => hkey, user: () => uid, name: () => 'smoke' } });
-  const post = async (p, b) => { const r = await call('POST', p, { token: rt, body: b }); if (r.status !== 200) throw new Error(r.data.error); return r.data; };
+test('desktop server: import a 3.x cloud account, pair a phone, take external events', { skip: !hasDeps && 'desktop packages not installed' }, async t => {
+  // the frozen legacy cloud, served over real HTTP like octa.yzprojecttw.com
+  const cloudApi = await import(pathToFileURL(join(repo, 'functions/api/[[path]].js')).href + '?legacy');
+  const cloud = openD1(readFileSync(join(repo, 'schema.sql'), 'utf8'));
+  const env = { DB: cloud, ALLOW_SIGNUP: 'true', TZ_OFFSET_MIN: '480', isLocal: false };
+  let n = 0;
+  const legacy = http.createServer(async (req, res) => {
+    const c = []; for await (const x of req) c.push(x);
+    const headers = { ...req.headers, 'cf-connecting-ip': '192.0.2.' + (n++ % 200) };
+    const request = new Request('http://octa.test' + req.url, { method: req.method, headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(c) });
+    const r = await cloudApi.onRequest({ request, env, params: { path: req.url.replace(/^\/api\//, '').split('?')[0].split('/').filter(Boolean) } });
+    res.writeHead(r.status, Object.fromEntries(r.headers)); res.end(Buffer.from(await r.arrayBuffer()));
+  });
+  await new Promise(ok => legacy.listen(0, '127.0.0.1', ok));
+  t.after(() => legacy.close());
+  const CLOUD = `http://127.0.0.1:${legacy.address().port}`;
+  const call = async (method, path, token, body) => {
+    const r = await fetch(CLOUD + '/api/' + path, { method, headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) }, body: method === 'GET' ? undefined : JSON.stringify(body || {}) });
+    return { status: r.status, data: await r.json().catch(() => ({})) };
+  };
+  const token = (await call('POST', 'signup', '', { name: 'smoke', pw: 'correcthorsebattery' })).data.token;
+  const uid = (await call('GET', 'me', token)).data.id;
+  const rt = (await call('POST', 'runner-token', token, { label: 'desktop:pc' })).data.token;
+  const bot = (await call('POST', 'bots', token, { name: '助理', task: '' })).data.id;
+  for (let i = 0; i < 1203; i++) cloud.raw.prepare("INSERT INTO messages (user_id,conv,by_,text,ts) VALUES (?,?,'me',?,?)").run(uid, bot, 'm' + i, Date.now());   // more than two pages
+
+  const { startServer } = await import(pathToFileURL(join(repo, 'desktop/server.mjs')).href);
+  const { cloudCaller } = await import(pathToFileURL(join(repo, 'desktop/cloud-import.mjs')).href);
+  const dataDir = mkdtempSync(join(tmpdir(), 'octa-desk-'));
+  const s = await startServer({ dataDir, runner: false });
+  t.after(async () => { await s.close(); rmSync(dataDir, { recursive: true, force: true }); });
+  // something written locally before the import is kept in the backup
+  await jpost(s.url + '/api/bots', { name: '舊的本機機器人', task: '' });
+
+  // a key the old cloud no longer knows: nothing changes here
+  await assert.rejects(s.cloudImport({ call: cloudCaller('nope', { cloud: CLOUD }) }), /不認得這台電腦/);
+  assert.equal((await (await fetch(s.url + '/api/state')).json()).bots[0].name, '舊的本機機器人');
+
   const progress = [];
-  const res = await s.hostImport({ call: post, onProgress: e => progress.push(e.label + ' ' + e.got) });
+  const res = await s.cloudImport({ call: cloudCaller(rt, { cloud: CLOUD }), onProgress: e => progress.push(e.label + ' ' + e.got) });
   assert.ok(res.counts.messages >= 1203);
-  assert.ok(readdirSync(dataDir).some(f => f.startsWith('ebot.backup-')));
-  cfg.mode = 'host';
-  cloud.raw.prepare('UPDATE users SET hurl=? WHERE id=?').run(s.remoteUrl, uid);
-  await post('host/activate');
-  const cfgRes = await (await fetch(s.url + '/api/config')).json();
-  assert.deepEqual(cfgRes.host, { name: 'smoke' });
-  const st = await call('GET', 'state', { token });
-  assert.equal(st.status, 200, JSON.stringify(st.data));
-  assert.equal(st.data.me, 'smoke');
-  assert.equal(st.data.bots[0].name, '助理');
-  const sent = await call('POST', 'messages', { token, body: { conv: bot, text: '轉送測試' } });
-  assert.equal(sent.status, 200, JSON.stringify(sent.data));
-  const local = await (await fetch(s.url + '/api/messages?conv=' + bot)).json();
-  assert.equal(local.msgs.at(-1).text, '轉送測試');
-  const bad = await fetch(s.remoteUrl + '/api/state', { headers: { 'x-octa-user': uid, 'x-octa-ts': String(Date.now()), 'x-octa-sig': '0'.repeat(64) } });
-  assert.equal(bad.status, 401);
-  const ping = await fetch(s.remoteUrl + '/__octa_ping');
-  assert.equal(ping.status, 200);
-  // phone pairs straight to this computer (no cloud quota): same data as the window
-  const { mkdirSync, writeFileSync, chmodSync } = await import('node:fs');
+  assert.ok(progress.length >= 12);
+  assert.ok(readdirSync(dataDir).some(f => f.startsWith('ebot.backup-')), 'the old database is kept as a backup');
+  assert.ok(res.backup.includes('ebot.backup-'));
+  const st = await (await fetch(s.url + '/api/state')).json();
+  assert.deepEqual(st.bots.map(b => b.name), ['助理'], 'the window now shows the cloud data');
+  const msgs = await (await fetch(s.url + '/api/messages?conv=' + bot)).json();
+  assert.ok(msgs.msgs.length > 0);
+  // the local API answers as the only user; nothing points at a cloud
+  const cfg = await (await fetch(s.url + '/api/config')).json();
+  assert.equal(cfg.local, true);
+  assert.ok(!cfg.host, 'no 主機模式 any more');
+
+  // remote port: closed to the app until the phone remote is on…
+  assert.equal((await fetch(s.remoteUrl + '/api/state')).status, 503);
+  assert.equal((await fetch(s.remoteUrl + '/__octa_ping')).status, 200);
+  // …but external events (the hook key is the secret) need no pairing
+  const hk = await (await jpost(s.url + '/api/routines', { conv: bot, name: '收到訂單', trigger: 'hook', prompt: '處理訂單' })).json();
+  assert.match(hk.hook || '', /^[0-9a-f]{48}$/, JSON.stringify(hk));
+  const hookGet = await fetch(s.remoteUrl + '/api/hook/' + hk.hook);
+  assert.equal(hookGet.status, 200);
+  assert.equal((await hookGet.json()).routine, '收到訂單');
+  const fired = await jpost(s.remoteUrl + '/api/hook/' + hk.hook, { order: 'A-17' });
+  assert.equal(fired.status, 200);
+  assert.equal((await fired.json()).ok, true);
+  assert.equal((await fetch(s.remoteUrl + '/api/hook/' + '0'.repeat(48))).status, 404);
+  assert.equal((await fetch(s.remoteUrl + '/api/hookx/' + hk.hook)).status, 503, 'only the hook route skips pairing');
+
+  // phone remote: a fake cloudflared prints a tunnel address; the phone pairs with the code and sees this computer's data
   if (process.platform !== 'win32') {
     mkdirSync(join(dataDir, 'bin'), { recursive: true });
     writeFileSync(join(dataDir, 'bin', 'cloudflared'), '#!/bin/sh\necho "https://phone-test.trycloudflare.com" 1>&2\nexec sleep 600\n'); chmodSync(join(dataDir, 'bin', 'cloudflared'), 0o755);
-    const on = await (await fetch(s.url + '/api/desktop/remote', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"on":true}' })).json();
+    const on = await (await jpost(s.url + '/api/desktop/remote', { on: true })).json();
     assert.equal(on.on, true, JSON.stringify(on));
+    assert.equal(on.url, 'https://phone-test.trycloudflare.com');
+    assert.match(on.code, /^[A-Z2-9]{8}$/);
     assert.equal((await (await fetch(s.remoteUrl + '/api/config')).json()).pair, true);
-    assert.equal((await fetch(s.remoteUrl + '/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"code":"WRONG1"}' })).status, 401);
-    const pr = await (await fetch(s.remoteUrl + '/api/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: on.code }) })).json();
+    assert.equal((await fetch(s.remoteUrl + '/api/state')).status, 401, 'not paired yet');
+    assert.equal((await jpost(s.remoteUrl + '/api/pair', { code: 'WRONG1' })).status, 401);
+    assert.equal((await fetch(s.remoteUrl + '/api/desktop/status')).status, 403, 'the computer\'s own controls stay local');
+    const pr = await (await jpost(s.remoteUrl + '/api/pair', { code: on.code })).json();
     const ps = await (await fetch(s.remoteUrl + '/api/state', { headers: { authorization: 'Bearer ' + pr.token } })).json();
-    assert.equal(ps.bots[0].name, '助理', 'the paired phone sees the host data');
-    assert.equal((await (await fetch(s.url + '/api/desktop/remote', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"on":false}' })).json()).on, false);
+    assert.equal(ps.bots[0].name, '助理', 'the paired phone sees this computer\'s data');
+    assert.equal((await (await jpost(s.url + '/api/desktop/remote', { on: false })).json()).on, false);
+    assert.equal((await fetch(s.remoteUrl + '/api/state', { headers: { authorization: 'Bearer ' + pr.token } })).status, 503);
   }
-  cfg.mode = 'cloud';
-  const fb = await call('GET', 'state', { token });
-  assert.equal(fb.status, 200);   // host says it is not the host → the cloud answers
-  await s.close();
-  assert.ok(progress.length >= 12);
-  rmSync(dataDir, { recursive: true, force: true });
+  // the window's port refuses other sites (DNS rebinding, cross-site POSTs)
+  assert.equal((await fetch(s.url + '/api/state', { headers: { origin: 'https://evil.example' } })).status, 403);
 });
