@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { partialNote, PARTIAL_TAG, SAFE_WORK_RULES, limitSignal, buildPrompt } from '../public/octa-runner.mjs';
 import { googleRefused } from '../desktop/browser-catalog.mjs';
 
-const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
+const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;
 const { onRequest, schedulesFromTurn, splitTaskSchedules, sameRoutine } = await import(apiUrl);
 const schema = readFileSync(join(import.meta.dirname, '..', 'schema.sql'), 'utf8');
 
@@ -37,14 +37,20 @@ function openD1() {
   };
 }
 let ip = 40;
+// 4.0: one local user and no accounts. The old sign-up / runner-key steps only make sure that user exists.
+async function localLogin(db) {
+  await db.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();
+  return { status: 200, data: { token: 'local' } };
+}
 async function call(db, method, path, { token, body, query } = {}) {
+  if (path === 'signup' || path === 'runner-token') return localLogin(db);
   const headers = { 'content-type': 'application/json', 'cf-connecting-ip': `203.0.113.${ip++}` };
   if (token) headers.authorization = 'Bearer ' + token;
   const url = new URL('http://octa.test/api/' + path);
   for (const [k, v] of Object.entries(query || {})) url.searchParams.set(k, v);
   const res = await onRequest({
     request: new Request(url, { method, headers, body: method === 'GET' ? undefined : JSON.stringify(body || {}) }),
-    env: { DB: db, ALLOW_SIGNUP: 'true', TZ_OFFSET_MIN: '480', isLocal: false },
+    env: { DB: db, TZ_OFFSET_MIN: '480', isLocal: true },
     params: { path: path.split('/').filter(Boolean) }
   });
   return { status: res.status, data: await res.json().catch(() => ({})) };

@@ -15,7 +15,7 @@ import { probeCodingHosts, runCodingTask, selectProvider } from '../public/codin
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const web = join(root, 'public');
-const { onRequest } = await import(pathToFileURL(join(root, 'functions', 'api', '[[path]].js')).href);
+const { onRequest } = await import(pathToFileURL(join(root, 'desktop', 'api', 'index.mjs')).href);
 const schema = readFileSync(join(root, 'schema.sql'), 'utf8');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
@@ -48,7 +48,7 @@ function openD1() {
 
 const db = openD1();
 await db.prepare("INSERT OR IGNORE INTO users (id,name,pw,created) VALUES ('local','本機','-',?)").bind(Date.now()).run();
-const env = { DB: db, ALLOW_SIGNUP: 'false', TZ_OFFSET_MIN: '480', isLocal: true, OCTA_CODE_ALLOW_FIXTURE: process.env.OCTA_CODE_ALLOW_FIXTURE || '' };
+const env = { DB: db, TZ_OFFSET_MIN: '480', isLocal: true, OCTA_CODE_ALLOW_FIXTURE: process.env.OCTA_CODE_ALLOW_FIXTURE || '' };
 
 async function call(method, path, body) {
   const req = new Request('http://127.0.0.1/api/' + path, {
