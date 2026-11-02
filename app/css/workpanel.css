@@ -89,18 +89,16 @@
 .wbot{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 4px;border:1px solid var(--line);border-radius:var(--r-full);font-size:12.5px;flex:none;color:var(--ink2)}
 .wbot.on{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
 .web-stage{position:relative;flex:1;min-height:200px;border-radius:12px;background:var(--sunk);overflow:hidden;display:grid}
-.wp-pane.web.docked .web-stage{background:#1c1814}
 .web-ph{place-self:center;padding:24px}
 .wph{display:grid;justify-items:center;text-align:center;gap:8px;max-width:320px}
 .wph b{font-weight:650}
 .wph .av.xl{width:84px;height:84px}
-.wp-pane.web.docked .wph b{color:#f3ead3}
-.wp-pane.web.docked .wph .hmuted{color:#b9ae98}
 .web-stage>.stage{position:absolute;inset:0;margin:0;border:0;border-radius:0;box-shadow:none;background:var(--panel);display:flex;flex-direction:column;padding:0;gap:0}
 .web-stage>.stage .sthd{padding:8px 10px;border-bottom:1px solid var(--line)}
 .web-stage>.stage img{flex:1;min-height:0;width:100%;max-height:none;object-fit:contain;object-position:top;border-radius:0;background:var(--sunk)}
 .web-stage>.stage .stact{padding:8px;border-top:1px solid var(--line);justify-content:center}
 .web-stage>.stage .hold{padding:0 10px 8px;text-align:center}
+.web-ctl:empty{display:none}
 .web-ft{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .wurl{display:flex;gap:6px;flex:1;min-width:220px}
 .wurl input{flex:1;min-width:0;height:32px;padding:4px 10px!important}
