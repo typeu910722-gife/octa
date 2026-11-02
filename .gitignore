@@ -5,3 +5,4 @@ public/octa-runner.json
 public/work/
 i18n/__pycache__/
 desktop/shots/
+.claude/
