@@ -170,3 +170,7 @@
 - 3.4.0（2026-11-01）：使用者反映 Claude 額度用很快。runEngine 的 Claude 分支沒指定模型時帶 --model sonnet（CLAUDE_DEFAULT_MODEL），選單標示「預設 sonnet，較省額度」；執行器 19.2。查證：當天 OCTA 無工作、教練連結建立後未使用，額度主因是使用者自己的長對話。
 - 3.4.1（2026-11-01）：一鍵壓縮對話。POST /api/compact（只限單一機器人、≥6 則、沒在工作）→ 加 sys「壓縮中」並派 via {k:'compact',from} 的工作（COMPACT_PROMPT：📌記住 + 目前進度）；runner/done 成功後刪 id<from 的訊息並留摘要；執行器 19.3 壓縮完關掉 AI 待機 session。UI：標題列 🗜 壓縮（手機隱藏，改在詳細資料頁）、更多選單、/壓縮對話。test/compact.test.mjs。複製機器人不帶記憶（未改）。
 - 3.4.2（2026-11-01）：主機模式顯示「手機遠端」（原本只在離線模式）。同一條 quick tunnel，未簽章請求走配對碼，配對 session 為 local 使用者＝主機資料。host-server.test 加假 cloudflared 驗證配對後看得到主機機器人、關掉不影響主機通道。教練連結仍走雲端（未改）。
+
+## 4.0.0 大改款（2026-11-02，進行中）
+- 規格見 REDESIGN.md：純本機、介面改版、流程簡化、架構重整（app/、desktop/api、desktop/runner、desktop/lib、site/）。
+- [ ] 桌面路 [ ] API 路 [ ] 執行器路 [ ] UI 路 [ ] 合併整合測試 [ ] 發布
