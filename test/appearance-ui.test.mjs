@@ -62,7 +62,7 @@ test('the desktop version matches the changelog, and older releases are still re
   for (const k of ['notes', 'notes_en', 'notes_ja']) assert.equal(big[k].length, 6, k);
   assert.ok(big.notes.some(n => n.includes('完全在你的電腦上')));
   for (const k of ['notes', 'notes_en', 'notes_ja']) assert.ok(log[0][k].length > 0, k);
-  assert.ok(log[0].notes_en.some(n => n.includes('no account')));
+  assert.ok(big.notes_en.some(n => n.includes('no account')));
   const pair = log.find(x => x.v === '3.4.2');
   assert.ok(pair.notes.some(n => n.includes('配對碼')));
   const backup = log.find(x => x.v === '3.0.32');
