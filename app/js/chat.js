@@ -209,6 +209,10 @@ $('jump').onclick=()=>{const b=$('msgs');b.scrollTo({top:b.scrollHeight,behavior
 $('msgs').addEventListener('scroll',()=>{const b=$('msgs');if(b.scrollHeight-b.scrollTop-b.clientHeight<60){$('jump').hidden=true;if(cur&&unread(cur)){markSeen(cur);render(false)}}},{passive:true});
 $('back').onclick=()=>{saveDraft();$('app').classList.remove('chat');navPop('chat');focusBrowser()};
 $('who').onclick=()=>{if(cur)toggleDetail()};
+// a big screen can fold the conversation list away (remembered on this device)
+function setRail(open){$('app').classList.toggle('rail-collapsed',!open);$('railToggle').setAttribute('aria-pressed',String(!open));store.set('octa_rail',open?null:'0')}
+$('railToggle').onclick=()=>{setRail($('app').classList.contains('rail-collapsed'));focusBrowser()};
+if(store.get('octa_rail')==='0')setRail(false);
 $('detailBtn').onclick=()=>toggleDetail();
 $('more2').onclick=e=>{e.stopPropagation();if(!cur)return;itemMenu($('more2'),cur)};
 

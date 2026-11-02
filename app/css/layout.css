@@ -1,6 +1,9 @@
 /* OCTA 4.0 layout: sidebar · conversation · detail panel. Phone: list ↔ chat ↔ details. */
 .app{position:fixed;inset:0;display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);background:var(--bg)}
 .app.detail-on{grid-template-columns:var(--side-w) minmax(0,1fr) var(--detail-w)}
+.app.rail-collapsed.has-conv{grid-template-columns:0 minmax(0,1fr)}
+.app.rail-collapsed.has-conv.detail-on{grid-template-columns:0 minmax(0,1fr) var(--detail-w)}
+.app.rail-collapsed.has-conv .side{visibility:hidden;overflow:hidden;border:0}
 
 /* ---------- sidebar ---------- */
 .side{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0}
@@ -107,6 +110,7 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
 /* ---------- medium screens: the detail panel floats over the chat ---------- */
 @media (max-width:1180px) and (min-width:761px){
   .app.detail-on{grid-template-columns:var(--side-w) minmax(0,1fr)}
+  .app.rail-collapsed.has-conv.detail-on{grid-template-columns:0 minmax(0,1fr)}
   .detail{position:fixed;top:0;right:0;bottom:0;width:min(var(--detail-w),92vw);box-shadow:var(--sh-3);animation:slidein .2s var(--ease)}
 }
 @keyframes slidein{from{transform:translateX(24px);opacity:.5}}
@@ -117,7 +121,8 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
   :root{--head-h:56px}
   body{font-size:calc(15.5px * var(--fz))}
   input:not([type=checkbox]):not([type=radio]):not([type=range]),textarea,select{font-size:max(16px,calc(15px * var(--fz)))!important}   /* no zoom on focus */
-  .app,.app.detail-on{grid-template-columns:1fr}
+  .app,.app.detail-on,.app.rail-collapsed.has-conv,.app.rail-collapsed.has-conv.detail-on{grid-template-columns:1fr}
+  .app.rail-collapsed.has-conv .side{visibility:visible}
   .side{border-right:0;padding-top:var(--safe-t)}
   .side-hd{padding:10px 10px 4px 16px}
   .kbd{display:none}
@@ -133,7 +138,7 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
   .ph .back{display:inline-grid}
   .who{padding:4px 4px}
   .who .av{width:36px;height:36px}
-  #detailBtn{display:none}
+  #detailBtn,#railToggle{display:none}
   .detail{position:fixed;inset:0;z-index:40;border-left:0;padding-top:var(--safe-t);animation:slidein .22s var(--ease)}
   .dp-hd{padding:0 8px 0 4px}
   .dp-hd .back2{display:inline-grid}

@@ -6,10 +6,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { DOT_SIZE, dotBox, embedFrames, thumbBox } from '../desktop/embed-layout.mjs';
+import { js, css, pure } from './app-source.mjs';
 
 const root = join(import.meta.dirname, '..');
 const read = p => readFileSync(join(root, p), 'utf8');
-const page = read('public/index.html');
 const apiSrc = read('functions/api/[[path]].js');
 const { onRequest } = await import(pathToFileURL(join(root, 'functions', 'api', '[[path]].js')).href);
 
@@ -79,36 +79,25 @@ test('an open dialog sends the browser views out of the way', () => {
   assert.match(chrome, /id="dot"/);
   assert.match(chrome, /api\(\)\?\.dot\?\.\(true\)/);
   // the page tells the app when a sheet, menu or loading screen is up, and keeps room under the last message
-  assert.match(page, /D\.cover\(on\)/);
-  assert.match(page, /!\$\('veil'\)\.hidden\|\|!!document\.querySelector\('\.mveil'\)/);
-  assert.match(page, /html\.pip \.msgs::after\{content:"";flex:none;height:var\(--pip,0px\)\}/);
-  assert.match(page, /if\(!D\?\.cover\)return;/);
+  assert.match(js, /D\.cover\(on\)/);
+  assert.match(js, /!\$\('veil'\)\.hidden\|\|!!document\.querySelector\('\.mveil'\)/);
+  assert.match(css, /html\.pip \.msgs::after\{content:"";flex:none;height:var\(--pip,0px\)\}/);
+  assert.match(js, /if\(!D\?\.cover\)return;/);
 });
 
-test('computers not seen for 30 days are marked and older versions are flagged', () => {
-  const src = page.match(/const PC_STALE_MS=[^\n]+\nconst pcStale=[^\n]+\nconst verCmp=[^\n]+/)[0];
-  const { pcStale, verCmp } = new Function(src + ';return {pcStale,verCmp}')();
-  const t = Date.UTC(2026, 9, 27);
-  assert.equal(pcStale({ seen: 0, online: false }, t), true);
-  assert.equal(pcStale({ seen: t - 31 * 86400000, online: false }, t), true);
-  assert.equal(pcStale({ seen: t - 3 * 86400000, online: false }, t), false);
-  assert.equal(pcStale({ seen: 0, online: true }, t), false);
+test('version numbers compare part by part (the update check and the changelog use it)', () => {
+  const { verCmp } = pure;
   assert.equal(verCmp('2.3.0', '3.0.44'), -1);
   assert.equal(verCmp('3.0.9', '3.0.44'), -1);
   assert.equal(verCmp('v3.0.44', '3.0.44'), 0);
   assert.equal(verCmp('3.1', '3.0.44'), 1);
-  assert.match(page, /很久沒連線/);
-  assert.match(page, /版本較舊，建議更新/);
-  assert.match(page, /<span>從未連線<\/span>/);
-  assert.match(page, /data-stale="1"/);
-  assert.match(page, /清除很久沒連線的電腦/);
-  assert.match(page, /api\('devices\/remove','POST',\{ids:\[b\.dataset\.rmpc\]/);
+  assert.equal(verCmp('4.0.0', '3.4.2'), 1);
 });
 
 test('new templates exist in every language and their routines start paused', async () => {
-  for (const k of ['remind', 'tidy', 'watch', 'game']) assert.match(page, new RegExp(`\\{k:'${k}',n:'`));
-  const dict = read('public/i18n-dict.js');
-  for (const s of ['排程發訊', '資料整理', '網站監看', '遊戲自動化', '很久沒連線', '版本較舊，建議更新']) assert.ok(dict.includes(JSON.stringify(s) + ':'), s);
+  for (const k of ['remind', 'tidy', 'watch', 'game']) assert.match(js, new RegExp(`\\{k:'${k}',n:'`));
+  const dict = read('app/i18n-dict.js');
+  for (const s of ['排程發訊', '資料整理', '網站監看', '遊戲自動化']) assert.ok(dict.includes(JSON.stringify(s) + ':'), s);
   // the build only replaces the template data, not the code after it
   assert.match(apiSrc, /const CODE_ENGINES = /);
   assert.match(apiSrc, /function publicCodeTask\(row\)/);

@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { classifyJobFailure, retryPrompt, stripRetryNote, failureNotice, autoRetryable, FAIL_KINDS } from '../public/model-route.mjs';
 import { buildPrompt, buildLocalPrompt } from '../public/octa-runner.mjs';
+import { page as appPage, dictSrc as appDict } from './app-source.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
 const { onRequest } = await import(apiUrl);
@@ -232,12 +233,12 @@ test('an old database gains the failure columns', async () => {
 });
 
 test('工作紀錄 shows the reason, the screenshot and a retry button', () => {
-  const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
+  const page = appPage;
   assert.match(page, /function logFail\(l\)/);
   for (const k of Object.keys(FAIL_KINDS)) assert.match(page, new RegExp(k + ":\\['" + FAIL_KINDS[k].label));
   assert.match(page, /data-lshot=/);
   assert.match(page, /api\('logs\/retry','POST'/);
-  const dict = readFileSync(join(import.meta.dirname, '..', 'public', 'i18n-dict.js'), 'utf8');
+  const dict = appDict;
   for (const s of ['看截圖', '已自動重試', '待登入', '網頁變了']) assert.ok(dict.includes(`"${s}"`), s);
 });
 

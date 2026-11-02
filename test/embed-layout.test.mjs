@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { ENGINE_ROW, OPEN_BAR, PANEL_EDGE, TAB_ROW, THUMB_RADIUS, embedFrames, freshOpen, isBlankUrl, resizeBox, sidebarBox, thumbBox } from '../desktop/embed-layout.mjs';
 import { pickLivePage } from '../public/octa-runner.mjs';
+import { page as appPage, dictSrc as appDict } from './app-source.mjs';
 
 test('the opened browser is a side panel and the chat keeps the whole window', () => {
   const lay = embedFrames(1920, 1000, 'open');
@@ -120,7 +121,7 @@ test('opening the browser keeps a toolbar and a closable tab row inside the pane
   assert.match(main, /navigationHistory\.goBack/);
   assert.match(main, /tabs: bucket\.tabs\.length/);
   assert.match(main, /function closeEmbedTab/);
-  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const page = appPage;
   assert.match(page, /function focusBrowser/);
   assert.match(page, /focusBot/);
   const preload = readFileSync(new URL('../desktop/preload.cjs', import.meta.url), 'utf8');
@@ -245,7 +246,7 @@ test('the switch under the page replaces the old take-over / continue buttons', 
   const runner = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
   assert.match(runner, /const mine = \(\) => \{ if \(!window\.__octaUser\) return false;/);
   assert.match(runner, /addEventListener\('mousemove', e => \{ if \(!mine\(\)\) move/);
-  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const page = appPage;
   assert.match(page, /octaDesktop\?\.control\?\.\(hd\.dataset\.hand,true\)/);
   assert.match(page, /const resume=HAND_BUSY\.delete\(d\.bot\)\|\|handWaits\(d\.bot\)/);
 });

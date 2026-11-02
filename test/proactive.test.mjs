@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { autonomyRules, buildPrompt } from '../public/octa-runner.mjs';
+import { page as appPage, dictSrc as appDict } from './app-source.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
 const { onRequest, mentionAsks } = await import(apiUrl);
@@ -305,18 +306,19 @@ test('bot names: no spaces for new names or renames; an old spaced name may stay
   const job = await t.next();
   await t.done(job.id, '好喔\n📛名稱：🎮 Game Pal');
   assert.equal(t.db.raw.prepare('SELECT name FROM bots WHERE id=?').get(fresh).name, 'Game_Pal');
-  const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
+  const page = appPage;
   assert.match(page, /名稱有空格，群組裡 @ 不到它，建議改名/);
-  assert.match(page, /if\(!g&&sheet\.nameOk&&!sheet\.nameOk\(\)\)/);
+  assert.match(page, /if\(!nameOk\(\)\)\{\$\('sn'\)\.focus\(\);return false\}/);
+  assert.match(page, /const bad=raw\?nameProblem\(raw,''\):''/, 'a new bot\'s name is checked too');
 });
 
 test('web app: autonomy choice, standby status, plan buttons and the folded 幕後 line', () => {
-  const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
+  const page = appPage;
   assert.match(page, /name="sf_au" value="\$\{v\}"/);
   assert.match(page, /\['auto','直接做'/);
   assert.match(page, /\['report','做完告知（建議）'/);
   assert.match(page, /\['ask','重要動作先問'/);
-  assert.match(page, /body\.autonomy=\$\('veil'\)\.querySelector\('input\[name=sf_au\]:checked'\)/);
+  assert.match(page, /body\.autonomy=box\.querySelector\('input\[name=sf_au\]:checked'\)/);
   assert.match(page, /id="sf_standnow"/);
   assert.match(page, />照做<\/button>/);
   assert.match(page, /plan=\/\^照計畫\/\.test\(act\)/);   // 📋計畫 card (apprDecision since the approval-card upgrade)

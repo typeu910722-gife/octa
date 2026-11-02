@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { googleLoginDone, googleLoginMark, googleSignedIn } from '../public/octa-runner.mjs';
+import { page as appPage, dictSrc as appDict } from './app-source.mjs';
 
 const read = rel => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const NOW = 1_800_000_000;
@@ -41,7 +42,7 @@ test('the runner, the server and the page carry the way back from the Chrome win
   assert.match(runner, /api\('runner\/note'/);
   const api = read('../functions/api/[[path]].js');
   assert.match(api, /path === 'runner\/note' && m === 'POST'/);
-  const page = read('../public/index.html');
+  const page = appPage;
   assert.match(page, /desktop\/browser-embed/);
   assert.match(page, /改回內建瀏覽器/);
   assert.match(page, /因 Google 登入改用 Chrome 視窗/);

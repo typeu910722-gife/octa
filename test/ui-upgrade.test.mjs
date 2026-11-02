@@ -8,23 +8,8 @@ import { pathToFileURL } from 'node:url';
 
 const root = join(import.meta.dirname, '..');
 const read = p => readFileSync(join(root, p), 'utf8');
-const page = read('public/index.html');
+import { page, html, js, css, pure, fnSrc, secSrc } from './app-source.mjs';
 const { onRequest } = await import(pathToFileURL(join(root, 'functions', 'api', '[[path]].js')).href);
-
-// the page's plain functions, loaded on their own
-const pure = (() => {
-  const a = page.indexOf('/* ui-pure:start'), b = page.indexOf('/* ui-pure:end */');
-  assert.ok(a > 0 && b > a, 'ui-pure block present');
-  return new Function(page.slice(a, b) + '\nreturn { APPR, apprDecision, apprImpact, apprStrip, rtStatus, memberState };')();
-})();
-// a function's source text inside the page (from its declaration to the next top-level declaration)
-const fnSrc = name => {
-  const re = new RegExp('\\n(?:async )?function ' + name + '\\(|\\nconst ' + name + '=');
-  const m = re.exec(page); assert.ok(m, name + ' exists');
-  const rest = page.slice(m.index + 1);
-  const end = rest.slice(1).search(/\n(?:async function |function |const |let |\$\('|\/\* )/);
-  return end < 0 ? rest : rest.slice(0, end + 1);
-};
 
 function openD1() {
   const db = new DatabaseSync(':memory:');
@@ -80,7 +65,7 @@ test('nothing but your own tap changes the open chat', () => {
   assert.doesNotMatch(fnSrc('followRemote'), /openConv\(/);
   assert.match(fnSrc('followRemote'), /showHint\(/);
   // clearing the box no longer jumps to the chat another device is looking at
-  const input = page.match(/\$\('msg'\)\.addEventListener\('input',\(\)=>\{grow\(\)[^\n]*/)[0];
+  const input = js.match(/\$\('msg'\)\.addEventListener\('input',\(\)=>\{grow\(\)[^\n]*/)[0];
   assert.doesNotMatch(input, /openConv/);
   // new replies elsewhere: a hint while a chat is open
   assert.match(fnSrc('notifyNew'), /showHint\(c,/);
@@ -91,22 +76,23 @@ test('nothing but your own tap changes the open chat', () => {
   // attachments stay with their own chat
   assert.match(open, /PEND\[cur\]=pending/);
   // every remaining openConv( call is a tap, a notification click or a new bot you just made
-  const calls = [...page.matchAll(/openConv\(([^)]*)\)/g)].map(m => m[1]);
+  const calls = [...js.matchAll(/openConv\(([^)]*)\)/g)].map(m => m[1]);
   assert.ok(calls.every(c => !/remote/.test(c)), 'no {remote:true} switches left: ' + calls.join(' | '));
 });
 
 test('傳給 names the receiver and the send key uses it', () => {
-  assert.match(page, /<div class="sendto" id="sendTo" hidden><\/div>\s*<form class="in" id="f"/);
+  assert.match(html, /<form class="in" id="f">[\s\S]*<div class="sendto" id="sendTo" hidden><\/div>\s*<button class="send"/, '傳給 sits beside the send key');
   const paint = fnSrc('paintTo');
   assert.match(paint, /傳給：/);
   assert.match(paint, /\$\('f'\)\.dataset\.to=cur/);
-  const submit = page.slice(page.indexOf("$('f').onsubmit="), page.indexOf("$('f').onsubmit=") + 1500);
+  const submit = js.slice(js.indexOf("$('f').onsubmit="), js.indexOf("$('f').onsubmit=") + 1500);
   assert.match(submit, /const to=\$\('f'\)\.dataset\.to\|\|cur/);
   assert.match(submit, /sendMsg\(v,files,undefined,rid,to\)/);
   assert.match(submit, /Date\.now\(\)-TO\.at<700/, 'a receiver that changed a moment ago needs one more press');
   assert.match(fnSrc('sendMsg'), /const c=to\|\|cur/);
   // phone layout keeps the line too
-  assert.match(page, /\n\s+\.sendto\{justify-content:flex-start/);
+  assert.match(css, /\.sendto\{display:flex;align-items:center;gap:6px;margin-left:auto/);
+  assert.match(css, /\.sendto \.stl\{display:none\}/, 'the phone keeps the line, without the label');
 });
 
 /* ---------- 2. 存檔只按一次 ---------- */
@@ -114,15 +100,17 @@ test('one 儲存 saves the inner forms, flags unsaved edits and asks before clos
   const close = fnSrc('closeSheet');
   assert.match(close, /force!==true&&isDirty\(\)/);
   assert.match(fnSrc('leaveOk'), /還有沒儲存的變更/);
-  const sheet = fnSrc('sheet');
-  assert.match(sheet, /rf\._save\(true\)/, 'the open routine form is saved by the outer 儲存');
-  assert.match(sheet, /sheet\.addMem/, 'a typed memory line is added by the outer 儲存');
-  assert.match(sheet, /trackDirty\(\$\('sf'\),saveAll\)/);
-  assert.match(sheet, /data-dirty-flag/);
-  assert.match(sheet, /已儲存 ✓/);
+  const panel = fnSrc('paintDetail');
+  assert.match(panel, /rf\._save\(true\)/, 'the open routine form is saved by the panel 儲存');
+  assert.match(panel, /addMem&&!\(await addMem\(\)\)/, 'a typed memory line is added by the panel 儲存');
+  assert.match(panel, /trackDirty\(box\.querySelector\('\.dp'\),saveAll\)/);
+  assert.match(panel, /data-dirty-bar/);
+  assert.match(panel, /已儲存 ✓/);
   assert.match(fnSrc('renderRoutines'), /f\._save=async quiet=>/);
-  for (const f of ['folderSheet', 'openNotes', 'openNotify', 'openProfile']) assert.match(fnSrc(f), /trackDirty\(/, f + ' tracks edits');
-  assert.match(fnSrc('subSheet'), /leaveOk\(/);
+  assert.match(fnSrc('folderSheet'), /trackDirty\(/, 'folderSheet tracks edits');
+  for (const k of ['adv', 'noti', 'look']) assert.match(secSrc(k), /trackDirty\(/, k + ' tracks edits');
+  assert.match(fnSrc('subPage'), /SUB\.back=back/);
+  assert.match(fnSrc('closeDetail'), /leaveOk\(/, 'closing the panel asks first');
   assert.match(page, /\.snav \[data-s\]'\)\.forEach\(b=>b\.onclick=\(\)=>leaveOk\(/, 'switching settings pages asks first');
 });
 
@@ -146,7 +134,7 @@ test('a 待確認 card knows when it is decided, by whom and when', () => {
   assert.equal(apprDecision(own, []).state, 'wait');
   assert.equal(apprDecision(own, [{ by: 'me', text: '不用了：建立排程：早上整理｜08:00｜整理房號', ts: 3 }]).state, 'no');
   assert.equal(pure.apprImpact('記住規則：連假不算', ''), '會寫進它的規則，之後每次工作都照做');
-  assert.match(page, /apprOwn\(d\.act\)\?`<button type="button" class="btn" data-approve="\$\{m\.id\}">核准<\/button><button type="button" class="no" data-deny="\$\{m\.id\}">不用了<\/button>`/);
+  assert.match(fnSrc('apprHtml'), /apprOwn\(d\.act\)\?`<button type="button" class="btn sm" data-approve="\$\{m\.id\}">核准<\/button><button type="button" class="ghost sm" data-deny="\$\{m\.id\}">不用了<\/button>`/);
   // the plan card
   assert.equal(apprDecision({ id: 1, by: 'b1', text: '📋計畫\n1. 查\n✅待確認：照計畫執行' }, []).plan, true);
   assert.equal(apprDecision({ id: 1, by: 'b1', text: '沒有要確認的事' }, []), null);
@@ -270,7 +258,7 @@ test('each routine shows its last run, ✓/✗, the next run and the last result
   assert.match(line, /上次/); assert.match(line, /下次/); assert.match(line, /還沒跑過/);
   assert.match(fnSrc('renderRoutines'), /\$\{rtLine\(r\)\}/, 'task settings list');
   assert.match(fnSrc('rForm'), /\$\{rtLast\(r\)\}/, 'opening one shows the last result');
-  assert.match(fnSrc('openSched'), /schedList\(\)/, '設定 → 例行任務排程 lists every routine');
+  assert.match(secSrc('work'), /schedList\(\)/, '設定 → 工作與排程 lists every routine');
   assert.match(fnSrc('schedList'), /<details class="rsd/);
   assert.doesNotMatch(page, /\.fired\b/, 'the page no longer reads routines.fired');
 });
@@ -283,10 +271,10 @@ test('a group shows what each member is doing now', () => {
   assert.deepEqual(memberState('b', busy, []), { k: 'queue' });
   assert.deepEqual(memberState('c', busy, ['c']), { k: 'ask' });
   assert.deepEqual(memberState('d', busy, []), { k: 'idle' });
-  assert.match(page, /<div class="gmem" id="gmem" hidden/);
+  assert.match(html, /<div class="gmem" id="gmem" hidden/);
   assert.match(fnSrc('paintMembers'), /memberState\(id,S\.busy,asks\)/);
   assert.match(page, /GM_LABEL=\{run:'工作中',queue:'排隊中',ask:'等你核准',idle:'待命'\}/);
-  assert.match(fnSrc('render'), /paintMembers\(c,g\)/);
+  assert.match(fnSrc('renderChat'), /paintMembers\(c,g\)/);
   // the phone shows the strip too (the task line is hidden there)
-  assert.match(page, /\n\s+\.gmem\{margin:6px 0 0;/);
+  assert.match(css, /\.gmem\{display:flex;gap:6px;padding:8px var\(--gut\);overflow-x:auto/);
 });

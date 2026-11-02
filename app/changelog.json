@@ -1,5 +1,33 @@
 [
  {
+  "v": "4.0.0",
+  "date": "2026-11-02",
+  "notes": [
+   "全新介面：更清爽的版面，淺色、深色會跟著系統，也可以在「設定 → 外觀與語言」自己選",
+   "OCTA 改成完全在你的電腦上運作：不用帳號、不用登入，資料都在這台電腦",
+   "建立機器人只要取名字；AI、瀏覽器、例行任務、記憶、權限都在右邊的「詳細資料」裡設定",
+   "設定整理成一頁七個分類：外觀與語言、AI 連線、瀏覽器、通知、手機遠端、工作與排程、進階",
+   "第一次打開有兩步導覽：連接一個 AI，再建立第一個機器人",
+   "手機用「手機遠端」的網址和 8 碼配對碼連進來，畫面和電腦一樣"
+  ],
+  "notes_en": [
+   "A brand-new interface: cleaner layout; light and dark follow your system, or pick one in Settings → Appearance & language",
+   "OCTA now runs entirely on your computer: no account, no sign-in, all data stays on this computer",
+   "Creating a bot takes just a name; AI, browser, routines, memory and permissions are in its Details panel on the right",
+   "Settings is one page with seven sections: appearance & language, AI connections, browser, notifications, phone remote, work & schedules, advanced",
+   "First launch has a two-step guide: connect an AI, then create your first bot",
+   "Phones connect with the phone-remote address and the 8-character pairing code, with the same screens as the computer"
+  ],
+  "notes_ja": [
+   "画面を一新：すっきりしたレイアウト。ライト／ダークはシステムに合わせるか、「設定 → 表示と言語」で選べます",
+   "OCTA はすべてあなたのパソコンで動くようになりました。アカウントもログインも不要で、データはこのパソコンにあります",
+   "ボットの作成は名前だけ。AI・ブラウザ・定期タスク・記憶・権限は右側の「詳細」で設定します",
+   "設定を 1 ページ 7 分類に整理：表示と言語、AI 接続、ブラウザ、通知、スマホ遠隔操作、作業とスケジュール、詳細設定",
+   "初回起動時は 2 ステップの案内：AI を接続して、最初のボットを作成",
+   "スマホは遠隔操作の URL と 8 文字のペアリングコードで接続し、パソコンと同じ画面を使えます"
+  ]
+ },
+ {
   "v": "3.4.2",
   "date": "2026-11-01",
   "notes": [
