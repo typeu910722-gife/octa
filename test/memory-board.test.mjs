@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { buildPrompt, memoryLines, manualLines } from '../desktop/runner/index.mjs';
+import { page as appPage, dictSrc as appDict } from './app-source.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;
 const { onRequest, capList, pickManuals, parseManuals, saveManuals, applyRuleUpdates, memoryFor } = await import(apiUrl);
@@ -223,13 +224,13 @@ test('older databases get the stats table', async () => {
 });
 
 test('the settings page has the board, the review switch and the memory kinds', () => {
-  const html = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
-  assert.match(html, /\['board','📊','成果看板'/);
-  assert.match(html, /board:\(\)=>openBoard\(\)/);
+  const html = appPage;
+  assert.match(html, /<b>成果看板<\/b>/);
+  assert.match(html, /\$\('goBoard'\)\.onclick=\(\)=>openBoard\(\)/);
   assert.match(html, /api\('board'\)/);
-  assert.match(html, /id="scRev"/);
+  assert.match(html, /toggleRow\('scRev','每週自我檢討'/);
   assert.match(html, /function memHtml\(c\)/);
   assert.match(html, /memory:\{bot:c\.id,type:t,list\}/);
-  const dict = readFileSync(join(import.meta.dirname, '..', 'public', 'i18n-dict.js'), 'utf8');
+  const dict = appDict;
   for (const k of ['成果看板', '做事手冊', '每週自我檢討', '估計省下']) assert.ok(dict.includes(`"${k}"`), k + ' is translated');
 });

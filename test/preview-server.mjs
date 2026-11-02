@@ -2,7 +2,7 @@
 // Uses the real API in desktop/offline mode (no account) and, when Ollama is absent,
 // can run one task through the fixture provider so the screen shows execution evidence.
 //   node test/preview-server.mjs
-// Open the printed URL, then 設定 → 程式任務.
+// Open the printed URL, then 設定 → 進階 → 程式任務.
 
 import http from 'node:http';
 import { spawnSync } from 'node:child_process';
@@ -14,10 +14,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { probeCodingHosts, runCodingTask, selectProvider } from '../desktop/lib/coding-runtime.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const web = join(root, 'public');
+const web = join(root, 'app');
 const { onRequest } = await import(pathToFileURL(join(root, 'desktop', 'api', 'index.mjs')).href);
 const schema = readFileSync(join(root, 'schema.sql'), 'utf8');
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 function openD1() {
   const db = new DatabaseSync(':memory:');

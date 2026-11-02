@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { runCodingTask, selectProvider } from '../desktop/lib/coding-runtime.mjs';
 import { runnerSource } from './runner-source.mjs';
+import { page as appPage, dictSrc as appDict } from './app-source.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;
 const { onRequest, schedulesFromTurn, calmReply } = await import(apiUrl);
@@ -420,7 +421,7 @@ test('a new bot that is told the quota is gone calls the backups in order', asyn
   assert.equal(noHop, null);
   const kept = await call(db, 'GET', 'messages', { token, query: { conv: id } });
   assert.ok(kept.data.msgs.some(m => m.by === id && m.text === '人流量不夠，不建議開店'));
-  const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
+  const page = appPage;
   assert.match(page, /模型說流量不夠或額度用完，會立刻改叫下一個備援/);
   const runner = runnerSource();
   assert.match(runner, /replyIsProviderRefusal\(text\)/);
@@ -472,7 +473,7 @@ test('dragging a message copies it, and replace removes the original', async () 
   assert.equal(joined.status, 200, JSON.stringify(joined.data));
   const state = await call(db, 'GET', 'state', { token });
   assert.deepEqual(state.data.groups.find(x => x.id === g.data.id).members, [a.data.id, b.data.id]);
-  const page = readFileSync(join(import.meta.dirname, '..', 'public', 'index.html'), 'utf8');
+  const page = appPage;
   assert.match(page, /複製並蓋掉原本的訊息/);
   assert.match(page, /messages\/copy/);
   assert.match(page, /加入群組/);

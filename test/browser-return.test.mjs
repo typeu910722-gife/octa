@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { googleLoginDone, googleLoginMark, googleSignedIn } from '../desktop/runner/index.mjs';
 import { runnerSource } from './runner-source.mjs';
+import { page as appPage, dictSrc as appDict } from './app-source.mjs';
 
 const read = rel => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const NOW = 1_800_000_000;
@@ -43,7 +44,7 @@ test('the runner, the server and the page carry the way back from the Chrome win
   const apiDir = new URL('../desktop/api/', import.meta.url);
   const api = readdirSync(apiDir).filter(f => f.endsWith('.mjs')).sort().map(f => readFileSync(new URL(f, apiDir), 'utf8')).join('\n');
   assert.match(api, /path === 'runner\/note' && m === 'POST'/);
-  const page = read('../public/index.html');
+  const page = appPage;
   assert.match(page, /desktop\/browser-embed/);
   assert.match(page, /改回內建瀏覽器/);
   assert.match(page, /因 Google 登入改用 Chrome 視窗/);
