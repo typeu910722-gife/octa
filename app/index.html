@@ -123,13 +123,36 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
         <div class="web-ph" id="webPh"></div>
         <div class="stage" id="stage" hidden>
           <div class="sthd"><b id="stTitle">瀏覽器</b><span id="stUrl" data-u></span></div>
-          <img id="stPic" alt="電腦上這個機器人的瀏覽器">
-          <div class="stact"><button type="button" class="btn sm" id="stHand">接手</button><button type="button" class="ghost sm" id="stGo">繼續</button></div>
+          <!-- 4.2 手機遙控: address, 上一頁, 重新整理 (usable after 接手) -->
+          <form class="scr-bar" id="scrBar" hidden>
+            <button type="button" class="ib" id="scrBack" aria-label="上一頁" title="上一頁" data-i="back"></button>
+            <input id="scrAddr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="網址" placeholder="網址或要搜尋的字">
+            <button type="button" class="ib" id="scrReload" aria-label="重新整理" title="重新整理" data-i="refresh"></button>
+          </form>
+          <div class="scr" id="scr" aria-label="電腦上這個機器人的瀏覽器">
+            <div class="scr-in" id="scrIn"><img id="stPic" alt="電腦上這個機器人的瀏覽器" draggable="false"></div>
+            <span class="scr-tag" id="scrTag" hidden></span>
+            <button type="button" class="scr-z" id="scrZoom" hidden aria-label="還原大小">1×</button>
+          </div>
+          <p class="scr-ask" id="scrAsk" hidden>機器人需要你幫忙（例如登入、輸入驗證碼）。按「接手」就能直接在手機上操作。</p>
+          <div class="stact"><button type="button" class="btn sm" id="stHand">接手</button><button type="button" class="ghost sm" id="stGo">我好了</button></div>
           <p class="hold" id="stHold" hidden>接手中，機器人已停止點擊和打字</p>
         </div>
       </div>
-      <!-- 4.2 slot: the phone's remote control of the live view (tap / scroll / type, 接手 / 我好了) goes here -->
-      <div class="web-ctl" id="webCtl" hidden></div>
+      <!-- 4.2: the phone's keyboard for the bot's page (after 接手) -->
+      <div class="web-ctl" id="webCtl" hidden>
+        <form class="scr-kb" id="scrKb">
+          <input id="scrText" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="在這裡打字，按送出" aria-label="要輸入到網頁的文字">
+          <button type="button" class="ib" id="scrEye" aria-label="隱藏文字" title="隱藏文字（輸入密碼時）" aria-pressed="false" data-i="hide"></button>
+          <button class="btn sm" id="scrSend">送出</button>
+        </form>
+        <div class="scr-keys">
+          <button type="button" class="ghost sm" data-key="Backspace">⌫ 刪除</button>
+          <button type="button" class="ghost sm" data-key="Tab">⇥ 下一格</button>
+          <button type="button" class="ghost sm" data-key="Enter">↵ Enter</button>
+          <button type="button" class="ghost sm" id="scrPaste">貼上</button>
+        </div>
+      </div>
       <div class="web-ft" id="webFt"></div>
     </section>
     <section class="wp-pane detail" id="detail" role="tabpanel" aria-labelledby="wtInfo" hidden></section>
@@ -148,6 +171,7 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
 <script defer src="/js/chat.js"></script>
 <script defer src="/js/composer.js"></script>
 <script defer src="/js/browser.js"></script>
+<script defer src="/js/screen.js"></script>
 <script defer src="/js/desktop.js"></script>
 <script defer src="/js/routines.js"></script>
 <script defer src="/js/bots.js"></script>

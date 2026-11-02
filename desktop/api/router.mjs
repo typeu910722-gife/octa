@@ -6,11 +6,12 @@ import { fileRoutes } from './files.mjs';
 import { manageRoutes } from './manage-routes.mjs';
 import { describeEvent, fireEvent } from './routines.mjs';
 import { runnerRoutes } from './runner-routes.mjs';
+import { screenRoutes } from './screen-routes.mjs';
 import { settingsRoutes } from './settings-routes.mjs';
 import { J, err } from './util.mjs';
 
 // requests that don't change anything other devices need to see
-const NO_BUMP = /^(pair|wait|notify\/|settings|runner\/(next|blob|hello|bye|progress|live))/;
+const NO_BUMP = /^(pair|wait|notify\/|settings|screen\/|runner\/(next|blob|hello|bye|progress|live))/;
 
 export async function onRequest(ctx) {
   const { request: req, env, params } = ctx;
@@ -26,7 +27,7 @@ export async function onRequest(ctx) {
 }
 
 // handlers in the order the old single router checked them; each returns a Response or nothing
-const HANDLERS = [fileRoutes, runnerRoutes, chatRoutes, manageRoutes, codeRoutes, settingsRoutes];
+const HANDLERS = [fileRoutes, runnerRoutes, screenRoutes, chatRoutes, manageRoutes, codeRoutes, settingsRoutes];
 
 async function route({ request: req, env, params }) {
   const db = env.DB;

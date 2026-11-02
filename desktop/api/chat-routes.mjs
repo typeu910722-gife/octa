@@ -340,6 +340,10 @@ export async function chatRoutes(c) {
         .prepare('INSERT INTO live (bot_id,user_id,url,title,mime,data,ts,handed) VALUES (?,?,?,?,?,?,?,?)')
         .bind(bot, U, '', '', 'image/jpeg', '', now(), on ? 1 : 0)
         .run();
+    // the computer's browser switch (僅觀看 / 取得控制權) and the live page follow, whichever screen pressed it
+    try {
+      env.onHandoff?.(bot, on);
+    } catch {}
     return ok({ handed: on });
   }
   if (path.startsWith('live/') && m === 'GET') {

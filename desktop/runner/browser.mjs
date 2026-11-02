@@ -244,3 +244,11 @@ export async function reapBrowsers(all) {
   }
 }
 
+// 4.2 手機遙控: the CDP port of the browser this bot uses right now (OCTA's embedded one or its Chrome window), 0 if none is open.
+// It never opens a browser: the phone watches what is already there.
+export async function livePortOf(bot) {
+  if (!bot?.id || bot.browser === 'mine') return 0;
+  const tries = [browsers.get(bot.id)?.port, cfg.embed && !cfg.embed.external?.(bot.id) ? embedPortOf(bot.id) : 0, portOf(bot.id)];
+  for (const p of [...new Set(tries.filter(Boolean))]) if (await cdpInfo(p)) return p;
+  return 0;
+}

@@ -1212,6 +1212,11 @@ async function start() {
       setStore: p => { cfg = { ...cfg, store: p }; writeCfg(cfg); },
       getExtToken: () => cfg.extToken || '',
       browserMode: id => browserMode(id),
+      // 4.2: 接手 / 我好了 pressed on the phone (or anywhere): this computer's 僅觀看 / 取得控制權 switch follows
+      onHandoff: (id, on) => {
+        const bucket = [...embeds.values()].find(b => b.botId === String(id || ''));
+        if (bucket) setControl(bucket, !!on, false);
+      },
       // 改回內建瀏覽器: the runner moves the Chrome window's sign-ins into OCTA's browser and closes the window
       useEmbedded: async bot => {
         if (runner && runnerMod?.returnToEmbed) return runnerMod.returnToEmbed(bot, { manual: true });

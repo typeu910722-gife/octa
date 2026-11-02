@@ -17,7 +17,7 @@ export { ENGINES, has, spawnCli, leanFlags } from './engines.mjs';
 export { ollamaContextTag, ollamaContextModelfile, parseOllamaCaps, ollamaChoices, NO_TOOLS_TEXT, browserUseReady } from './ollama.mjs';
 export { PARTIAL_TAG, partialNote } from './warm.mjs';
 export { triedText } from './chat.mjs';
-export { pickLivePage, ensureBrowser, closeAllBrowsers } from './browser.mjs';
+export { pickLivePage, ensureBrowser, closeAllBrowsers, livePortOf } from './browser.mjs';
 export { googleSignInUrl, googleSignedIn, googleLoginMark, googleLoginDone, returnToEmbed } from './google.mjs';
 export { browserWindowAsk, takeWindowMarks } from './live.mjs';
 export { pollAge, sideReport, startRunner } from './loop.mjs';

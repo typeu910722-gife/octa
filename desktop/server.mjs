@@ -13,6 +13,7 @@ import { randomInt } from 'node:crypto';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import { importFromCloud } from './cloud-import.mjs';
+import { createScreens } from './screen-cast.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -200,7 +201,14 @@ export async function startServer(opts = {}) {
   const tzOffset = -new Date().getTimezoneOffset();
   let runnerSeen = 0;
   const remote = { on: false, url: '', code: '', fails: 0 };   // phone pairing over the tunnel
-  const base = { DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false' };
+  // 4.2 手機遙控: live pictures of the bots' browsers (only while someone watches) and the phone's input into them
+  const screen = opts.screen || createScreens({ resolvePort: async bot => (await loadRunner()).livePortOf(bot) });
+  const base = {
+    DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false', screen,
+    // 接手 / 我好了 from any screen: the page's own flag, and the computer's 僅觀看 / 取得控制權 switch
+    onHandoff: (bot, on) => { screen.flag(bot, on); try { opts.hooks?.onHandoff?.(bot, on); } catch { } },
+    remoteLink: () => (remote.on && remote.url) || ''
+  };
   const callApi = async (req, res, env, origin) => {
     const request = await toRequest(req, origin);
     const path = new URL(request.url).pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
@@ -463,7 +471,7 @@ export async function startServer(opts = {}) {
     url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
     desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
     cloudImport,
-    async close() { runner.stop(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
+    async close() { runner.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
   };
 }
 
