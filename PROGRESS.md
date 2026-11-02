@@ -179,3 +179,14 @@
 - [x] 介面：app/（index.html＋css/＋js/ 18 檔），淺/深色、兩步驟引導、建機器人只要名字、設定單頁七區、手機配對畫面；docs/screens/ 截圖
 - [x] 測試 217 項，剩 4 項舊有失敗（browser-return refused、runner prompt 三項）；沙箱實測 新介面→API→執行器→真 Claude 回覆 26 秒
 - 未實測：Windows 實機安裝 4.0、3.x 雲端帳號實際搬家、Electron 主程式完整跑
+
+## 4.1.0 章魚頭像＋右側工作面板（2026-11-02）
+- [x] 刪掉小八（buddy.js、buddy.png、設定開關、CSS、字串、測試）
+- [x] 所有機器人頭像改成使用者提供的 OCTA 章魚（app/avatar/*.svg 轉成 app/js/avatar.js 內嵌 SVG＋app/css/avatar.css），五種狀態：待命（沒工作）、思考（剛開始、還沒進度）、工作中、操作瀏覽器（進度是瀏覽器動作或開瀏覽器工作）、交流（在回覆其他機器人的背景請求，busy.bg）。側欄只有非待命的會動；prefers-reduced-motion 全部靜止；SVG 內沒有 id
+- [x] 每個機器人可選顏色：14 色調色盤（預設金 #D6B27A 第一），建立與詳細資料都用色票格（鍵盤可操作）；bots.color 欄位、POST/PUT 驗證（調色盤或 #RRGGBB）；範本機器人各給一色；群組用成員頭像疊起來
+- [x] 右側可收起工作面板（工作／瀏覽器／詳細資料），收起狀態記在裝置；≥1181 欄位可拖寬、761–1180 浮在對話上、手機整頁
+- [x] 對話只留對話：你的訊息、機器人回覆、圖片檔案、核准卡、提問、登入請求。系統訊息、背景互問（幕後）、失敗、重試、例行任務紀錄移到「工作」時間軸；messages.kind（bg/fail/note）讓未讀與預覽不算這些；機器人工作時對話只顯示「…」，送出鍵變停止鍵；失敗在輸入框上方一行小提示（查看／重試）
+- [x] 桌面版：octaDesktop.dock(rect) → main 把機器人的內嵌瀏覽器放進面板「瀏覽器」分頁（embed-layout dock 模式），收起、換分頁、對話框或選單蓋到時隱藏；僅觀看／取得控制權照舊；嵌入框跟著淺色。xvfb 下 Electron 實測過（docs/screens/desktop-electron-browser-docked.png）
+- [x] 瀏覽器分頁預留 #webCtl 給 4.2 手機遙控
+- [x] 測試 226 項（新增 test/work-panel.test.mjs），剩原本 4 項舊有失敗
+- 未實測：Windows 實機、真的 AI 工作時的瀏覽器狀態切換、高 DPI／縮放下的 dock 位置、手機實機
