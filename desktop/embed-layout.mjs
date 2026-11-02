@@ -256,3 +256,27 @@ export function userFlagScript(on) {
 export function controlStage(on) {
   return on ? 'hand' : 'go';
 }
+
+// 4.2 手機遙控 on OCTA's own browser: the phone's tap / scroll / typing as Electron input. webContents.sendInputEvent
+// reaches a page that is parked off screen (the 瀏覽器 tab closed on the computer), where CDP mouse events get lost.
+// Returns steps for main.mjs: { input } → sendInputEvent, { text } → insertText, { script } → executeJavaScript.
+export function phoneInput(ev) {
+  const n = (v, lo, hi) => { const x = +v; return Number.isFinite(x) ? Math.round(Math.min(hi, Math.max(lo, x))) : null; };
+  if (ev?.type === 'tap') {
+    const x = n(ev.x, 0, 20000), y = n(ev.y, 0, 20000);
+    if (x === null || y === null) return null;
+    return [{ input: { type: 'mouseMove', x, y } }, { input: { type: 'mouseDown', x, y, button: 'left', clickCount: 1 } }, { input: { type: 'mouseUp', x, y, button: 'left', clickCount: 1 } }];
+  }
+  if (ev?.type === 'scroll') {
+    const x = n(ev.x, 0, 20000), y = n(ev.y, 0, 20000), dx = n(ev.dx, -20000, 20000) || 0, dy = n(ev.dy, -20000, 20000) || 0;
+    if (x === null || y === null || (!dx && !dy)) return null;
+    return [{ script: scrollScript(x, y, dx, dy) }];
+  }
+  if (ev?.type === 'text') { const text = String(ev.text ?? '').slice(0, 2000); return text ? [{ text }] : null; }
+  if (ev?.type === 'key') {
+    const k = { Enter: 'Enter', Backspace: 'Backspace', Tab: 'Tab' }[ev.key];
+    if (!k) return null;
+    return [{ input: { type: 'keyDown', keyCode: k } }, ...(k === 'Enter' ? [{ input: { type: 'char', keyCode: '\r' } }] : []), { input: { type: 'keyUp', keyCode: k } }];
+  }
+  return null;
+}

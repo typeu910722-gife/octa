@@ -202,7 +202,8 @@ export async function startServer(opts = {}) {
   let runnerSeen = 0;
   const remote = { on: false, url: '', code: '', fails: 0 };   // phone pairing over the tunnel
   // 4.2 手機遙控: live pictures of the bots' browsers (only while someone watches) and the phone's input into them
-  const screen = opts.screen || createScreens({ resolvePort: async bot => (await loadRunner()).livePortOf(bot) });
+  // (OCTA's own embedded browser takes the phone's input through Electron: opts.hooks.screenInput)
+  const screen = opts.screen || createScreens({ resolvePort: async bot => (await loadRunner()).livePortOf(bot), inputHook: a => opts.hooks?.screenInput?.(a) });
   const base = {
     DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false', screen,
     // 接手 / 我好了 from any screen: the page's own flag, and the computer's 僅觀看 / 取得控制權 switch

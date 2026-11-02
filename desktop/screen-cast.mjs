@@ -96,7 +96,7 @@ export async function wsConnect(port) {
   };
 }
 
-export function createScreens({ resolvePort, connect = wsConnect, idleMs = IDLE_MS, now = Date.now, timers = globalThis } = {}) {
+export function createScreens({ resolvePort, connect = wsConnect, inputHook = null, idleMs = IDLE_MS, now = Date.now, timers = globalThis } = {}) {
   const streams = new Map();   // bot id → stream
   const users = new Map();     // bot id → the person has control (接手)
   const buckets = new Map();   // bot id → input rate limit
@@ -135,6 +135,11 @@ export function createScreens({ resolvePort, connect = wsConnect, idleMs = IDLE_
       if (s.alive && sid === s.sessionId && shot?.data) newFrame(s, Buffer.from(shot.data, 'base64'), { deviceWidth: w, deviceHeight: h, offsetTop: 0, pageScaleFactor: 1, scrollX: +vp.pageX || 0, scrollY: +vp.pageY || 0 });
     } catch { } finally { s.shooting = false; }
   }
+  // something changed on the page (a tap, a new address): if no new frame shows it within a second, take a screenshot
+  function kick(s) {
+    const seq = s.seq;
+    timers.setTimeout(() => { if (s.alive && s.seq === seq) void shoot(s); }, 1000);
+  }
   async function look(s) {   // every 2 s: nobody watching → stop; the bot moved to another tab → follow it; no screencast → screenshot
     if (!s.alive) return;
     if (now() - s.lastView > idleMs) return stop(s.bot, 'idle');
@@ -161,6 +166,9 @@ export function createScreens({ resolvePort, connect = wsConnect, idleMs = IDLE_
       if (method === 'Page.frameNavigated' && sessionId === s.sessionId && !params.frame?.parentId) {
         s.url = params.frame?.url || s.url;
         if (users.get(bot)) s.client.send('Runtime.evaluate', { expression: userFlag(true) }, s.sessionId).catch(() => { });
+        // Electron's embedded page drops the screencast on a new document: ask again, and make sure a picture follows
+        if (s.mode === 'cast') timers.setTimeout(() => { if (s.alive && s.sessionId) s.client.send('Page.startScreencast', { format: 'jpeg', quality: 60, maxWidth: s.w, maxHeight: s.h, everyNthFrame: 1 }, s.sessionId).catch(() => { }); }, 200);
+        kick(s);
       }
     });
     const { targetInfos = [] } = await client.send('Target.getTargets');
@@ -222,15 +230,19 @@ export function createScreens({ resolvePort, connect = wsConnect, idleMs = IDLE_
       const s = streams.get(bot);
       if (!s?.sessionId) return { error: '畫面還沒連上，請稍等一下', status: 409 };
       s.lastView = t;
-      for (const [m, p] of cmds) await s.client.send(m, p, s.sessionId);
+      // OCTA's own browser: Electron delivers it (also to a page parked off screen); anything else gets CDP input
+      const viaHook = inputHook ? await Promise.resolve(inputHook({ bot, port: s.port, targetId: s.targetId, ev })).catch(() => false) : false;
+      if (!viaHook) for (const [m, p] of cmds) await s.client.send(m, p, s.sessionId);
       // a screenshot-only browser: show the result of the tap right away
       if (s.mode === 'shot') timers.setTimeout(() => void shoot(s), 250);
+      else kick(s);
       return { ok: true };
     },
     async nav(bot, { act, url } = {}) {
       const s = streams.get(bot);
       if (!s?.sessionId) return { error: '畫面還沒連上，請稍等一下', status: 409 };
       const sid = s.sessionId;
+      kick(s);
       if (act === 'go') { const to = navUrl(url); await s.client.send('Page.navigate', { url: to }, sid); s.url = to; return { ok: true, url: to }; }
       if (act === 'reload') { await s.client.send('Page.reload', {}, sid); return { ok: true }; }
       if (act === 'back') {

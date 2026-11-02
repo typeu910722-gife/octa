@@ -9,7 +9,7 @@ import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmS
 import { startServer } from './server.mjs';
 import { cloudCaller, importStatus, migrateConfig } from './cloud-import.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
-import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
+import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, phoneInput, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
 import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, SAME_TO_CDP, braveDownload, chromeDownload, clientHintHeaders, edgeDownload, electronCookie, firefoxDownload, googleRefused, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
 // ---------- updates (GitHub Releases) ----------
@@ -1216,6 +1216,19 @@ async function start() {
       onHandoff: (id, on) => {
         const bucket = [...embeds.values()].find(b => b.botId === String(id || ''));
         if (bucket) setControl(bucket, !!on, false);
+      },
+      // the phone's taps and typing on a page of OCTA's own browser (docked, open or parked off screen)
+      screenInput: async ({ port, targetId, ev }) => {
+        const bucket = embeds.get(port);
+        const wc = bucket?.pages.get(targetId)?.wc;
+        const steps = wc && !wc.isDestroyed() ? phoneInput(ev) : null;
+        if (!steps) return false;
+        for (const st of steps) {
+          if (st.input) wc.sendInputEvent(st.input);
+          else if (st.text) wc.insertText(st.text);
+          else if (st.script) await wc.executeJavaScript(st.script).catch(() => { });
+        }
+        return true;
       },
       // 改回內建瀏覽器: the runner moves the Chrome window's sign-ins into OCTA's browser and closes the window
       useEmbedded: async bot => {
