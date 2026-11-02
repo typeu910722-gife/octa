@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<script>
+/* look and text size before first paint: data-theme is set only when the person picked one (otherwise the system decides) */
+(function(){try{var d=document.documentElement,q=new URLSearchParams(location.search).get('theme'),s=localStorage.getItem('octa_theme');var t=(q==='light'||q==='dark')?q:s;if(t==='light'||t==='dark')d.setAttribute('data-theme',t);if(window.octaDesktop)d.classList.add('desk');
+var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=80&&n<=200)z=n/100}if(z){d.style.setProperty('--fz',String(z));if(z>=1.6)d.setAttribute('data-fs','xl');else if(z>=1.08)d.setAttribute('data-fs','l');else if(z<=.95)d.setAttribute('data-fs','s')}}catch(e){}})();
+</script>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="OCTA">
+<meta name="robots" content="noindex,nofollow">
+<title>OCTA 奧克塔</title>
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/components.css">
+<link rel="stylesheet" href="/css/layout.css">
+<link rel="stylesheet" href="/css/chat.css">
+<link rel="stylesheet" href="/css/panels.css">
+<script src="/i18n-dict.js"></script>
+<script src="/i18n-core.js"></script>
+</head>
+<body>
+<div class="boot" id="boot" role="progressbar" aria-label="載入中">
+  <img src="/icon.png" alt="" class="boot-logo">
+  <div class="boot-name" data-u>OCTA 奧克塔</div>
+  <div class="boot-track"><div class="boot-fill" id="bootFill"></div></div>
+  <div class="boot-msg"><span id="bootMsg">載入中…</span> <span id="bootPct" data-u>0%</span></div>
+</div>
+
+<!-- the phone: pair with the code shown on the computer (the only sign-in OCTA has) -->
+<main class="pairing" id="pair" hidden>
+  <form class="pair-card" id="pairForm">
+    <img src="/icon.png" alt="" class="pair-logo">
+    <h1>連接你的電腦</h1>
+    <p>打開電腦上的 OCTA，到「設定 → 手機遠端」，輸入那裡顯示的 8 碼配對碼。</p>
+    <label class="field"><span>配對碼</span><input id="pairCode" class="code-in" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="12" required placeholder="例如 7K3P9QXA"></label>
+    <div class="errmsg" id="pairErr" role="alert"></div>
+    <button class="btn big" id="pairGo">連接</button>
+    <div class="pair-lang" id="pairLang"></div>
+  </form>
+</main>
+
+<div class="app" id="app" hidden>
+  <aside class="side" id="side" aria-label="對話">
+    <div class="side-hd">
+      <div class="brand"><img src="/icon.png" alt="" class="logo"><span class="bname" data-u>OCTA</span><span class="bname2" data-u>奧克塔</span></div>
+      <button type="button" class="ib" id="plus" aria-label="新增" title="新增（Alt+N）" data-i="plus"></button>
+    </div>
+    <div class="side-search">
+      <label class="sbox" id="qbox"><span class="si" data-i="search" aria-hidden="true"></span><input id="q" type="search" placeholder="搜尋機器人" autocomplete="off" aria-label="搜尋機器人"><kbd class="kbd" id="qKbd" data-u>Ctrl K</kbd></label>
+    </div>
+    <div class="upd" id="upd" hidden></div>
+    <nav class="list" id="list"></nav>
+    <div class="side-ft">
+      <button type="button" class="sfbtn" id="settings"><span data-i="settings" aria-hidden="true"></span><span>設定</span></button>
+      <span class="status" id="online" role="status"><i class="sdot"></i><span id="onlineT">電腦離線</span></span>
+    </div>
+  </aside>
+
+  <section class="pane" id="pane" aria-label="對話內容">
+    <div class="blank" id="blank"></div>
+    <header class="ph" id="ph" hidden>
+      <button type="button" class="ib back" id="back" aria-label="返回" data-i="back"></button>
+      <button type="button" class="who" id="who" aria-label="詳細資料"><span class="av" id="pav"></span><span class="t"><b id="pname" data-u></b><small id="psub"></small></span></button>
+      <div class="ph-act">
+        <button type="button" class="ib" id="browser" aria-label="瀏覽器" title="瀏覽器" data-i="globe"></button>
+        <button type="button" class="ib" id="detailBtn" aria-label="詳細資料" title="詳細資料" data-i="panel"></button>
+        <button type="button" class="ib" id="more2" aria-label="更多" title="更多" data-i="more"></button>
+      </div>
+    </header>
+    <div class="gmem" id="gmem" hidden aria-label="成員現在在做什麼"></div>
+    <div class="offb" id="offb" role="status" hidden></div>
+    <div class="followbar" id="followbar" hidden role="status"><span id="followBit"></span><button type="button" id="followGo">過去看看</button><button type="button" class="fx" id="followX" aria-label="關閉提示" data-i="x"></button></div>
+    <div class="msgs" id="msgs" aria-live="polite" hidden></div>
+    <button type="button" class="jump" id="jump" hidden><span data-i="down" aria-hidden="true"></span><span>新訊息</span></button>
+    <aside class="stage" id="stage" hidden>
+      <div class="sthd"><b id="stTitle">瀏覽器</b><span id="stUrl" data-u></span></div>
+      <img id="stPic" alt="電腦上這個機器人的瀏覽器">
+      <div class="stact"><button type="button" class="btn sm" id="stHand">接手</button><button type="button" class="ghost sm" id="stGo">繼續</button></div>
+      <p class="hold" id="stHold" hidden>接手中，機器人已停止點擊和打字</p>
+    </aside>
+    <div class="composer" id="composer" hidden>
+      <div class="atpop" id="atpop" hidden></div>
+      <div class="chips" id="quick"></div>
+      <div class="chips" id="mention"></div>
+      <form class="in" id="f">
+        <div class="replybar" id="replybar" hidden><span data-i="reply" aria-hidden="true"></span><div class="rq"><b id="replyWho"></b><span id="replyBit" data-u></span></div><button type="button" class="ib sm" id="replyx" aria-label="取消回覆" data-i="x"></button></div>
+        <div class="att" id="att"></div>
+        <textarea id="msg" rows="1" placeholder="輸入指示…" aria-label="訊息"></textarea>
+        <div class="in-bar">
+          <button type="button" class="ib" id="clip" aria-label="附加檔案" title="附加檔案" data-i="clip"></button>
+          <button type="button" class="ib" id="slashBtn" aria-label="指令" title="指令（輸入 /）" data-i="slash"></button>
+          <button type="button" class="ib" id="mic" aria-label="語音輸入" title="語音輸入" data-i="mic" hidden></button>
+          <div class="sendto" id="sendTo" hidden></div>
+          <button class="send" id="sendBtn" aria-label="送出"><span class="sl">送出</span><span class="sa2" aria-hidden="true" data-i="send"></span></button>
+        </div>
+        <input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.docx" hidden>
+      </form>
+    </div>
+    <div class="oct" id="buddy" hidden data-mood="idle">
+      <button type="button" class="oct-hit" id="octHit" aria-label="小八：看誰在工作、快速動作" aria-expanded="false">
+      <svg viewBox="0 0 64 64" class="oct-svg" aria-hidden="true"><defs><radialGradient id="octG" cx="38%" cy="28%" r="78%"><stop offset="0" stop-color="#ffe7a0"/><stop offset=".55" stop-color="#f3b63e"/><stop offset="1" stop-color="#d4891c"/></radialGradient></defs>
+        <g class="oct-legs" fill="url(#octG)"><path class="lg l1" d="M15 37q-7 10-3 19q2 3 4.5 .5q-2.5-8 4-15z"/><path class="lg l2" d="M22 41q-4 10 0 18q2 2 4.2 0q-3-8 2-15.5z"/><path class="lg l3" d="M29.5 42q-1 10 2 18q2 2 4.2-1q-3-8 0-17z"/><path class="lg l4" d="M38 41q3 9 1 18q1 3 4.2 1q2-9-1.2-18z"/><path class="lg l5" d="M46 37q7 9 3 19q-1 3-4.3 1q3-9-4-15.5z"/></g>
+        <path class="oct-head" fill="url(#octG)" d="M32 5C48 5 54.5 17 53.5 28.5C52.5 39 44.5 45 32 45S11.5 39 10.5 28.5C9.5 17 16 5 32 5Z"/>
+        <ellipse cx="23" cy="13.5" rx="6.5" ry="3.4" fill="#fff" opacity=".42" transform="rotate(-18 23 13.5)"/>
+        <g class="oct-eyes"><g class="eye"><ellipse cx="24" cy="26.5" rx="5.4" ry="6.2" fill="#fff"/><g class="pupil"><circle cx="24.4" cy="27.6" r="3.2" fill="#2b1d0d"/><circle cx="25.6" cy="26.2" r="1.1" fill="#fff"/></g></g><g class="eye"><ellipse cx="40" cy="26.5" rx="5.4" ry="6.2" fill="#fff"/><g class="pupil"><circle cx="40.4" cy="27.6" r="3.2" fill="#2b1d0d"/><circle cx="41.6" cy="26.2" r="1.1" fill="#fff"/></g></g></g>
+        <path class="lid" d="M18.4 26.5h11.2M34.4 26.5h11.2" stroke="#5a3a12" stroke-width="2" stroke-linecap="round"/>
+        <ellipse cx="17.5" cy="34.5" rx="3.2" ry="1.9" fill="#ff7f86" opacity=".5"/><ellipse cx="46.5" cy="34.5" rx="3.2" ry="1.9" fill="#ff7f86" opacity=".5"/>
+        <path class="mouth m-smile" d="M28 35.5q4 4.2 8 0" stroke="#5a3a12" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+        <ellipse class="mouth m-o" cx="32" cy="37" rx="2.3" ry="2.8" fill="#5a3a12"/>
+        <path class="mouth m-flat" d="M28.6 37h6.8" stroke="#5a3a12" stroke-width="2.1" stroke-linecap="round"/>
+        <path class="mouth m-sad" d="M28 38.6q4-3.6 8 0" stroke="#5a3a12" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+        <g class="fx fx-work"><circle class="spin" cx="55" cy="9" r="5" fill="none" stroke="#f3b63e" stroke-width="2.2" stroke-dasharray="5 3.5"/></g>
+        <g class="fx fx-ask"><circle cx="55" cy="9" r="7" fill="#f3b63e"/><text x="55" y="12.6" text-anchor="middle" font-size="10" font-weight="800" fill="#2b1d0d">?</text></g>
+        <g class="fx fx-sleep"><text class="z1" x="48" y="13" font-size="9" font-weight="700" fill="#b8a98a">z</text><text class="z2" x="54" y="7" font-size="7" font-weight="700" fill="#b8a98a">z</text></g>
+        <g class="fx fx-done"><path class="tw" d="M7 9l1.8 3.6 3.8.9-3.8.9L7 18l-1.8-3.6-3.8-.9 3.8-.9z" fill="#ffe08a"/><path class="tw t2" d="M56 2l1.4 2.8 3 .7-3 .7-1.4 2.8-1.4-2.8-3-.7 3-.7z" fill="#ffe08a"/></g>
+        <g class="fx fx-err"><path d="M51 12q3.2 5 0 7.5q-3.2-2.5 0-7.5z" fill="#7cc4ff"/></g>
+      </svg>
+      </button>
+      <i class="oct-n" id="octN" hidden title="待你核准"></i>
+      <div class="oct-say" id="buddySay" role="status"></div>
+      <div class="oct-menu" id="octMenu" hidden></div>
+    </div>
+  </section>
+
+  <aside class="detail" id="detail" hidden aria-label="詳細資料"></aside>
+</div>
+<aside class="askp" id="askp" hidden aria-label="機器人的提問"></aside>
+<div class="veil" id="veil" hidden></div>
+
+<script defer src="/js/util.js"></script>
+<script defer src="/js/pure.js"></script>
+<script defer src="/js/api.js"></script>
+<script defer src="/js/files.js"></script>
+<script defer src="/js/sheets.js"></script>
+<script defer src="/js/list.js"></script>
+<script defer src="/js/chat.js"></script>
+<script defer src="/js/composer.js"></script>
+<script defer src="/js/browser.js"></script>
+<script defer src="/js/desktop.js"></script>
+<script defer src="/js/routines.js"></script>
+<script defer src="/js/bots.js"></script>
+<script defer src="/js/settings.js"></script>
+<script defer src="/js/ai.js"></script>
+<script defer src="/js/code.js"></script>
+<script defer src="/js/onboarding.js"></script>
+<script defer src="/js/buddy.js"></script>
+<script defer src="/js/main.js"></script>
+</body>
+</html>
