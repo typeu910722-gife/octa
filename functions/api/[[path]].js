@@ -1,5 +1,5 @@
-import { classifyModelFailure, decideRoute, replyIsProviderRefusal, classifyJobFailure, FAIL_KINDS, MAX_AUTO_RETRY, autoRetryable, retryPrompt, stripRetryNote, failureNotice } from '../../public/model-route.mjs';
-import { normalizeCustom, publicConnectors, runConnector } from '../../public/connectors.mjs';
+import { classifyModelFailure, decideRoute, replyIsProviderRefusal, classifyJobFailure, FAIL_KINDS, MAX_AUTO_RETRY, autoRetryable, retryPrompt, stripRetryNote, failureNotice } from '../_lib/model-route.mjs';
+import { normalizeCustom, publicConnectors, runConnector } from '../_lib/connectors.mjs';
 // OCTA API — Cloudflare Pages Function, single router.
 // Web app uses a "web" session token; each computer's runner uses its own "runner" token.
 // One computer per account is the 主機 (host): it runs every bot. Phones and other computers
@@ -2103,7 +2103,10 @@ async function route({ request: req, env, params }) {
         forgetUser(U); await bump(db, U);
         return J({ ok: true, hmode: 0 });
       }
-      if (!isHostPc) return err('只有主機電腦可以使用', 403);
+      // 4.0 (frozen legacy API): any of the account's desktop computers may export, so a 3.x cloud user's data
+      // moves to whichever computer first starts OCTA 4.0 (not only the one chosen as 主機)
+      const exportOk = path === 'host/export' && me.kind === 'runner';
+      if (!isHostPc && !exportOk) return err('只有主機電腦可以使用', 403);
       if (path === 'host/register') {   // the host's tunnel address (sent when it changes and every 10 minutes)
         const addr = clean(body.url, 300).replace(/\/+$/, '');
         if (!/^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?$/i.test(addr) || /^https:\/\/(localhost|\d+\.\d+\.\d+\.\d+)/i.test(addr)) return err('主機網址不正確');

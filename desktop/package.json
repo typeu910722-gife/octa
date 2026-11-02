@@ -1,8 +1,8 @@
 {
   "name": "octa-desktop",
   "productName": "OCTA",
-    "version": "3.4.2",
-  "description": "用自己的 Claude Code 指揮多個 AI 機器人",
+  "version": "4.0.0",
+  "description": "用自己的 AI CLI 指揮多個機器人，全部在這台電腦上",
   "author": "歪計劃 YZ PROJECT STUDIO",
   "license": "MIT",
   "type": "module",
@@ -31,7 +31,7 @@
     "files": [
       "main.mjs",
       "server.mjs",
-      "host-mode.mjs",
+      "cloud-import.mjs",
       "cdp-bridge.mjs",
       "embed-layout.mjs",
       "browser-catalog.mjs",
@@ -41,9 +41,9 @@
       "browser-shield.html",
       "splash.html",
       "web/**",
-      "api.js",
-      "model-route.mjs",
-      "connectors.mjs",
+      "api/**",
+      "runner/**",
+      "lib/**",
       "schema.sql",
       "icon.png",
       "package.json"
