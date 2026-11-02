@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { autonomyRules, buildPrompt } from '../desktop/runner/index.mjs';
-import { page as appPage, dictSrc as appDict } from './app-source.mjs';
+import { page as appPage, dictSrc as appDict, pure } from './app-source.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'api', 'index.mjs')).href;
 const { onRequest, mentionAsks } = await import(apiUrl);
@@ -318,7 +318,7 @@ test('bot names: no spaces for new names or renames; an old spaced name may stay
   assert.match(page, /const bad=raw\?nameProblem\(raw,''\):''/, 'a new bot\'s name is checked too');
 });
 
-test('web app: autonomy choice, standby status, plan buttons and the folded 幕後 line', () => {
+test('web app: autonomy choice, standby status, plan buttons; 幕後 lives in the work panel', () => {
   const page = appPage;
   assert.match(page, /name="sf_au" value="\$\{v\}"/);
   assert.match(page, /\['auto','直接做'/);
@@ -328,28 +328,20 @@ test('web app: autonomy choice, standby status, plan buttons and the folded 幕�
   assert.match(page, /id="sf_standnow"/);
   assert.match(page, />照做<\/button>/);
   assert.match(page, /plan=\/\^照計畫\/\.test\(act\)/);   // 📋計畫 card (apprDecision since the approval-card upgrade)
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  const backSrc = page.slice(page.indexOf('function backHtml'), page.indexOf("$('msgs').addEventListener('toggle'"));
   const standSrc = page.slice(page.indexOf('function standNow'), page.indexOf('\n', page.indexOf('function standNow')));
-  const backForSrc = page.slice(page.indexOf('function backFor'), page.indexOf('function backHtml'));
-  const make = new Function('esc', 'nameOf', 'BSOPEN', 'BS', 'convMsgs', 'loadBack', `${standSrc}\n${backSrc}\n${backForSrc}\nreturn {standNow, backHtml, backFor};`);
-  const BS = {}, msgs = [{ id: 1, by: 'me', text: '問', ts: 1000 }, { id: 2, by: 'sys', text: '🔁 「乙」回覆：九點', ts: Date.now() }, { id: 3, by: 'a', text: '九點開門', ts: Date.now() + 1 }];
-  const ui = make(esc, id => ({ a: '甲', b: '乙' })[id] || id, new Set(), BS, () => msgs, () => {});
+  const ui = new Function(`${standSrc}\nreturn {standNow};`)();
   assert.equal(ui.standNow('30', false), '目前：開啟，每 30 分鐘巡查一次');
   assert.match(ui.standNow('', true), /填入指定任務後會自動開啟/);
-  const html = ui.backHtml([{ id: 9, from: 'a', to: 'b', kind: 'ask', what: '幾點<開門>', reply: '九點', status: 'done', ms: 4200 }, { id: 10, from: 'a', to: 'b', kind: 'give', what: '整理', reply: '', status: 'running', ms: null }]);
-  assert.match(html, /<details class="bstage" data-bs="9">/);
-  assert.match(html, /🔁 幕後 2 則/);
-  assert.match(html, /進行中/);
-  assert.match(html, /4 秒/);
-  assert.match(html, /幾點&lt;開門&gt;/);
-  assert.doesNotMatch(html, / open>/, 'folded by default');
-  BS.x = { ok: true, items: [{ id: 9, from: 'a', to: 'b', kind: 'ask', what: '幾點', reply: '九點', status: 'done', created: 1500, ms: 1 }] };
-  const bs = ui.backFor('x', { loaded: true, more: false });
-  assert.equal(bs.hide(msgs[1]), true, 'the 🔁 note is folded into 幕後');
-  assert.equal(bs.before(msgs[0]), '');
-  assert.match(bs.before(msgs[2]), /幕後 1 則/, 'shown where it happened, after the question');
-  assert.equal(bs.rest(), '');
+  // 4.1: 幕後 is in the work panel's timeline, never in the chat
+  const { msgPlace, bgKey } = pure;
+  assert.equal(msgPlace({ id: 2, by: 'sys', text: '🔁 「乙」回覆：九點' }), 'work', 'the 🔁 note goes to the work panel');
+  assert.equal(msgPlace({ id: 3, by: 'a', text: '九點開門' }), 'chat');
+  assert.equal(msgPlace({ id: 4, by: 'b', text: '九點', kind: 'bg' }), 'work', 'an answer to a background request');
+  assert.equal(msgPlace({ id: 5, by: 'b', text: '九點' }, new Set([bgKey('b', '九點')])), 'work', 'older answers are matched to 幕後');
+  const wi = page.slice(page.indexOf('function workItems'), page.indexOf('const WI='));
+  assert.match(wi, /for\(const x of bs\?\.items\|\|\[\]\)out\.push\(\{t:x\.created,k:'ask',x,key:'b'\+x\.id\}\)/);
+  assert.match(wi, /m\.by==='sys'&&\/\^🔁\/\.test\(t\)/, 'the 🔁 note is folded into its 幕後 entry');
+  assert.doesNotMatch(page, /class="bstage"/, 'no 幕後 line in the chat');
 });
 
 test('bots in a group stop after the answer: no "收到／好喔" ping-pong', async () => {

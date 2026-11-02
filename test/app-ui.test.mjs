@@ -16,7 +16,8 @@ test('index.html is markup only and loads every script and stylesheet that exist
   for (const f of scriptNames) assert.ok(scripts[f], f + ' exists');
   assert.deepEqual([...scriptNames].sort(), Object.keys(scripts).sort(), 'every script in app/js is loaded');
   for (const f of styleNames) assert.ok(existsSync(join(root, 'app', 'css', f)), f);
-  for (const a of ['icon.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest', 'i18n-core.js', 'i18n-dict.js', 'changelog.json', 'buddy.png']) assert.ok(existsSync(join(root, 'app', a)), a);
+  for (const a of ['icon.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest', 'i18n-core.js', 'i18n-dict.js', 'changelog.json', 'avatar/idle.svg', 'avatar/working.svg', 'avatar/thinking.svg', 'avatar/browsing.svg', 'avatar/chatting.svg']) assert.ok(existsSync(join(root, 'app', a)), a);
+  assert.ok(!existsSync(join(root, 'app', 'buddy.png')) && !scripts['buddy.js'], '小八 is gone');
   assert.ok(!existsSync(join(root, 'public', 'index.html')), 'the old one-file page is gone');
   for (const [f, src] of Object.entries(scripts)) {
     assert.doesNotThrow(() => new vm.Script(src, { filename: f }), f + ' parses');
@@ -31,6 +32,7 @@ test('the scripts run in order and every element they look up exists', () => {
   for (const m of js.matchAll(/\bid="([\w-]+)"/g)) ids.add(m[1]);   // made by templates
   for (const m of js.matchAll(/\.id='([\w-]+)'/g)) ids.add(m[1]);
   for (const m of js.matchAll(/(?:toggleRow|I18N\.select|block)\('([\w-]+)'/g)) ids.add(m[1]);   // helpers that write id="…"
+  for (const m of js.matchAll(/paletteHtml\([^)]*?,'([\w-]+)'\)/g)) ids.add(m[1]);
   const used = new Set([...js.matchAll(/\$\('([\w-]+)'\)/g)].map(m => m[1]));
   const prefixes = [...js.matchAll(/\bid="([\w-]+)\$\{/g)].map(m => m[1]);   // id="sf_fb${i}"
   const missing = [...used].filter(id => !ids.has(id) && !prefixes.some(p => id.startsWith(p)));
@@ -58,7 +60,7 @@ test('only the local API: no accounts, cloud, host moving or coach link', () => 
 
 test('the desktop bridge keeps its contracts', () => {
   const pre = read('desktop/preload.cjs');
-  for (const fn of ['focusBot', 'control', 'cover', 'pip', 'onPip', 'onStage', 'show', 'version']) {
+  for (const fn of ['focusBot', 'dock', 'control', 'cover', 'pip', 'onPip', 'onStage', 'show', 'version']) {
     assert.match(js, new RegExp('octaDesktop[^;]*\\b' + fn + '\\b|D\\.' + fn + '\\b|D\\?\\.' + fn), fn + ' used');
     assert.match(pre, new RegExp('\\b' + fn + ':'), fn + ' exists in preload');
   }
@@ -68,7 +70,9 @@ test('the desktop bridge keeps its contracts', () => {
   assert.match(js, /D\.cover\(on\)/);
   assert.match(js, /!\$\('veil'\)\.hidden\|\|!!document\.querySelector\('\.mveil'\)/);
   assert.match(css, /html\.pip \.msgs::after\{content:"";flex:none;height:var\(--pip,0px\)\}/);
-  assert.match(css, /padding:18px 18px calc\(24px \+ var\(--pipd,0px\)\)/, 'the detail panel keeps clear of the card too');
+  // 4.1: the bot's browser sits in the work panel's 瀏覽器 tab; menus over it make it step aside too
+  assert.match(fnSrc('dockSync'), /window\.octaDesktop\.dock\(rect\?\{\.\.\.rect,bot:id,theme:currentTheme\(\)\}:null\)/);
+  assert.match(js, /hit\(menu\.getBoundingClientRect\(\),WP\.dock\)/);
   // 接手 / 繼續 from the browser frame, and from the sign-in card
   assert.match(js, /octaDesktop\?\.control\?\.\(hd\.dataset\.hand,true\)/);
   assert.match(js, /const resume=HAND_BUSY\.delete\(d\.bot\)\|\|handWaits\(d\.bot\)/);
@@ -110,7 +114,7 @@ test('settings is one page with seven sections', () => {
   assert.match(fnSrc('settingsFrame'), /\.snav \[data-s\]'\)\.forEach\(b=>b\.onclick=\(\)=>leaveOk\(/);
   assert.match(fnSrc('subPage'), /SUB\.back=back/);
   // what lives where
-  for (const [k, what] of [['look', /nick/], ['look', /buddyOn/], ['ai', /openAI\(focus\)/], ['ai', /warmSel/], ['browser', /desktop\/ext-token/], ['browser', /shareBrowser/], ['noti', /notify\/test/], ['remote', /desktop\/remote/], ['work', /schedList\(\)/], ['work', /jobMax/], ['work', /review\/run/], ['work', /openLogs\(\)/], ['work', /openBoard\(\)/], ['adv', /notes/], ['adv', /paintConnectors/], ['adv', /paintStore/], ['adv', /openCode\(\)/], ['adv', /desktop\/autostart/], ['adv', /paintVersion/]]) {
+  for (const [k, what] of [['look', /nick/], ['ai', /openAI\(focus\)/], ['ai', /warmSel/], ['browser', /desktop\/ext-token/], ['browser', /shareBrowser/], ['noti', /notify\/test/], ['remote', /desktop\/remote/], ['work', /schedList\(\)/], ['work', /jobMax/], ['work', /review\/run/], ['work', /openLogs\(\)/], ['work', /openBoard\(\)/], ['adv', /notes/], ['adv', /paintConnectors/], ['adv', /paintStore/], ['adv', /openCode\(\)/], ['adv', /desktop\/autostart/], ['adv', /paintVersion/]]) {
     const a = js.indexOf('SEC.' + k + '='), rest = js.slice(a + 4), b = rest.search(/\n(?:SEC\.|\/\* -{5})/);
     const src = rest.slice(0, b < 0 ? undefined : b);
     assert.match(src, what, k + ' has ' + what);
@@ -123,7 +127,9 @@ test('a new bot needs only a name; everything else lives in its detail panel', (
   const nb = fnSrc('newBotSheet');
   assert.match(nb, /id="nbName"/);
   assert.doesNotMatch(nb, /sf_e|engine select|sf_b/);
-  assert.match(nb, /api\('bots','POST',\{name,task:'',engine:firstEngine\(\),avatar:em\.get\(\)/);
+  assert.match(nb, /api\('bots','POST',\{name,task:'',engine:firstEngine\(\),color:pal\.get\(\)/);
+  assert.match(nb, /paletteHtml\(first,'nbPal'\)/, 'a name and a colour from the palette');
+  assert.doesNotMatch(js, /emojiRow|EMOJIS|bindEmoji/, 'no emoji avatars any more');
   assert.equal(pure.freeName('新機器人', ['新機器人', '新機器人2']), '新機器人3');
   assert.equal(pure.nameProblem('客服 小幫手', ''), '名稱不能有空格，才能用 @ 叫它');
   assert.equal(pure.nameProblem('舊 名字', '舊 名字'), '', 'an old name with a space may stay');
@@ -135,10 +141,11 @@ test('a new bot needs only a name; everything else lives in its detail panel', (
   assert.match(d, /addMem&&!\(await addMem\(\)\)/);
   assert.match(d, /trackDirty\(box\.querySelector\('\.dp'\),saveAll\)/);
   assert.match(d, /data-dirty-bar/);
-  assert.match(fnSrc('closeDetail'), /isDirty\(\)&&\$\('detail'\)\.contains\(DIRTY\.el\)\)\{leaveOk/);
+  assert.match(fnSrc('leaveInfo'), /isDirty\(\)&&\$\('detail'\)\.contains\(DIRTY\.el\)\)\{leaveOk/);
+  assert.match(fnSrc('closePanel'), /leaveInfo\(/);
   assert.match(fnSrc('detailLive'), /isDirty\(\)\|\|rtEdit!=null/, 'live updates never redraw over your edits');
   // phone: the panel is a full page with back
-  assert.match(css, /\.detail\{position:fixed;inset:0;z-index:40/);
+  assert.match(css, /\.wp\{position:fixed;inset:0;z-index:40/);
 });
 
 test('first run: connect an AI, then create the first bot', () => {
@@ -154,7 +161,7 @@ test('first run: connect an AI, then create the first bot', () => {
 });
 
 test('features stay reachable', () => {
-  for (const f of ['goAsk', 'apprHtml', 'alwaysSheet', 'compactConv', 'clearConv', 'dupBot', 'deleteConv', 'folderSheet', 'groupSheet', 'tplSheet', 'openLogs', 'openBoard', 'openCode', 'grokImport', 'remoteUrl', 'shotSheet', 'urlSheet', 'pollLive', 'renderAsks', 'fragmentSheet', 'pickTarget', 'setReply', 'runSlash', 'renderRoutines', 'bindMem', 'focusSearch', 'whatsNew', 'buddySync', 'notifyNew', 'apprNag', 'saveDraft', 'loadDraft'])
+  for (const f of ['goAsk', 'apprHtml', 'alwaysSheet', 'compactConv', 'clearConv', 'dupBot', 'deleteConv', 'folderSheet', 'groupSheet', 'tplSheet', 'openLogs', 'openBoard', 'openCode', 'grokImport', 'remoteUrl', 'shotSheet', 'urlSheet', 'pollLive', 'renderAsks', 'fragmentSheet', 'pickTarget', 'setReply', 'runSlash', 'renderRoutines', 'bindMem', 'focusSearch', 'whatsNew', 'renderPanel', 'paintWork', 'paintWeb', 'paletteHtml', 'octSvg', 'notifyNew', 'apprNag', 'saveDraft', 'loadDraft'])
     assert.ok(fnSrc(f), f);
   assert.match(js, /\(mod&&k==='k'&&app\)\{e\.preventDefault\(\);focusSearch\(\)\}/, 'Ctrl+K');
   assert.match(js, /\(e\.altKey&&k==='n'\)/, 'Alt+N new bot');

@@ -24,8 +24,9 @@ test('holding or right-clicking a row or a message opens its menu, and a message
   // a long press must not also start a drag, and the lift that ends it must not close the menu it opened
   assert.match(js, /if\(e\.target\.closest\?\.\('\.more'\)\|\|lpHit\)\{e\.preventDefault\(\);return\}/);
   assert.match(js, /document\.addEventListener\('click',e=>\{if\(lpHit\)return;if\(!e\.target\.closest\('\.menu'\)\)closeMenu\(\)\}\)/);
-  // the phone header keeps the name readable: the details button and list toggle are for big screens
-  assert.match(css, /#detailBtn,#railToggle\{display:none\}/);
+  // the phone header keeps the name readable: the list toggle is for big screens; the work panel button opens a full page
+  assert.match(css, /#railToggle\{display:none\}/);
+  assert.match(css, /@media \(max-width:760px\)\{\n  \.wp\{position:fixed;inset:0;z-index:40/);
 });
 
 test('back goes up one level on a phone instead of leaving the page', () => {

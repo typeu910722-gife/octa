@@ -20,16 +20,14 @@ test('the look is switched only inside Settings, and the colours fade across', (
   assert.match(html, /s=localStorage\.getItem\('octa_theme'\)/);
 });
 
-test('reply to one message, select a part, the little octopus, the browser follows the open bot', () => {
+test('reply to one message, select a part, no more 小八, the browser follows the open bot', () => {
   assert.match(js, /function fragmentSheet/);
   assert.match(js, /選取片段/);
   assert.match(js, /回覆這則/);
   assert.match(html, /id="replybar"/);
   assert.match(js, /data-jump/);
   assert.match(js, /id="frag"/);
-  assert.match(js, /function buddySync/);
-  assert.match(html, /id="buddy"/);
-  assert.match(js, /octa_buddy/);
+  assert.doesNotMatch(js + html, /buddySync|id="buddy"|octa_buddy|小八/);
   assert.match(js, /focusBot\?\.\(id\)/);
   // replies show the quoted message and jump to it
   assert.match(fnSrc('quoteHtml'), /class="qref" data-jump="\$\{m\.reply\}"/);

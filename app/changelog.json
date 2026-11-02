@@ -1,5 +1,33 @@
 [
  {
+  "v": "4.1.0",
+  "date": "2026-11-02",
+  "notes": [
+   "每個機器人都換成 OCTA 章魚頭像，會跟著它正在做的事變化：待命打瞌睡、思考、工作、操作瀏覽器、和其他機器人交流",
+   "建立機器人或在「詳細資料」裡，可以從調色盤幫每個機器人挑顏色",
+   "右側新增可收起的工作面板：「工作」看進度、步驟、停止和排隊，以及背景互問、例行任務、失敗和重試的紀錄；「瀏覽器」直接在面板裡看機器人的瀏覽器（僅觀看／取得控制權）；「詳細資料」也搬到這裡",
+   "對話裡只留你和機器人的對話、圖片檔案、核准和提問，其他系統訊息都移到工作面板；工作沒完成時，輸入框上方會有一行小提示可以查看或重試",
+   "機器人工作時，送出鍵會變成停止鍵",
+   "移除小八"
+  ],
+  "notes_en": [
+   "Every bot is now the OCTA octopus, and it shows what it is doing: dozing when idle, thinking, working, using the browser, or talking with other bots",
+   "Pick each bot's colour from a palette when you create it or in Details",
+   "A new collapsible work panel on the right: Work shows progress, steps, Stop and the queue, plus a log of background questions, routine runs, failures and retries; Browser shows the bot's browser right in the panel (watch only / take control); Details moved here too",
+   "The chat keeps only the conversation, pictures and files, approvals and questions; system notes moved to the work panel. When a job doesn't finish, a small line above the message box lets you see why or retry",
+   "While a bot works, the send button becomes a stop button",
+   "Removed the little octopus helper (Octo)"
+  ],
+  "notes_ja": [
+   "すべてのボットが OCTA のタコのアイコンになり、待機中の居眠り・考え中・作業中・ブラウザ操作・ほかのボットとのやり取りが見て分かります",
+   "ボットを作るときや「詳細」で、パレットから色を選べます",
+   "右側に折りたためる作業パネルを追加：「作業」で進捗・ステップ・停止・順番待ちと、裏での質問・定期タスク・失敗・再試行の記録を表示。「ブラウザ」ではボットのブラウザをパネル内で表示（見るだけ／操作権を取る）。「詳細」もここに移動しました",
+   "チャットには会話・画像やファイル・承認・質問だけを表示し、システムのお知らせは作業パネルへ。作業が終わらなかったときは入力欄の上に小さく表示され、確認や再試行ができます",
+   "ボットの作業中は送信ボタンが停止ボタンになります",
+   "タコ八を削除しました"
+  ]
+ },
+ {
   "v": "4.0.1",
   "date": "2026-11-02",
   "notes": [

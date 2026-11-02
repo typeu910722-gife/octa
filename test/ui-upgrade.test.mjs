@@ -116,7 +116,8 @@ test('one 儲存 saves the inner forms, flags unsaved edits and asks before clos
   assert.match(fnSrc('folderSheet'), /trackDirty\(/, 'folderSheet tracks edits');
   for (const k of ['adv', 'noti', 'look']) assert.match(secSrc(k), /trackDirty\(/, k + ' tracks edits');
   assert.match(fnSrc('subPage'), /SUB\.back=back/);
-  assert.match(fnSrc('closeDetail'), /leaveOk\(/, 'closing the panel asks first');
+  assert.match(fnSrc('leaveInfo'), /leaveOk\(/, 'closing the panel (or leaving 詳細資料) asks first');
+  assert.match(fnSrc('closePanel'), /leaveInfo\(/);
   assert.match(page, /\.snav \[data-s\]'\)\.forEach\(b=>b\.onclick=\(\)=>leaveOk\(/, 'switching settings pages asks first');
 });
 
@@ -161,9 +162,9 @@ test('the card says what the action touches', () => {
   for (const s of ['會花錢，付出去就收不回來', '刪掉後無法復原', '待你核准', '件待你核准', '誰要做', '會影響', '已核准', '已拒絕']) assert.ok(strings.includes(`'${s}'`), s + ' translated');
 });
 
-test('waiting 核准 are counted at the top, on 小八, and noticed again after 15 minutes', () => {
+test('waiting 核准 are counted at the top and noticed again after 15 minutes', () => {
   assert.match(page, /class="apbar" data-apgo=/);
-  assert.match(fnSrc('buddySync'), /apprConvs\(\)\.length/);
+  assert.match(fnSrc('renderList'), /const aps=S\.loaded\?apprConvs\(\):\[\]/);
   assert.match(page, /<i class="need ap">待你核准<\/i>/);
   const nag = fnSrc('apprNag');
   assert.match(page, /const NAG_MS=15\*60000/);
