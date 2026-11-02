@@ -80,7 +80,7 @@ test('build.mjs copies app/ into desktop/web', () => {
 test('the legacy cloud keeps only what old desktops need to move their data home', () => {
   const api = readFileSync(join(root, 'functions', 'api', '[[path]].js'), 'utf8');
   const specs = relImports(api);
-  assert.deepEqual(specs, ['../_lib/model-route.mjs', '../_lib/connectors.mjs']);
+  assert.deepEqual(specs, ['../../legacy/model-route.mjs', '../../legacy/connectors.mjs']);
   for (const s of specs) assert.ok(existsSync(join(root, 'functions', 'api', s)), s);
   const wrangler = readFileSync(join(root, 'wrangler.toml'), 'utf8');
   assert.match(wrangler, /^pages_build_output_dir = "site"$/m);

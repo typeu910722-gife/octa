@@ -1,5 +1,5 @@
-import { classifyModelFailure, decideRoute, replyIsProviderRefusal, classifyJobFailure, FAIL_KINDS, MAX_AUTO_RETRY, autoRetryable, retryPrompt, stripRetryNote, failureNotice } from '../_lib/model-route.mjs';
-import { normalizeCustom, publicConnectors, runConnector } from '../_lib/connectors.mjs';
+import { classifyModelFailure, decideRoute, replyIsProviderRefusal, classifyJobFailure, FAIL_KINDS, MAX_AUTO_RETRY, autoRetryable, retryPrompt, stripRetryNote, failureNotice } from '../../legacy/model-route.mjs';
+import { normalizeCustom, publicConnectors, runConnector } from '../../legacy/connectors.mjs';
 // OCTA API — Cloudflare Pages Function, single router.
 // Web app uses a "web" session token; each computer's runner uses its own "runner" token.
 // One computer per account is the 主機 (host): it runs every bot. Phones and other computers
