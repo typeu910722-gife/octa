@@ -8,8 +8,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { buildPrompt, buildBrowserPrompt, buildLocalPrompt, sideNote, loginHints, hideSecrets, findUploads, triedText, sideReport } from '../public/octa-runner.mjs';
-import { connectorLines, runConnector } from '../public/connectors.mjs';
+import { buildPrompt, buildBrowserPrompt, buildLocalPrompt, sideNote, loginHints, hideSecrets, findUploads, triedText, sideReport } from '../desktop/runner/index.mjs';
+import { connectorLines, runConnector } from '../desktop/lib/connectors.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
 const { onRequest, sideKind, missingResult } = await import(apiUrl);
@@ -325,7 +325,7 @@ process.stdin.on('end', () => { if (args.includes('--input-format')) return; if 
     });
   });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
-  const { startRunner } = await import('../public/octa-runner.mjs');
+  const { startRunner } = await import('../desktop/runner/index.mjs');
   const r = startRunner({ url: 'http://127.0.0.1:' + srv.address().port, token: 't', home, pwCli: join(home, 'none.js'), chrome: join(home, 'no-chrome'), log: () => { } });
   try {
     const t0 = Date.now();

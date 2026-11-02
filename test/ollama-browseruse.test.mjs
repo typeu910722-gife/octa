@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseOllamaCaps, ollamaChoices, NO_TOOLS_TEXT, buildBrowserPrompt, OLLAMA_NUM_CTX } from '../public/octa-runner.mjs';
+import { parseOllamaCaps, ollamaChoices, NO_TOOLS_TEXT, buildBrowserPrompt, OLLAMA_NUM_CTX } from '../desktop/runner/index.mjs';
 
 const SHOW = `  Model
     architecture        qwen3
@@ -51,7 +51,7 @@ test('browser-use rounds get plain steps, not Playwright tool names, and keep th
 });
 
 test('the browser-use bridge keeps the bot browser open and skips the extra judge call', () => {
-  const py = readFileSync(new URL('../public/octa-browseruse.py', import.meta.url), 'utf8');
+  const py = readFileSync(new URL('../desktop/runner/octa-browseruse.py', import.meta.url), 'utf8');
   assert.match(py, /keep_alive=True/);
   assert.match(py, /use_judge=False/);
   assert.match(py, /num_ctx/);

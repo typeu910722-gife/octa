@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkBase, joinBase, normalizeCustom, publicConnectors, runConnector, takeConnectorTask, toolForBrowse } from '../public/connectors.mjs';
-import { keepBrowserTask } from '../public/octa-runner.mjs';
+import { checkBase, joinBase, normalizeCustom, publicConnectors, runConnector, takeConnectorTask, toolForBrowse } from '../desktop/lib/connectors.mjs';
+import { keepBrowserTask } from '../desktop/runner/index.mjs';
 
 test('a connector call is parsed, and a private address is refused', () => {
   const task = takeConnectorTask('【連接器】\n名稱：訂單\n動作：讀取\n路徑：/orders?day=1\n【接完】');

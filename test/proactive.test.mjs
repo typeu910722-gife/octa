@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { autonomyRules, buildPrompt } from '../public/octa-runner.mjs';
+import { autonomyRules, buildPrompt } from '../desktop/runner/index.mjs';
 
 const apiUrl = pathToFileURL(join(import.meta.dirname, '..', 'functions', 'api', '[[path]].js')).href;
 const { onRequest, mentionAsks } = await import(apiUrl);

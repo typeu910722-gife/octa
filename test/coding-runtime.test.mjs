@@ -4,11 +4,11 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { evaluateCommand, evaluateDeploy, evaluateMerge, resolveInside, safeProcessEnv } from '../public/coding-policy.mjs';
+import { evaluateCommand, evaluateDeploy, evaluateMerge, resolveInside, safeProcessEnv } from '../desktop/lib/coding-policy.mjs';
 import {
   buildContext, probeCodingHosts, resumeCodingTask, rollbackWorkspace, runCodingTask, selectProvider, toolCallsFromContent
-} from '../public/coding-runtime.mjs';
-import { LIMITS } from '../public/coding-policy.mjs';
+} from '../desktop/lib/coding-runtime.mjs';
+import { LIMITS } from '../desktop/lib/coding-policy.mjs';
 
 function sh(cmd, args, cwd) {
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8' });

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { ENGINE_ROW, OPEN_BAR, PANEL_EDGE, TAB_ROW, THUMB_RADIUS, embedFrames, freshOpen, isBlankUrl, resizeBox, sidebarBox, thumbBox } from '../desktop/embed-layout.mjs';
-import { pickLivePage } from '../public/octa-runner.mjs';
+import { pickLivePage } from '../desktop/runner/index.mjs';
+import { runnerSource } from './runner-source.mjs';
 
 test('the opened browser is a side panel and the chat keeps the whole window', () => {
   const lay = embedFrames(1920, 1000, 'open');
@@ -242,7 +243,7 @@ test('the switch under the page replaces the old take-over / continue buttons', 
   assert.match(main, /handle\('octa:control'/);
   assert.match(main, /control: false, shield: null/);
   // the page's live cursor ignores the person's mouse while they have control
-  const runner = readFileSync(new URL('../public/octa-runner.mjs', import.meta.url), 'utf8');
+  const runner = runnerSource();
   assert.match(runner, /const mine = \(\) => \{ if \(!window\.__octaUser\) return false;/);
   assert.match(runner, /addEventListener\('mousemove', e => \{ if \(!mine\(\)\) move/);
   const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');

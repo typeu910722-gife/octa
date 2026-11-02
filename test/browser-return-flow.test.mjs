@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { startCdpBridge } from '../desktop/cdp-bridge.mjs';
-import { closeAllBrowsers, ensureBrowser, returnToEmbed, startRunner } from '../public/octa-runner.mjs';
+import { closeAllBrowsers, ensureBrowser, returnToEmbed, startRunner } from '../desktop/runner/index.mjs';
 
 const BOT = { id: 'b1', name: '映日所', browser: 'own' };
 const NOW = Date.now() / 1000;
