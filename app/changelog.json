@@ -1,5 +1,33 @@
 [
  {
+  "v": "4.5.0",
+  "date": "2026-11-03",
+  "notes": [
+   "設定 → 進階最下面新增「清除這台電腦的所有資料」：一鍵把這台電腦上的 OCTA 恢復成剛安裝好的樣子（機器人、對話、例行任務、記憶、設定、檔案、各機器人的網站登入、連結的電腦與手機）",
+   "清除前預設先備份一份到「文件」資料夾（OCTA-備份-日期），清除後重新啟動會告訴你備份在哪裡，可以直接打開",
+   "要輸入「刪除」才能按；檔案資料夾如果是你自己選的（例如 Google 雲端硬碟），預設保留不刪",
+   "電腦上安裝的 AI 工具和帳號（例如 Claude Code 的登入）不會被刪除，OCTA 也不會被解除安裝",
+   "當遙控器的電腦清除時，只清自己的資料並中斷遙控，不影響主機；主機清除時，遙控它的電腦會顯示「主機已清除資料」",
+   "手機上看不到這個選項，手機也無法清除電腦的資料"
+  ],
+  "notes_en": [
+   "New at the bottom of Settings → Advanced: “Clear all data on this computer” puts OCTA on this computer back the way it was right after installing (bots, chats, routines, memory, settings, files, each bot’s website sign-ins, linked computers and phones)",
+   "By default a backup is saved to your Documents folder first (OCTA-backup-date); after the restart OCTA tells you where it is and can open it",
+   "You type DELETE to confirm; a files folder you chose yourself (e.g. Google Drive) is kept unless you tick it",
+   "The AI tools and accounts installed on the computer (e.g. your Claude Code sign-in) are not deleted, and OCTA stays installed",
+   "On a computer used as a remote control, only that computer’s own data is cleared and the link is dropped — the host isn’t touched. When a host clears its data, its remote controls show “The host cleared its data”",
+   "Phones don’t show this option and can’t clear the computer’s data"
+  ],
+  "notes_ja": [
+   "設定 → 上級者向けの一番下に「このパソコンのすべてのデータを消去」を追加：このパソコンの OCTA をインストール直後の状態に戻します（ボット、会話、定期タスク、メモリ、設定、ファイル、各ボットのサイトのログイン、連携したパソコンとスマホ）",
+   "既定では先に「ドキュメント」フォルダーにバックアップを保存します（OCTA-バックアップ-日付）。再起動後に場所を表示し、そのまま開けます",
+   "確認のため「削除」と入力します。ご自身で選んだファイルフォルダー（Google ドライブなど）はチェックしない限り残ります",
+   "パソコンにインストールした AI ツールとアカウント（Claude Code のログインなど）は削除されず、OCTA もアンインストールされません",
+   "リモコンとして使っているパソコンでは、そのパソコン自身のデータだけを消去して連携を解除し、ホストには影響しません。ホストが消去すると、リモコン側に「ホストがデータを消去しました」と表示されます",
+   "スマホにはこの項目は表示されず、スマホからパソコンのデータを消去することはできません"
+  ]
+ },
+ {
   "v": "4.4.0",
   "date": "2026-11-03",
   "notes": [

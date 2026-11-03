@@ -1,6 +1,7 @@
 // 4.5 清除這台電腦的 OCTA 資料: the backup, what is deleted and kept, the marker finished at the next start, the
 // confirm word, the local-only endpoint, and the "host cleared its data" message for linked computers.
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -165,4 +166,48 @@ test('the settings item: only in the desktop app (never on a phone), and the dia
   assert.match(wipe, /<input type="checkbox" id="wBk" checked>/);
   assert.match(wipe, /<input type="checkbox" id="wStore">/, 'a custom files folder is kept unless ticked');
   assert.match(wipe, /api\('desktop\/wipe','POST'/);
+});
+
+// ---------- two real desktop servers: a remote control clears its data; the host clears its data ----------
+function relayServer() {
+  const topics = new Map();
+  const srv = http.createServer(async (req, res) => {
+    const c = []; for await (const x of req) c.push(x);
+    const u = new URL('http://relay' + req.url), parts = u.pathname.split('/').filter(Boolean);
+    if (req.method === 'POST') { const l = topics.get(parts[0]) || []; l.push({ event: 'message', message: Buffer.concat(c).toString() }); topics.set(parts[0], l); res.writeHead(200); return res.end('{}'); }
+    if (parts[1] === 'json') { res.writeHead(200); return res.end((topics.get(parts[0]) || []).map(m => JSON.stringify(m)).join('\n') + '\n'); }
+    res.writeHead(404); res.end();
+  });
+  return new Promise(ok => srv.listen(0, '127.0.0.1', () => ok({ topics, url: `http://127.0.0.1:${srv.address().port}`, close: () => srv.close() })));
+}
+test('a remote control that clears its data only drops its link; a host that clears its data tells its remote controls', { skip: !hasDeps && 'desktop packages not installed', timeout: 90000 }, async t => {
+  const { startServer } = await import(pathToFileURL(join(repo, 'desktop/server.mjs')).href);
+  const relay = await relayServer();
+  const dirs = [0, 1, 2].map(i => mkdtempSync(join(tmpdir(), 'octa-wipe-' + 'ABC'[i] + '-')));
+  const opts = { runner: false, relay: relay.url, tunnel: p => `http://127.0.0.1:${p}`, watchMs: 300 };
+  const A = await startServer({ ...opts, port: 18901, dataDir: dirs[0], name: '店裡電腦' });
+  const B = await startServer({ ...opts, port: 18911, dataDir: dirs[1], name: '家裡電腦' });
+  const C = await startServer({ ...opts, port: 18921, dataDir: dirs[2], name: '筆電' });
+  t.after(async () => { for (const s of [A, B, C]) await s.close().catch(() => { }); relay.close(); for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
+  const jpost = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const jget = async url => (await fetch(url)).json();
+  const until = async (f, ms = 20000) => { const t0 = Date.now(); for (; ;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) throw new Error('timed out'); await new Promise(r => setTimeout(r, 150)); } };
+  const link = async S => { const inv = await (await jpost(A.url + '/api/desktop/link', { act: 'invite' })).json(); const r = await (await jpost(S.url + '/api/desktop/link', { act: 'connect', code: inv.linkCode })).json(); assert.equal(r.role, 'remote', JSON.stringify(r)); };
+  await jpost(A.url + '/api/bots', { name: '門市小幫手', task: '' });
+  await link(B); await link(C);
+  assert.equal((await jget(A.url + '/api/desktop/link')).computers.length, 2);
+  // B's wipe-info is B's own (it says it is a remote control of 店裡電腦)
+  const bi = await jget(B.url + '/api/desktop/wipe-info');
+  assert.equal(bi.role, 'remote'); assert.equal(bi.hostName, '店裡電腦'); assert.equal(bi.dataDir, dirs[1]);
+  // B clears its data: it says bye (A forgets B), A's data is untouched
+  assert.deepEqual(await B.wipeShutdown(), { role: 'remote', bye: true });
+  const la = await jget(A.url + '/api/desktop/link');
+  assert.deepEqual(la.computers.map(c => c.name), ['筆電']);
+  assert.deepEqual((await jget(A.url + '/api/state')).bots.map(b => b.name), ['門市小幫手']);
+  // A (the host) clears its data: its remote control C hears it through the relay and stops looking
+  const said = await A.wipeShutdown();
+  assert.deepEqual(said, { role: 'host', computers: 1, told: true });
+  await jpost(C.url + '/api/desktop/link', { act: 'retry' }).catch(() => { });
+  const st = await until(async () => { const s = await jget(C.url + '/api/desktop/link'); return s.host?.state === 'gone' && s; });
+  assert.equal(st.role, 'remote');
 });

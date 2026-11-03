@@ -165,7 +165,10 @@ export function doneText(lang, backup, left = []) {
 
 // where the backup goes: Documents, else Downloads, else the home folder
 export function backupRootFrom(paths = {}) {
-  for (const p of [paths.documents, paths.downloads, paths.home || os.homedir()]) {
+  const home = paths.home || os.homedir();
+  // (Linux without XDG folders reports the home folder as Documents)
+  const docs = paths.documents && norm(paths.documents) !== norm(home) ? paths.documents : (existsSync(join(home, 'Documents')) ? join(home, 'Documents') : '');
+  for (const p of [docs, paths.downloads && norm(paths.downloads) !== norm(home) ? paths.downloads : '', home]) {
     if (!p) continue;
     try { if (existsSync(p) || existsSync(dirname(p))) return p; } catch { }
   }
