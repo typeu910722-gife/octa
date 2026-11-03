@@ -14,6 +14,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import { importFromCloud } from './cloud-import.mjs';
 import { createScreens } from './screen-cast.mjs';
+import { createLinking } from './link-server.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -196,6 +197,24 @@ export async function startServer(opts = {}) {
     return d;
   };
   let db = await prepDb(dbFile);
+  // 4.3: the database is replaced by another computer's copy (換成這台當主機) — the old one is kept as a dated backup
+  const stampNow = () => new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  async function swapDb(file) {
+    db.save();
+    const backup = join(dataDir, `ebot.backup-${stampNow()}.sqlite`);
+    if (existsSync(dbFile)) copyFileSync(dbFile, backup);
+    db.close();
+    renameSync(file, dbFile);
+    db = await prepDb(dbFile);
+    base.DB = db;
+    return backup;
+  }
+  async function restoreDb(backup) {
+    db.close();
+    copyFileSync(backup, dbFile);
+    db = await prepDb(dbFile);
+    base.DB = db;
+  }
   const { onRequest } = await import(pathToFileURL(API).href);
 
   const tzOffset = -new Date().getTimezoneOffset();
@@ -217,6 +236,10 @@ export async function startServer(opts = {}) {
     await sendResponse(res, await onRequest({ request, env, params: { path } }));
   };
 
+  // 4.3 主機電腦／遙控器 (link-server.mjs); set up once the tunnel functions exist (below)
+  let linking = null;
+  const HANDING = { error: '正在把資料交給另一台電腦，暫時不能變更', handing: true };
+
   // local port: the desktop window and the built-in runner; trusted, no login
   let localPort = 0;
   const local = http.createServer(async (req, res) => {
@@ -228,6 +251,13 @@ export async function startServer(opts = {}) {
       if (!req.url.startsWith('/api/')) return serveStatic(req, res);
       if (req.method !== 'GET' && !(req.headers['content-type'] || '').includes('application/json')) { res.writeHead(415); return res.end(); }   // forces a CORS preflight for other sites
       if (req.url.startsWith('/api/desktop/')) return desktopApi(req, res);
+      // a remote control: the page's API calls go to the host computer (this computer's own data is not used)
+      if (linking?.role() === 'remote') {
+        if (/^\/api\/config(\?|$)/.test(req.url)) return json(res, { local: true, pair: false, via: { name: linking.viaName() } });
+        if (req.url.startsWith('/api/runner') || req.url.startsWith('/api/hook/')) { res.writeHead(503); return res.end(); }
+        return linking.proxy(req, res);
+      }
+      if (linking?.handing() && req.method !== 'GET' && !req.url.startsWith('/api/runner')) return json(res, HANDING, 503);
       await callApi(req, res, { ...base, isLocal: true, runnerOnline: () => Date.now() - runnerSeen < 60000 }, `http://${host}`);
     } catch (e) { json(res, { error: e.message }, 500); }
   });
@@ -243,9 +273,17 @@ export async function startServer(opts = {}) {
   const remoteSrv = http.createServer(async (req, res) => {
     try {
       if (req.url === '/__octa_ping') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }   // is the tunnel still alive
-      if (/^\/api\/hook\/[^/?]+(\?|$)/.test(req.url))
+      const hosting = linking?.role() !== 'remote';
+      if (hosting && /^\/api\/hook\/[^/?]+(\?|$)/.test(req.url))
         return await callApi(req, res, { ...base, isLocal: true, runnerOnline: () => Date.now() - runnerSeen < 60000 }, 'https://' + (req.headers.host || 'remote'));
-      if (!remote.on) { res.writeHead(503); return res.end('遠端已關閉'); }
+      // 4.3: other computers (pairing, finding the host, 換成這台當主機)
+      if (req.url.startsWith('/api/link/') && linking) return await linking.remoteApi(req, res);
+      // a linked computer works through here even while the phone remote is off
+      const pc = req.url.startsWith('/api/') && linking ? await linking.computerOf(req) : null;
+      if (pc && !hosting) return json(res, { error: '這台電腦已經不是主機', moved: true }, 409);
+      if (!remote.on && !pc) { res.writeHead(503); return res.end('遠端已關閉'); }
+      if (!hosting) { res.writeHead(503); return res.end('遠端已關閉'); }
+      if (linking?.handing() && req.method !== 'GET') return json(res, HANDING, 503);
       if (!req.url.startsWith('/api/')) return serveStatic(req, res);
       if (req.url.startsWith('/api/desktop/') || req.url.startsWith('/api/runner')) { res.writeHead(403); return res.end(); }
       await callApi(req, res, {
@@ -266,6 +304,12 @@ export async function startServer(opts = {}) {
     if (tunnel.url && tunnel.proc) return Promise.resolve(tunnel.url);
     if (tunnel.starting) return tunnel.starting;
     tunnel.starting = (async () => {
+      // tests and the two-computer check on one machine: the "tunnel" is the remote port itself
+      if (opts.tunnel || process.env.OCTA_TEST_TUNNEL === 'direct') {
+        const url = opts.tunnel ? await opts.tunnel(remotePort) : `http://127.0.0.1:${remotePort}`;
+        tunnel.url = url; tunnel.proc = { kill() { } };
+        return url;
+      }
       const bin = await ensureCloudflared(join(dataDir, 'bin'));
       const proc = spawn(bin, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${remotePort}`], { windowsHide: true });
       tunnel.proc = proc;
@@ -285,8 +329,12 @@ export async function startServer(opts = {}) {
     return tunnel.starting;
   }
   function stopTunnel() { const p = tunnel.proc; Object.assign(tunnel, { url: '', proc: null }); p?.kill(); }
+  // the tunnel stays open while computers are linked to this one (4.3), even with the phone remote off
+  let keepForLinks = async () => false;
+  async function releaseTunnel() { if (!remote.on && !(await keepForLinks())) stopTunnel(); }
   async function setRemote(on) {
-    if (!on) { Object.assign(remote, { on: false, url: '', code: '' }); stopTunnel(); return { on: false }; }
+    if (on && linking.role() === 'remote') throw new Error('這台電腦正在遙控另一台電腦。手機請連到主機電腦（在主機電腦的「設定 → 手機遠端」開啟）。');
+    if (!on) { Object.assign(remote, { on: false, url: '', code: '' }); await releaseTunnel(); return { on: false }; }
     if (remote.on && remote.url && tunnel.url) return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
     const url = await ensureTunnel();
     Object.assign(remote, { on: true, url, code: newCode(), fails: 0 });
@@ -312,6 +360,25 @@ export async function startServer(opts = {}) {
     base.DB = db;
     return { ...out, backup };
   }
+  // 4.3 link settings live in desktop.json (the Electron app passes its own copy of that file)
+  const cfgPath = join(dataDir, 'desktop.json');
+  const readCfgFile = () => { try { return JSON.parse(readFileSync(cfgPath, 'utf8')); } catch { return {}; } };
+  linking = createLinking({
+    dataDir, version: APP_VERSION, name: opts.name, fetch: opts.fetch, relay: opts.relay || process.env.OCTA_RELAY || undefined, watchMs: opts.watchMs,
+    getDb: () => db, dbFile: () => dbFile, saveDb: () => db.save(), openDb: prepDb, swapDb, restoreDb,
+    getStore: () => hooks.getStore(),
+    tunnel: { ensure: () => ensureTunnel(), current: () => tunnel.url, release: () => { releaseTunnel().catch(() => { }); } },
+    remoteOff: () => { Object.assign(remote, { on: false, url: '', code: '' }); },
+    getLink: () => (opts.hooks?.getLink ? opts.hooks.getLink() : readCfgFile().link) || null,
+    saveLink: l => { if (opts.hooks?.setLink) return opts.hooks.setLink(l); const c = readCfgFile(); c.link = l; writeFileSync(cfgPath, JSON.stringify(c, null, 2)); },
+    hooks: {
+      pauseHost: () => (opts.hooks?.pauseHost ? opts.hooks.pauseHost() : stopOwnRunner()),
+      resumeHost: () => (opts.hooks?.resumeHost ? opts.hooks.resumeHost() : startOwnRunner()),
+      onRole: r => { if (opts.hooks?.onRole) return opts.hooks.onRole(r); if (r === 'host') startOwnRunner(); else stopOwnRunner(); }
+    }
+  });
+  keepForLinks = async () => linking.role() === 'host' && !!(await db.prepare("SELECT 1 FROM sessions WHERE kind='computer' LIMIT 1").first());
+
   async function qr(text) { try { return await require('qrcode').toDataURL(text, { margin: 1, width: 360 }); } catch { return ''; } }
 
   const hooks = {
@@ -395,11 +462,13 @@ export async function startServer(opts = {}) {
         claude: engines.claude, engines,
         chrome: !!findChrome(),
         autostart: !!hooks.getAutostart(), extToken: !!hooks.getExtToken(), store: hooks.getStore(),
-        remote: remote.on ? { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) } : { on: false }
+        remote: remote.on ? { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) } : { on: false },
+        role: linking.role()
       });
     }
     try {
       if (p === 'remote') return json(res, await setRemote(!!body.on));
+      if (p === 'link') return json(res, req.method === 'POST' ? await linking.desktop(body) : await linking.status());
       if (p === 'login-claude') { hooks.loginClaude(); return json(res, { ok: true }); }
       if (p === 'install') { await hooks.installEngine(String(body.engine || '')); return json(res, { ok: true }); }
       if (p === 'open-folder') { hooks.openFolder(); return json(res, { ok: true }); }
@@ -466,13 +535,21 @@ export async function startServer(opts = {}) {
   let bundled = {};
   try { bundled = { pwCli: join(dirname(require.resolve('@playwright/mcp/package.json')), 'cli.js'), nodeBin: process.execPath }; } catch { }
   // the Electron app starts the runner itself (runner: false) so it can hand over its embedded browsers
-  const runner = opts.runner === false ? { stop() { } } : startRunner({ url: `http://127.0.0.1:${localPort}`, token: '', home: dataDir, getExtToken: () => hooks.getExtToken(), getStore: () => hooks.getStore(), openInstall: k => hooks.installEngine(k), ...bundled, ...opts.runnerOpts });
+  let runner = null;
+  function startOwnRunner() {
+    if (opts.runner === false || runner) return;
+    runner = startRunner({ url: `http://127.0.0.1:${localPort}`, token: '', home: dataDir, getExtToken: () => hooks.getExtToken(), getStore: () => hooks.getStore(), openInstall: k => hooks.installEngine(k), ...bundled, ...opts.runnerOpts });
+  }
+  function stopOwnRunner() { runner?.stop(); runner = null; }
+  // a remote control's own runner stays off: the host does the work
+  if (linking.role() === 'host') startOwnRunner();
+  await linking.start();
 
   return {
     url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
     desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
-    cloudImport,
-    async close() { runner.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
+    cloudImport, link: linking, remotePort,
+    async close() { linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
   };
 }
 

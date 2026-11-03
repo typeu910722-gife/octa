@@ -20,7 +20,7 @@ export async function auth(req, db) {
   if (!t) return null;
   const tok = await sha(t);
   const s = await db.prepare(SES_SQL).bind(tok).first();
-  if (!s || s.kind !== 'web') return null; // only a paired phone's session opens the API
+  if (!s || (s.kind !== 'web' && s.kind !== 'computer')) return null; // only a paired phone's (or, 4.3, a linked computer's) session opens the API
   const last = s.seen || s.created;
   if (now() - last > SESSION_IDLE) {
     await db.prepare('DELETE FROM sessions WHERE token=?').bind(tok).run();
