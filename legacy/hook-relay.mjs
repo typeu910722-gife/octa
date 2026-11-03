@@ -90,7 +90,7 @@ const withTimeout = (fetch, ms) => (url, init = {}) => {
 const cache = new Map();
 export const clearCache = () => cache.clear();
 // the host's newest address for this token, or null. Throws { code: 'relay-down' } when ntfy.sh can't be read.
-export async function findHookHost(token, { fetch = globalThis.fetch, relay = RELAY, allow = [], now = Date.now(), fresh = false } = {}) {
+export async function findHookHost(token, { fetch = (...a) => globalThis.fetch(...a), relay = RELAY, allow = [], now = Date.now(), fresh = false } = {}) {
   const topic = await hookTopic(token);
   const c = cache.get(topic);
   if (!fresh && c && now - c.at < (c.url ? CACHE_MS : MISS_MS)) return c.url;
@@ -115,7 +115,7 @@ export async function findHookHost(token, { fetch = globalThis.fetch, relay = RE
 // one request: OPTIONS, then find the host and pass method, body and content type on; the host's JSON comes back as is.
 // opts: { fetch, relay, allow, timeoutMs }
 export async function forwardHook(request, token, rest, opts = {}) {
-  const fetch = opts.fetch || globalThis.fetch;
+  const fetch = opts.fetch || ((...a) => globalThis.fetch(...a));
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (!['GET', 'POST'].includes(request.method)) return J({ error: '只接受 GET 或 POST' }, 405);
   if (!TOKEN_RE.test(String(token || ''))) return J(BAD_TOKEN, 401);
@@ -131,7 +131,7 @@ export async function forwardHook(request, token, rest, opts = {}) {
   const find = fresh => findHookHost(token, { fetch, relay: opts.relay, allow: opts.allow, fresh });
   let url;
   try { url = await find(false); }
-  catch { return J({ error: '轉送服務暫時連不上，請稍後再試' }, 503); }
+  catch (e) { return J({ error: '轉送服務暫時連不上，請稍後再試', detail: String(e?.cause?.message || e?.message || e).slice(0, 120) }, 503); }
   if (!url) return J(BAD_TOKEN, 401);
   const search = new URL(request.url).search.slice(0, 200);
   const headers = { 'content-type': request.headers.get('content-type') || 'application/json', 'x-octa-relay': '1' };
