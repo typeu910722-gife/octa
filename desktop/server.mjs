@@ -346,15 +346,19 @@ export async function startServer(opts = {}) {
   function stopTunnel() { const p = tunnel.proc; Object.assign(tunnel, { url: '', proc: null }); p?.kill(); }
   // the tunnel stays open while computers are linked to this one (4.3), even with the phone remote off
   let keepForLinks = async () => false;
-  async function releaseTunnel() { if (!remote.on && !(await keepForLinks())) stopTunnel(); }
+  // (4.4: not while the phone remote is on or turning on — at start the two can overlap)
+  async function releaseTunnel() { if (remote.on || remote.starting || await keepForLinks() || remote.on || remote.starting) return; stopTunnel(); }
   // user: the switch in 設定 → 手機遠端 (remembered, so the phone remote comes back on after a restart)
   async function setRemote(on, user) {
     if (on && linking.role() === 'remote') throw new Error('這台電腦正在遙控另一台電腦。手機請連到主機電腦（在主機電腦的「設定 → 手機遠端」開啟）。');
     if (user) setPhoneWanted(!!on);
     if (!on) { Object.assign(remote, { on: false, url: '', code: '' }); await releaseTunnel(); return { on: false }; }
     if (!(remote.on && remote.url && tunnel.url && remote.url === tunnel.url)) {
-      const url = await ensureTunnel();
-      Object.assign(remote, { on: true, url, code: remote.code || newCode(), fails: 0 });
+      remote.starting = true;
+      try {
+        const url = await ensureTunnel();
+        Object.assign(remote, { on: true, url, code: remote.code || newCode(), fails: 0 });
+      } finally { remote.starting = false; }
     }
     linking.publishPhone(false).catch(() => { });
     return remoteInfo();

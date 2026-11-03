@@ -1440,4 +1440,6 @@ T.update({
  'Android 平板': ('Android tablet', 'Android タブレット'),
  '電腦的瀏覽器': ('Computer browser', 'パソコンのブラウザ'),
  '手機': ('Phone', 'スマホ'),
+ '或在手機輸入網址和配對碼': ('Or type the address and pairing code on the phone', 'またはスマホでアドレスとペアリングコードを入力'),
+ '不方便掃描時用。這個網址電腦重開後會換；之後請從主畫面的捷徑打開。': ('For when scanning isn’t handy. This address changes when the computer restarts — afterwards, open OCTA from the home-screen shortcut.', '読み取れないとき用です。このアドレスはパソコンの再起動で変わるため、以後はホーム画面のショートカットから開いてください。'),
 })

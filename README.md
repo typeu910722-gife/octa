@@ -17,7 +17,7 @@
 3. 下載 [OCTA-Setup.exe](https://github.com/typeu910722-gife/octa/releases/latest/download/OCTA-Setup.exe) 並安裝（或到 [octa.yzprojecttw.com](https://octa.yzprojecttw.com) 首頁按下載）
 4. 打開 OCTA，照「設定指引」完成，選一個範本試跑
 
-打開就能用，不用註冊或登入，所有資料只存在這台電腦。想用手機指揮：設定 → 手機遠端，用網址加 8 碼配對碼連進來。第一次執行時 Windows 若顯示「Windows 已保護您的電腦」，按「其他資訊 → 仍要執行」（安裝檔未簽章）。3.x 用雲端帳號的人，第一次打開 4.0 會自動把資料搬回電腦。
+打開就能用，不用註冊或登入，所有資料只存在這台電腦。想用手機指揮：設定 → 手機遠端，用手機相機掃一次 QR code，再把那一頁加到手機主畫面（電腦重開也不用再配對）。第一次執行時 Windows 若顯示「Windows 已保護您的電腦」，按「其他資訊 → 仍要執行」（安裝檔未簽章）。3.x 用雲端帳號的人，第一次打開 4.0 會自動把資料搬回電腦。
 
 ## 能做什麼
 
@@ -35,7 +35,7 @@
 - **AI 剩餘流量**：AI 連線頁顯示 Claude、ChatGPT 方案剩餘比例，其他顯示 OCTA 今日使用次數
 - **分區資料／共用資料**：寫一次，機器人都會讀
 - **通知**：需要你處理時，跳電腦通知，也可以送到 Telegram 或 LINE
-- **手機遠端**：設定 → 手機遠端，用網址加 8 碼配對碼連進來（通道由你自己的電腦開）；在手機上即時看機器人的瀏覽器，需要登入或輸入驗證碼時按「接手」直接在手機上點、捲動、打字，好了按「我好了」它就接著做
+- **手機遠端**：設定 → 手機遠端，手機掃一次 QR code 就配對好，把 [octa.yzprojecttw.com/go](https://octa.yzprojecttw.com/go) 加到主畫面；電腦重開後手機遠端自動再打開，網址換了也會經 ntfy.sh（加密）自動找到，不用重新配對（也可用網址加 8 碼配對碼；通道由你自己的電腦開）。設定裡列出已配對的手機，可一鍵移除；在手機上即時看機器人的瀏覽器，需要登入或輸入驗證碼時按「接手」直接在手機上點、捲動、打字，好了按「我好了」它就接著做
 - **兩台電腦一份資料**：設定 → 電腦，另一台電腦（例如家裡）貼上主機的連線碼就成為遙控器，看到同一份機器人與對話，工作都在主機上做；主機網址換了會透過免費的公開轉送服務 ntfy.sh（加密，不經過 OCTA 伺服器）自動找回；也能一鍵「換成這台當主機」把資料搬過來
 - **工作紀錄**：每次執行的結果與花費時間
 - **多語介面**：繁體中文、English、简体中文、日本語（機器人也會用你選的語言回覆）
@@ -46,7 +46,7 @@
 桌面版 OCTA（Electron）
  ├─ 本機伺服器 desktop/server.mjs ── 本機 API desktop/api/ ── SQLite（sql.js）
  ├─ 執行器 desktop/runner/ ── claude / codex / agy / ollama… ＋ 每個機器人的瀏覽器
- ├─ 手機遠端：cloudflared 快速通道 ＋ 8 碼配對碼（自己電腦開的，不經過 OCTA 伺服器）
+ ├─ 手機遠端：cloudflared 快速通道 ＋ 8 碼配對碼（自己電腦開的，不經過 OCTA 伺服器）；手機的固定入口 site/go.html（靜態頁，從 ntfy.sh 讀加密的網址）
  └─ 遙控器電腦（4.3）：同一條通道＋長期的電腦配對；主機網址加密後放在 ntfy.sh（desktop/host-link.mjs、link-server.mjs）
 ```
 
@@ -74,7 +74,7 @@ node --test ../test/*.test.mjs
 | `desktop/` 其他 | Electron 主程式、本機伺服器、內嵌瀏覽器、舊雲端資料搬家（`cloud-import.mjs`） |
 | `schema.sql` | 資料表 |
 | `i18n/` | 多語：在 `i18n/strings.py` 加翻譯，執行 `python3 i18n/build.py` 產生 `app/i18n-dict.js` |
-| `site/` | octa.yzprojecttw.com 下載介紹頁 |
+| `site/` | octa.yzprojecttw.com 下載介紹頁；`go.html`＋`go-core.js` 是手機的固定入口 /go |
 
 ## 安全
 

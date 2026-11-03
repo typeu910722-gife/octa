@@ -213,3 +213,21 @@
 - [x] 測試 test/host-link.test.mjs：連線碼、加解密與 ntfy 輪詢（假 fetch）、lastUrl 失效→ntfy→新網址、兩個真的 startServer（A/B 不同資料夾、遠端埠直連、假 ntfy）：配對、轉送、job 排在 A、ntfy 找回、ntfy 掛掉＋貼網址、移除、交接中拒絕寫入與取消、換主機成功（檔案也搬）、換回途中失敗復原
 - [x] 實測：xvfb 下兩個 Electron（不同 HOME，OCTA_TEST_TUNNEL=direct 用遠端埠當通道，**真的 ntfy.sh**）：連線、B 看到 A 的機器人、B 傳訊息在 A 排工作、瀏覽器分頁即時畫面、A 關掉時 B 顯示提示、A 重開自動重連、B 換成主機（A 自動改當遙控器）、B 換了埠重開後 A 經 ntfy.sh 8 秒找回。截圖 docs/screens/pc-*.png
 - 未實測：真的 trycloudflare 通道（網址變動、Cloudflare 錯誤頁判斷）、Windows 實機、大檔案資料夾經通道的速度、兩台不同版本混用
+
+## 4.4.0 手機遠端不用每次重新配對（2026-11-03）
+- 問題：主機電腦重開 OCTA 後手機遠端是關的（`remote.on=false`），quick tunnel 網址也換了，每支手機都要重新配對。
+- [x] 手機遠端記住開關：desktop.json `phoneRemote`（Electron 經 hooks.getPhoneRemote/setPhoneRemote）。true＝開機自動開通道並打開手機遠端；false＝使用者關掉（關掉＝所有手機連不進來，但配對保留，再打開不用重配）；沒設定（4.4 以前）＝還有 90 天內用過的手機就自動打開。每分鐘檢查一次，通道斷了自己再開。配對碼每次開機換新，只給新手機用。releaseTunnel 不會在手機遠端開著／正在開時關掉通道（開機時與 4.3 的 keepTunnel 互相競爭的問題）
+- [x] 固定入口 `https://octa.yzprojecttw.com/go`（`site/go.html`＋`site/go-core.js`＋`site/go.webmanifest`，純靜態）：
+  - 主機設定的 QR／連結：`/go#tp=<topic>&k=<手機金鑰>&h=<主機 id>&n=<名稱>&u=<目前網址>&c=<配對碼>`，全部在 fragment，不會送到任何伺服器；/go 存進自己的 localStorage 後把 fragment 從網址列拿掉
+  - 找主機：讀 ntfy.sh 同一個 topic（4.3 的 topicOf(連線密鑰)）的最新訊息，用手機金鑰 `phoneKeyOf(secret)=sha256('octa-phone:'+secret)` 解密（AES-256-GCM，與 host-link.mjs `seal` 同格式，WebCrypto 版放在 go-core.js，測試在 Node 互通）；確認 hostId、epoch/時間最新；`/__octa_ping` 回 `x-octa-host`、`x-octa-phone`（CORS *）；ntfy.sh 不通時試上次的網址
+  - 第一次（帶配對碼）：/go 跨站 `POST <網址>/api/pair`（只對 OCTA 網站來源開 CORS）換到這支手機自己的 token；之後每次打開直接 `location.replace(<網址>/#t=<token>&go=<…/go>)`，app 收下 token、記住 /go 位置、清掉 fragment
+  - 第一次會顯示「設定好了」＋加到主畫面的說明（iPhone Safari 分享 → 加入主畫面；Android Chrome ⋮ → 加到主畫面）；主機沒開：「主機電腦沒開或沒連上網路，開機後會自動連上」每 10 秒再試；手機遠端被關：說明要在主機打開；沒存資料：教你到主機掃 QR；「忘記這台電腦」。zh-TW 為主，en/ja/zh-CN 跟手機語言；淺／深色跟系統
+  - manifest `display: browser`（iOS 加到主畫面的網頁 App 會有自己空的儲存空間，改成用 Safari 打開才讀得到 /go 存的資料）
+  - 只記一台主機：掃另一台的 QR 就換成那台
+- [x] 手機只拿到由連線密鑰單向導出的手機金鑰：讀得到給手機的那份（網址），讀不到也偽造不了給電腦的那份；主機只要手機遠端開著就發布（沒有連結電腦也會，第一次需要時才產生連線密鑰）
+- [x] App：已經在 app 裡用配對碼配對的手機，配對後跳「把 OCTA 加到手機主畫面」→ `GET /api/phone/go` 拿資料組 /go 連結；設定 → 手機遠端（手機上）也有這個按鈕。從 /go 來的 app 連不到時（電腦重開、網址失效）自己回 /go 找新網址（一分鐘最多一次）
+- [x] 主機設定 → 手機遠端：開關、/go 的 QR 與加到主畫面說明、已配對的手機（iPhone／Android 手機…、最近使用、配對日期、移除＝立刻登出）、或手動輸入網址＋配對碼、外部事件。`/api/desktop/phones`（只在本機）；session 的 seen 改成 15 分鐘更新一次
+- [x] Telegram／LINE 的「用手機接手」連結改成 `/go#web=<bot>`（只帶機器人 id），電腦重開後也能用
+- [x] 測試 test/phone-go.test.mjs 7 項：Node seal ↔ WebCrypto unseal（兩個方向、竄改、錯的密鑰）、手機金鑰只讀得到自己那份、/go 找主機（ntfy → ping → 上次網址、別台、關掉、ntfy 掛掉）、fragment 解析與 app 端 octaFrag/goLink、/go 頁面與 manifest、兩次以上 startServer（假 cloudflared，每次新網址）：開關記住、重開自動打開並發布新網址、token 重開後仍有效、4.4 以前沒設定時有手機就打開、關掉後重開維持關、CORS、移除後 401。全套 246 項，失敗只剩原本 4 項
+- [x] 實測（沙箱）：site/ 用本機靜態伺服器（/go → go.html）、主機 server.mjs（OCTA_TEST_TUNNEL=direct）、**真的 ntfy.sh**、Playwright Chromium 手機 390×844：開 QR 連結 → 配對 →「設定好了」→ 打開 OCTA 已登入；主機換埠重開（新網址）→ ntfy.sh 0.6–1.7 秒有新網址 → 開著的舊 app 分頁自己回 /go 並在約 5 秒內回到新網址；重開 /go 0.4 秒進 app 不用配對；`/go#web=<bot>` 打開那個機器人；主機關掉 → 提示＋倒數，主機回來 10 秒內自動進 app；主機移除手機 → app 回配對畫面；app 內用配對碼配對 → 提示 → /go 設定 → 回 app。截圖 docs/screens/phone-go-*.png、host-phone-remote-qr-*.png（舊的幾張桌面截圖改成 256 色以維持資料夾 3 MB 以下）
+- 未實測：真手機（iOS Safari 的 7 天未使用清除 localStorage、加到主畫面後是否用 Safari 打開、Android Chrome 捷徑）、真的 trycloudflare 通道（網址失效時 Cloudflare 錯誤頁）、Cloudflare Pages 上 `/go` 對應 go.html 與 fragment 是否保留（Pages 預設會這樣處理，未部署驗證）、Windows 實機、換主機（4.3 handover）後手機仍需重新配對（手機 session 不搬）

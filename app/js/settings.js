@@ -134,20 +134,20 @@ SEC.remote=async()=>{
   b.innerHTML='<p class="fade">讀取中…</p>';
   let ds=null;try{ds=await api('desktop/status')}catch(e){}
   REMOTE_URL=ds?.remote?.on?ds.remote.url:'';
-  b.innerHTML=`${toggleRow('dRemote','手機遠端',!!ds?.remote?.on)}<div id="dRemoteInfo">${ds?.remote?.on?remoteInfo(ds.remote):''}</div>`;
+  b.innerHTML=`${toggleRow('dRemote','手機遠端',!!ds?.remote?.on)}<div id="dRemoteNote"></div>`;
   const go=block('sGo','把這個捷徑加到手機主畫面','第一次用：手機掃描下面的 QR code。');
-  go.parentNode.hidden=!ds?.remote?.on;go.innerHTML=ds?.remote?.on?remoteGo(ds.remote):'';
   const ph=block('sPhones','已配對的手機','這些手機可以指揮這台電腦。移除後立刻登出。');
-  paintPhones(ph);
+  const man=block('sManual','或在手機輸入網址和配對碼','不方便掃描時用。這個網址電腦重開後會換；之後請從主畫面的捷徑打開。');
+  const paint=r=>{const on=!!r?.on;go.parentNode.hidden=man.parentNode.hidden=!on;go.innerHTML=on?remoteGo(r):'';man.innerHTML=on?remoteInfo(r):'';paintIcons(go)};
+  paint(ds?.remote);paintPhones(ph);
   block('sHook','外部事件','開著的時候，例行任務的「外部事件」網址（LINE webhook、表單、Zapier）也能從外面呼叫；關掉就收不到。');
-  paintIcons($('sblocks'));
   $('dRemote').onclick=async()=>{const on=!$('dRemote').classList.contains('on'),sw=$('dRemote');sw.disabled=true;swSet(sw,on);
-    $('dRemoteInfo').innerHTML=on?'<p class="fade">連線中，第一次會下載連線工具，約 30 秒…</p>':'';go.parentNode.hidden=true;
-    try{const r=await api('desktop/remote','POST',{on});REMOTE_URL=on?r.url||'':'';$('dRemoteInfo').innerHTML=on?remoteInfo(r):'';
-      go.parentNode.hidden=!on;go.innerHTML=on?remoteGo(r):'';paintIcons(go);paintPhones(ph)}
-    catch(e){swSet(sw,!on);$('dRemoteInfo').innerHTML=`<p class="errmsg">${esc(e.message)}</p>`}finally{sw.disabled=false}}};
+    $('dRemoteNote').innerHTML=on?'<p class="fade">連線中，第一次會下載連線工具，約 30 秒…</p>':'';paint(null);
+    try{const r=await api('desktop/remote','POST',{on});REMOTE_URL=on?r.url||'':'';$('dRemoteNote').innerHTML='';paint(r);paintPhones(ph)}
+    catch(e){swSet(sw,!on);$('dRemoteNote').innerHTML=`<p class="errmsg">${esc(e.message)}</p>`}finally{sw.disabled=false}}};
 // a phone paired with the code (or on an old address): set up /go on it — the page remembers this computer
-async function openGoSetup(){try{const g=await api('phone/go');location.href=goLink(g.go,g,TOKEN,location.origin)}catch(e){toast(e.message)}}
+// (a moment later: closing the sheet steps back in the phone's history, which would cancel the page change)
+async function openGoSetup(){try{const g=await api('phone/go'),to=goLink(g.go,g,TOKEN,location.origin);setTimeout(()=>location.assign(to),350)}catch(e){toast(e.message)}}
 
 /* ---------- 工作與排程 ---------- */
 const WARMS=[0,30,60,120,300,600,-1];

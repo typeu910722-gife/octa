@@ -1,5 +1,33 @@
 [
  {
+  "v": "4.4.0",
+  "date": "2026-11-03",
+  "notes": [
+   "電腦重開後，手機遠端會自動再打開，已配對的手機不用重新配對",
+   "手機只要掃一次 QR code（設定 → 手機遠端），再把那一頁加到手機主畫面；以後從主畫面打開，電腦網址換了也會自動找到",
+   "找電腦的方法跟兩台電腦一樣：加密後的網址放在免費的 ntfy.sh，不經過 OCTA 伺服器",
+   "主機電腦沒開時，手機會顯示「主機電腦沒開或沒連上網路，開機後會自動連上」，每 10 秒自己再試",
+   "設定 → 手機遠端列出已配對的手機和最近使用時間，可以一鍵移除，移除後那支手機立刻登出",
+   "Telegram／LINE 通知裡的「用手機接手」連結，電腦重開後也還能用"
+  ],
+  "notes_en": [
+   "After the computer restarts, phone access turns itself back on and paired phones don’t need to pair again",
+   "Scan the QR code once on your phone (Settings → Phone access), then add that page to your home screen; opening OCTA from there finds the computer even when its address has changed",
+   "It finds the computer the same way two computers do: the address is kept encrypted on the free ntfy.sh relay — no OCTA server involved",
+   "When the host computer is off, the phone says so and tries again by itself every 10 seconds",
+   "Settings → Phone access lists the paired phones with when each was last used; Remove signs a phone out at once",
+   "The “take over on your phone” link in Telegram / LINE notices keeps working after the computer restarts"
+  ],
+  "notes_ja": [
+   "パソコンを再起動しても、スマホからの接続は自動でオンに戻り、ペアリング済みのスマホは再ペアリング不要です",
+   "スマホで QR コードを一度読み取り（設定 → スマホからの接続）、そのページをホーム画面に追加すれば、パソコンのアドレスが変わっても自動で見つけます",
+   "パソコンの見つけ方は 2 台のパソコンと同じです。暗号化したアドレスを無料の ntfy.sh に置き、OCTA のサーバーは経由しません",
+   "ホストのパソコンが起動していないときはスマホにそう表示され、10 秒ごとに自動で再試行します",
+   "設定 → スマホからの接続に、ペアリング済みのスマホと最終使用日時が表示され、削除するとそのスマホはすぐにログアウトされます",
+   "Telegram／LINE 通知の「スマホで引き継ぐ」リンクは、パソコンの再起動後も使えます"
+  ]
+ },
+ {
   "v": "4.3.0",
   "date": "2026-11-03",
   "notes": [
