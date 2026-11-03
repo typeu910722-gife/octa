@@ -191,7 +191,9 @@ test('prompt rules: API first, log back in, look before asking, files, result li
   assert.match(p, /先用 Glob 在這個對話的資料夾/);
   assert.match(p, /不要叫使用者把檔案放到指定位置/);
   assert.match(p, /回頭確認真的成功/);
-  assert.match(p, /「✅ 完成：做了什麼」或「⚠ 沒做成：原因＋下一步」/);
+  assert.match(p, /「✅ 完成：一句話結果」或「⚠ 沒做成：原因＋下一步」/);
+  assert.match(p, /第一行直接給結果/);
+  assert.match(p, /不要寒暄/);
   assert.match(p, /該做的沒做成一定要回報/);
   assert.ok(!/需要輸入帳號密碼、驗證碼或手機確認時，派瀏覽停在那一頁/.test(p), 'the old "stop at the login page" rule is gone');
   assert.match(buildLocalPrompt(base({ bot: { ...base().bot, engine: 'opencode' } }), '/tmp/x'), /⚠ 沒做成/);
