@@ -12,17 +12,19 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&panelOn()&&$('veil').hidden&&!document.querySelector('.menu')&&$('wp').contains(document.activeElement))closePanel()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cur)renderChat(false)});
 addEventListener('resize',()=>{focusBrowser()});
+let startFails=0;
 async function start(){$('pair').hidden=true;
   boot.set(60,I18N.t('讀取機器人與對話…'));
   await refresh();
   if(!S.loaded){if(!$('pair').hidden){boot.hide();return}   // a phone whose pairing ended is back at the pairing screen
+    if(++startFails>=2&&TOKEN&&backToGo())return;
     boot.set(50,I18N.t('連不上 OCTA，重試中…'));setTimeout(start,3000);return}
   if(cur)await loadMsgs(cur,'first').catch(()=>{});
   $('app').hidden=false;
   focusBrowser();
   boot.set(100,I18N.t('完成'));boot.hide();
   render(true);live();scrDeepLink();viaStart();
-  if(tourOn())startTour();else whatsNew()}
+  if(PAIRED_NOW&&!store.get('octa_go')){PAIRED_NOW=false;goHint()}else if(tourOn())startTour();else whatsNew()}
 (async()=>{boot.set(25,I18N.t('連線中…'));
   try{CFG=await (await fetch('/api/config')).json()}catch(e){}
   boot.set(45,I18N.t('載入介面…'));

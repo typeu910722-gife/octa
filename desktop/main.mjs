@@ -1245,6 +1245,9 @@ async function start() {
       // 4.3 主機電腦／遙控器: the link settings live in desktop.json with everything else
       getLink: () => cfg.link || null,
       setLink: l => { cfg = { ...cfg, link: l }; writeCfg(cfg); },
+      // 4.4: the phone remote comes back on after a restart while the user wants it
+      getPhoneRemote: () => cfg.phoneRemote,
+      setPhoneRemote: v => { cfg = { ...cfg, phoneRemote: !!v }; writeCfg(cfg); },
       // another computer is taking over the data: nothing may change it meanwhile
       pauseHost: async () => { runnerWanted = false; stopRunner(); },
       resumeHost: async () => { await startLocalRunner().catch(e => logError('runner', e)); },

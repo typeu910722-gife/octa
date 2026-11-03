@@ -1,0 +1,15 @@
+{
+  "name": "OCTA 手機遠端",
+  "short_name": "OCTA",
+  "description": "從手機連到你的 OCTA 主機電腦",
+  "id": "/go",
+  "start_url": "/go",
+  "scope": "/go",
+  "display": "browser",
+  "background_color": "#12110e",
+  "theme_color": "#12110e",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

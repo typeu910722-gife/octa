@@ -28,7 +28,7 @@ import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { copyFileSync, createReadStream, existsSync, mkdirSync, openSync, readSync, writeSync, closeSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join, dirname, sep } from 'node:path';
 import os from 'node:os';
-import { RELAY, REPUBLISH_MS, createRemoteClient, decodeLinkCode, encodeLinkCode, helloHost, hostUrlOk, newId, newSecret, pollHost, publishHost } from './host-link.mjs';
+import { RELAY, REPUBLISH_MS, createRemoteClient, decodeLinkCode, encodeLinkCode, helloHost, hostUrlOk, newId, newSecret, phoneKeyOf, pollHost, publishHost, topicOf } from './host-link.mjs';
 
 export const PIECE = 4 * 1024 * 1024;
 export const FILES_LIMIT = 1024 * 1024 * 1024;   // above this the files folder is not moved (explained to the user)
@@ -141,6 +141,29 @@ export function createLinking(ctx) {
       await publishHost({ secret: l.secret, url, epoch: l.epoch || 0, hostId: l.id, hostName: myName(), fetch: fetchFn, relay });
       Object.assign(pub, { url, at: Date.now(), error: '', ok: Date.now() });
     } catch (e) { pub.error = e.message; pub.at = Date.now() - REPUBLISH_MS + 5 * 60000; pub.url = url; }   // try again in 5 minutes
+  }
+  // 4.4 phones: the same topic, a copy sealed with the phones' key (site/go-core.js reads it). Published while the
+  // phone remote is on, even with no computer linked (the link secret is made the first time it is needed).
+  function ensureSecret() {
+    let l = link();
+    if (!l.secret) { l = { ...l, secret: newSecret() }; save(l); }
+    return l;
+  }
+  function phoneInfo() {
+    const l = ensureSecret();
+    return { tp: topicOf(l.secret), k: phoneKeyOf(l.secret), h: l.id, n: myName() };
+  }
+  const phonePub = { url: '', at: 0, error: '', ok: 0 };
+  async function publishPhone(force) {
+    if (role() !== 'host' || handing) return;
+    const url = ctx.tunnel.current();
+    if (!url) return;
+    if (!force && url === phonePub.url && Date.now() - phonePub.at < REPUBLISH_MS) return;
+    const l = ensureSecret();
+    try {
+      await publishHost({ secret: l.secret, key: phoneKeyOf(l.secret), url, epoch: l.epoch || 0, hostId: l.id, hostName: myName(), fetch: fetchFn, relay });
+      Object.assign(phonePub, { url, at: Date.now(), error: '', ok: Date.now() });
+    } catch (e) { Object.assign(phonePub, { url, error: e.message, at: Date.now() - REPUBLISH_MS + 5 * 60000 }); }   // try again in 5 minutes
   }
   // another computer is the host now (it has a higher epoch): stop working here and follow it
   async function supersede(m) {
@@ -533,7 +556,7 @@ export function createLinking(ctx) {
       startWatch();
       keepTunnel().catch(() => { });
     },
-    publish,
+    publish, phoneInfo, publishPhone, phoneRelay: () => ({ ok: phonePub.ok, error: phonePub.error }),
     stop() { clearInterval(watchTimer); client?.stop(); if (handing) { clearInterval(handing.timer); rmSync(handing.snapshot, { force: true }); handing = null; } }
   };
 }

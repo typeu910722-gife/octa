@@ -579,10 +579,11 @@ export async function runnerDone(c) {
         ? body.shot
         : null;
     // 4.2: it needs you to sign in and the phone remote is on: a link that opens its browser on the phone, ready to 接手
+    // (4.4: through the stable /go page, so the link still works after the computer restarts)
     const link = env.remoteLink?.() || '';
     const hand =
       link && (loginStuck || /需要.{0,6}登入|接手/.test(text))
-        ? `\n\n📱 用手機接手：${link}/#web=${encodeURIComponent(job.bot_id)}`
+        ? `\n\n📱 用手機接手：${link}#web=${encodeURIComponent(job.bot_id)}`
         : '';
     if (fail || loginStuck)
       await sendNotify(

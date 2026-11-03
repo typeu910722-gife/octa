@@ -233,3 +233,12 @@ ul.chg{margin:0;padding-left:20px;gap:4px}
 .pcn>.icon{width:20px;height:20px;color:var(--mute);flex:none}
 .pcn>span{display:grid;gap:2px;min-width:0}
 .onb-pc{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px dashed var(--line);border-radius:var(--r)}
+/* 4.4 the phone's home-screen shortcut (/go QR) */
+.goqr{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.goqr .qr{width:184px;height:184px;flex:none}
+.gotx{flex:1;min-width:220px;display:grid;gap:8px}
+.gotx p{margin:0}
+.gohow{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:6px}
+.gohow li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:var(--r);background:var(--sunk);font-size:13px}
+.gohow li>.icon{width:18px;height:18px;flex:none;color:var(--mute);margin-top:2px}
+.gohow li b{display:block;font-size:12px;color:var(--mute);font-weight:600}

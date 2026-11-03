@@ -1,6 +1,20 @@
 /* OCTA web app — talking to the local API, the shared state, live updates, notifications. */
 'use strict';
 let CFG={};                      // GET /api/config: {local, pair, …}
+// 4.4: opened from the phone's stable entry (the OCTA site's /go page): keep the token it passed, remember where /go is
+// (to look for the computer again when this address stops working), and take it all out of the address bar
+(()=>{const f=octaFrag(location.hash);if(!f.t&&!f.web)return;
+  if(f.t)store.set('ebot_token',f.t);
+  if(f.go)store.set('octa_go',f.go);
+  if(f.web)try{sessionStorage.setItem('octa_goweb',f.web)}catch(e){}
+  history.replaceState(null,'',location.pathname+location.search)})();
+// this address stopped answering (the computer restarted: its address changed): back to /go, which finds the new one
+// (at most once a minute, only when the phone itself is online)
+function backToGo(){const go=store.get('octa_go');if(!go||DESK()||!navigator.onLine)return false;
+  let last=0;try{last=+sessionStorage.getItem('octa_goback')||0}catch(e){}
+  if(Date.now()-last<60000)return false;
+  try{sessionStorage.setItem('octa_goback',String(Date.now()))}catch(e){}
+  location.replace(go);return true}
 let TOKEN=store.get('ebot_token');   // only a paired phone has one; the computer itself needs none
 let myDev=store.get('octa_dev')||'';
 if(!/^[a-z0-9]{8,40}$/i.test(myDev)){myDev=Math.random().toString(36).slice(2,10)+Date.now().toString(36);store.set('octa_dev',myDev)}
@@ -58,7 +72,7 @@ async function live(){
     try{const d=await Promise.race([api('wait?rev='+S.rev+'&prog='+(S.prog||0)),new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),45000))]);fails=0;if(!liveOn)break;
       if(d.rev!==S.rev)await refresh();
       else if(d.prog!=null&&d.prog!==S.prog){const b=await api('busy');S.busy=b.busy||S.busy;S.prog=b.prog;render(false)}}   // only a progress line changed: no full reload
-    catch(e){fails++;await new Promise(r=>setTimeout(r,Math.min(30000,1000*2**fails)))}
+    catch(e){fails++;if(fails>=3&&TOKEN&&backToGo())return;await new Promise(r=>setTimeout(r,Math.min(30000,1000*2**fails)))}
   }
   liveOn=false}
 const awake=()=>{if(S.loaded&&!$('app').hidden){refresh();if(!liveOn)live()}};

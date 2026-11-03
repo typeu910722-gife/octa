@@ -4,11 +4,11 @@ import { fbParse } from './engines.mjs';
 import { MIN, SESSION_IDLE, now, randTok, sha } from './util.mjs';
 
 // ---------- paired phone ----------
-export async function newSession(db, userId, kind, label = null) {
+export async function newSession(db, userId, kind, label = null, ua = null) {
   const t = randTok();
   await db
-    .prepare('INSERT INTO sessions (token,user_id,kind,label,created,seen) VALUES (?,?,?,?,?,?)')
-    .bind(await sha(t), userId, kind, label, now(), now())
+    .prepare('INSERT INTO sessions (token,user_id,kind,label,created,seen,ua) VALUES (?,?,?,?,?,?,?)')
+    .bind(await sha(t), userId, kind, label, now(), now(), ua)
     .run();
   return t;
 }
@@ -26,7 +26,7 @@ export async function auth(req, db) {
     await db.prepare('DELETE FROM sessions WHERE token=?').bind(tok).run();
     return null;
   }
-  if (now() - last > 6 * 3600000) await db.prepare('UPDATE sessions SET seen=? WHERE token=?').bind(now(), tok).run(); // rarely written
+  if (now() - last > 15 * MIN) await db.prepare('UPDATE sessions SET seen=? WHERE token=?').bind(now(), tok).run(); // rarely written (shown as 最近使用 in the paired phones list)
   return s;
 }
 

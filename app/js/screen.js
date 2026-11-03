@@ -139,8 +139,7 @@ $('scrPaste').onclick=async()=>{let t='';try{t=await navigator.clipboard.readTex
 /* ---------- 「需要你處理」: a notification or a link opens this bot's 瀏覽器 tab, ready to 接手 ---------- */
 function goWeb(c,id){if(!conv(c)||!bot(id))return;if(cur!==c)openConv(c);WP.webBot[c]=id;SCR.ready=id;openPanel('web',{user:true});scrPaint()}
 const needsHand=t=>NEEDLOGIN.test(String(t||''))||/接手/.test(String(t||''));
-// octa…/#web=<bot>: the link in a Telegram / LINE notice. Kept through pairing on a new phone.
-(()=>{const m=location.hash.match(/^#web=([\w-]{1,64})$/);if(!m)return;try{sessionStorage.setItem('octa_goweb',m[1])}catch(e){}history.replaceState(null,'',location.pathname+location.search)})();
+// …#web=<bot>: the link in a Telegram / LINE notice (4.4: through /go). Read at start (api.js), kept through pairing.
 function scrDeepLink(){let id='';try{id=sessionStorage.getItem('octa_goweb')||'';sessionStorage.removeItem('octa_goweb')}catch(e){}
   if(id&&bot(id))goWeb(id,id)}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)scrStop();else scrSync()});

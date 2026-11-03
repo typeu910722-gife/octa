@@ -95,3 +95,14 @@ function scrMap(pt,o){const box=o.box,img=o.img,v=o.view||{s:1,x:0,y:0},meta=o.m
   const W=+meta.deviceWidth||img.w/dpr,H=+meta.deviceHeight||img.h/dpr;
   const r=n=>Math.round(n*10)/10;
   return {x:r(fx*W/zoom),y:r(fy*H/zoom),per:W/zoom/(dw*v.s)}}
+// 4.4 the phone's stable entry (the OCTA site's /go page) opens this app at the computer's current address with
+//   #t=<this phone's session token>&web=<bot>&go=<where /go is>
+// The token is kept and the fragment taken out of the address bar. go: only the OCTA site (or this computer, for tests).
+function octaFrag(hash){const p=new URLSearchParams(String(hash||'').replace(/^#/,'')),o={};
+  const t=p.get('t')||'',web=p.get('web')||'',go=p.get('go')||'';
+  if(/^[A-Za-z0-9_-]{16,200}$/.test(t))o.t=t;
+  if(/^[\w-]{1,64}$/.test(web))o.web=web;
+  if(/^(https:\/\/octa\.yzprojecttw\.com|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)\/go$/.test(go))o.go=go;
+  return o}
+// the link that sets up /go on this phone (what it keeps: the relay key, which computer, this phone's token)
+function goLink(base,g,token,url){const p=new URLSearchParams();for(const [k,v] of [['tp',g.tp],['k',g.k],['h',g.h],['n',g.n],['u',url],['t',token]])if(v)p.set(k,v);return base+'#'+p.toString()}

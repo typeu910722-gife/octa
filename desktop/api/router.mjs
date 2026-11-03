@@ -52,7 +52,10 @@ async function route({ request: req, env, params }) {
       // a phone reaching this computer through the tunnel pairs with the code shown on the computer
       if (!env.pairCheck) return err('這個版本不使用配對碼', 404);
       if (!env.pairCheck(String(body.code || ''))) return err('配對碼錯誤或已失效', 401);
-      return J({ token: await newSession(db, 'local', 'web', 'phone') });
+      // the name in 設定 → 手機遠端 (paired phones): what kind of device, from its browser
+      const ua = req.headers.get('user-agent') || '';
+      const label = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Android 手機' : 'Android 平板') : /Macintosh|Windows|Linux|CrOS/.test(ua) ? '電腦的瀏覽器' : '手機';
+      return J({ token: await newSession(db, 'local', 'web', label, ua.slice(0, 300)) });
     }
     if (path.startsWith('hook/')) {
       // external event: LINE webhook, Zapier, a form… (the key itself is the secret)
@@ -81,6 +84,11 @@ async function route({ request: req, env, params }) {
       return r;
     }; // a change other devices should see
 
+    // 4.4: what this phone's /go page needs to find the computer again after a restart (site/go-core.js)
+    if (path === 'phone/go' && m === 'GET') {
+      const g = me.kind === 'web' && env.phoneGo ? await env.phoneGo() : null;
+      return g ? J(g) : err('只有配對的手機需要', 404);
+    }
     const c = { req, env, db, path, m, url, body, rawBody, me, U, ok };
     for (const handle of HANDLERS) {
       const res = await handle(c);

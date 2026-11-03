@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>OCTA 手機遠端</title>
+<meta name="description" content="從手機連到你的 OCTA 主機電腦。">
+<meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12110e" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-title" content="OCTA">
+<link rel="manifest" href="/go.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<style>
+:root{
+  --bg:#f6f1e7;--bg2:#efe7d6;--card:#fffdf8;--ink:#1d1a15;--mute:#6d6453;--faint:#9a907c;
+  --gold:#9c7a3c;--gold2:#b8924f;--goldbg:rgba(184,146,79,.12);--line:rgba(156,122,60,.22);--line2:rgba(29,26,21,.08);
+  --ok:#2f7d4f;--okbg:rgba(47,125,79,.1);--warn:#a55a1f;--warnbg:rgba(165,90,31,.1);
+  --btn-ink:#fffaf0;--shadow:0 20px 50px rgba(80,60,20,.12),0 1px 0 rgba(255,255,255,.6) inset;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#12110e;--bg2:#1a1814;--card:#1d1a15;--ink:#efe8da;--mute:#a59c88;--faint:#6f6858;
+  --gold:#c9a96a;--gold2:#e4cb93;--goldbg:rgba(201,169,106,.13);--line:rgba(201,169,106,.22);--line2:rgba(239,232,218,.08);
+  --ok:#7fcf9c;--okbg:rgba(127,207,156,.1);--warn:#f0a868;--warnbg:rgba(240,168,104,.1);
+  --btn-ink:#17140f;--shadow:0 24px 60px rgba(0,0,0,.45);
+}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:-30% -40% auto;height:70vh;background:radial-gradient(closest-side,var(--goldbg),transparent 72%);pointer-events:none}
+.wrap{position:relative;min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:max(20px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom))}
+.card{width:100%;max-width:420px;background:var(--card);border:1px solid var(--line2);border-radius:24px;box-shadow:var(--shadow);padding:28px 22px 22px;text-align:center}
+.brand{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px;color:var(--mute);font-size:13px;letter-spacing:.32em;font-weight:600}
+.brand img{width:28px;height:28px;border-radius:8px;box-shadow:0 0 0 1px var(--line)}
+.hero{position:relative;width:88px;height:88px;margin:4px auto 18px}
+.hero img{width:88px;height:88px;border-radius:22px;box-shadow:0 12px 34px rgba(0,0,0,.18),0 0 0 1px var(--line)}
+.hero .ring{position:absolute;inset:-8px;border-radius:30px;border:2px solid transparent;border-top-color:var(--gold2);border-right-color:var(--gold2);animation:spin 1.1s linear infinite}
+.hero .dot{position:absolute;right:-6px;bottom:-6px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--card);box-shadow:0 0 0 1px var(--line2)}
+.hero .dot svg{width:18px;height:18px}
+.hero.ok .dot{color:var(--ok)} .hero.warn .dot{color:var(--warn)} .hero.idle .dot{color:var(--gold)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.hero .ring{animation:none;border-color:var(--line)}}
+h1{margin:0 0 6px;font-size:21px;line-height:1.4;font-weight:700;letter-spacing:.01em}
+.sub{margin:0 auto;max-width:330px;color:var(--mute);font-size:15px}
+.host{display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:4px 12px;border-radius:99px;background:var(--goldbg);color:var(--gold);font-size:13px;font-weight:600}
+.host svg{width:15px;height:15px}
+.acts{display:grid;gap:10px;margin-top:22px}
+.btn{appearance:none;border:0;display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:12px 18px;border-radius:14px;font:inherit;font-weight:700;font-size:16px;cursor:pointer;text-decoration:none;transition:transform .12s ease,filter .12s ease}
+.btn:active{transform:scale(.98)}
+.btn.p{background:linear-gradient(180deg,var(--gold2),var(--gold));color:var(--btn-ink);box-shadow:0 8px 24px rgba(156,122,60,.25)}
+.btn.s{background:transparent;color:var(--gold);border:1px solid var(--line)}
+.btn:focus-visible,.lnk:focus-visible{outline:3px solid var(--gold2);outline-offset:2px}
+.btn[disabled]{opacity:.55}
+.note{margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--bg2);color:var(--mute);font-size:14px;text-align:left}
+.note.warn{background:var(--warnbg);color:var(--warn)}
+.steps{list-style:none;margin:18px 0 0;padding:0;display:grid;gap:10px;text-align:left}
+.steps li{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;padding:12px 14px;border-radius:14px;background:var(--bg2);font-size:14.5px;color:var(--ink)}
+.steps li .k{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--goldbg);color:var(--gold)}
+.steps li .k svg{width:19px;height:19px}
+.steps li b{display:block;font-size:13px;color:var(--mute);font-weight:600;margin-bottom:1px}
+.kbd{display:inline-flex;align-items:center;gap:3px;padding:0 6px;border-radius:6px;border:1px solid var(--line);font-weight:600;white-space:nowrap}
+.kbd svg{width:14px;height:14px;vertical-align:-2px}
+.tick{color:var(--faint);font-size:13px;margin-top:12px;min-height:20px}
+.foot{margin-top:18px;color:var(--faint);font-size:12.5px;text-align:center}
+.lnk{appearance:none;background:none;border:0;padding:4px;font:inherit;color:var(--mute);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main class="card" aria-live="polite">
+    <div class="brand"><img src="/icon-192.png" alt=""><span>OCTA</span></div>
+    <div id="view"></div>
+  </main>
+  <div class="foot" id="foot"></div>
+</div>
+<noscript><p style="text-align:center">需要開啟 JavaScript。</p></noscript>
+<script type="module">
+import { RELAY, parseFragment, loadHost, saveHost, mergeHost, locate, pairWith, appUrl, STORE_KEY } from '/go-core.js';
+
+// ---------- words (繁體中文 first; English, 日本語, 简体中文 follow the phone's language) ----------
+const L = (() => { const l = (navigator.language || 'zh-TW').toLowerCase(); return l.startsWith('ja') ? 'ja' : /^zh-(cn|sg|hans)/.test(l) ? 'zh-CN' : l.startsWith('zh') ? 'zh-TW' : 'en'; })();
+const W = {
+  find: ['正在找你的主機電腦…', 'Looking for your computer…', 'ホストのパソコンを探しています…', '正在找你的主机电脑…'],
+  open: ['正在打開 OCTA…', 'Opening OCTA…', 'OCTA を開いています…', '正在打开 OCTA…'],
+  pairing: ['正在和主機電腦配對…', 'Pairing with your computer…', 'パソコンとペアリングしています…', '正在和主机电脑配对…'],
+  down: ['主機電腦沒開或沒連上網路，開機後會自動連上', 'Your computer is off or offline. It will connect again once it is on.', 'パソコンの電源が入っていないか、ネットにつながっていません。起動すると自動でつながります。', '主机电脑没开或没连上网络，开机后会自动连上'],
+  downSub: ['請確認主機電腦開著 OCTA，並且「設定 → 手機遠端」是開的。', 'Make sure OCTA is open on the computer and 設定 → 手機遠端 (phone remote) is on.', 'パソコンで OCTA が開いていて「設定 → 手機遠端」がオンか確認してください。', '请确认主机电脑开着 OCTA，并且「设置 → 手机远程」是开的。'],
+  relay: ['暫時連不到轉送服務', 'Can’t reach the relay right now', '中継サービスにつながりません', '暂时连不到转送服务'],
+  relaySub: ['主機電腦的網址放在免費的 ntfy.sh（加密）。請確認手機有網路，稍後會自動再試。', 'Your computer’s address is kept (encrypted) on the free ntfy.sh relay. Check this phone’s connection; it will try again.', 'パソコンのアドレスは無料の ntfy.sh に暗号化して置かれています。通信を確認してください。自動で再試行します。', '主机电脑的网址放在免费的 ntfy.sh（加密）。请确认手机有网络，稍后会自动再试。'],
+  off: ['主機電腦的手機遠端關著', 'Phone remote is off on your computer', 'パソコンの手機遠端がオフです', '主机电脑的手机远程关着'],
+  offSub: ['請在主機電腦的「設定 → 手機遠端」打開開關，這裡會自動連上。', 'Turn it on in 設定 → 手機遠端 on the computer; this page connects by itself.', 'パソコンの「設定 → 手機遠端」をオンにすると自動でつながります。', '请在主机电脑的「设置 → 手机远程」打开开关，这里会自动连上。'],
+  retryIn: ['{n} 秒後再試一次', 'Trying again in {n} s', '{n} 秒後に再試行', '{n} 秒后再试一次'],
+  retry: ['再試一次', 'Try again', '再試行', '再试一次'],
+  none: ['先在主機電腦上掃描 QR code', 'Scan the QR code on your computer first', 'まずパソコンの QR コードを読み取ってください', '先在主机电脑上扫描 QR code'],
+  noneSub: ['這個網址是手機連到 OCTA 的固定入口。第一次要在主機電腦上設定：', 'This is your phone’s permanent way into OCTA. Set it up once on your computer:', 'ここはスマホから OCTA に入る固定の入口です。最初にパソコンで設定します：', '这个网址是手机连到 OCTA 的固定入口。第一次要在主机电脑上设置：'],
+  n1: ['在主機電腦打開 OCTA', 'Open OCTA on your computer', 'パソコンで OCTA を開く', '在主机电脑打开 OCTA'],
+  n2: ['設定 → 手機遠端，打開開關', 'Settings → 手機遠端, turn it on', '設定 → 手機遠端 をオン', '设置 → 手机远程，打开开关'],
+  n3: ['用手機相機掃描畫面上的 QR code', 'Scan the QR code with this phone’s camera', 'スマホのカメラで QR コードを読み取る', '用手机相机扫描画面上的 QR code'],
+  ready: ['設定好了！', 'All set!', '設定完了！', '设置好了！'],
+  readySub: ['以後從這個捷徑打開，電腦重開也不用再配對。', 'Open OCTA from this shortcut from now on — no pairing again, even after the computer restarts.', '今後はこのショートカットから開けば、パソコンを再起動しても再ペアリング不要です。', '以后从这个快捷方式打开，电脑重开也不用再配对。'],
+  addHome: ['把這個捷徑加到手機主畫面', 'Add this shortcut to your home screen', 'このショートカットをホーム画面に追加', '把这个快捷方式加到手机主屏幕'],
+  ios: ['iPhone（Safari）', 'iPhone (Safari)', 'iPhone（Safari）', 'iPhone（Safari）'],
+  iosHow: ['點 {share} 分享 →「加入主畫面」', 'Tap {share} Share → “Add to Home Screen”', '{share} 共有 →「ホーム画面に追加」', '点 {share} 分享 →「添加到主屏幕」'],
+  android: ['Android（Chrome）', 'Android (Chrome)', 'Android（Chrome）', 'Android（Chrome）'],
+  androidHow: ['點右上角 {dots} →「加到主畫面」', 'Tap {dots} at the top right → “Add to Home screen”', '右上の {dots} →「ホーム画面に追加」', '点右上角 {dots} →「添加到主屏幕」'],
+  go: ['打開 OCTA', 'Open OCTA', 'OCTA を開く', '打开 OCTA'],
+  codeBad: ['QR code 已經過期', 'This QR code has expired', 'この QR コードは期限切れです', 'QR code 已经过期'],
+  codeBadSub: ['主機電腦重新開機或關過手機遠端後，配對碼會換新。請在「設定 → 手機遠端」重新掃描。', 'The pairing code changes when the computer restarts or the phone remote is turned off. Scan again in 設定 → 手機遠端.', 'パソコンの再起動や手機遠端のオフでペアリングコードは変わります。「設定 → 手機遠端」で読み取り直してください。', '主机电脑重新开机或关过手机远程后，配对码会换新。请在「设置 → 手机远程」重新扫描。'],
+  forget: ['忘記這台電腦', 'Forget this computer', 'このパソコンを削除', '忘记这台电脑'],
+  forgetQ: ['這支手機不再記得「{name}」。之後要再掃描主機電腦上的 QR code。', 'This phone will forget “{name}”. You will need to scan the QR code on the computer again.', 'このスマホは「{name}」を忘れます。再度パソコンの QR コードを読み取る必要があります。', '这支手机不再记得「{name}」。之后要再扫描主机电脑上的 QR code。'],
+  pc: ['主機電腦', 'your computer', 'パソコン', '主机电脑'],
+  noStore: ['這個瀏覽器不能儲存資料（可能是無痕模式），每次都要重新掃描。', 'This browser can’t keep data (private mode?), so you will have to scan every time.', 'このブラウザはデータを保存できません（プライベートモード？）。毎回読み取りが必要です。', '这个浏览器不能储存资料（可能是无痕模式），每次都要重新扫描。'],
+  privacy: ['加密轉送：ntfy.sh · 資料只在你的電腦', 'Encrypted relay: ntfy.sh · your data stays on your computer', '暗号化中継：ntfy.sh · データはあなたのパソコンだけ', '加密转送：ntfy.sh · 资料只在你的电脑'],
+};
+const IDX = { 'zh-TW': 0, en: 1, ja: 2, 'zh-CN': 3 }[L];
+document.documentElement.lang = ['zh-Hant', 'en', 'ja', 'zh-Hans'][IDX];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const t = (k, v = {}) => esc(W[k][IDX]).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+
+const IC = {
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>',
+  qr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v.01M17 21h4v-4M14 21v-.01"/></svg>',
+  pc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  apple: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.5 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.1-4.2zM13.9 4.9c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>',
+  android: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.5l1.8-3.1a.4.4 0 0 0-.7-.4l-1.8 3.1a11 11 0 0 0-9.8 0L5.3 6a.4.4 0 0 0-.7.4l1.8 3.1A10 10 0 0 0 1.5 17h21a10 10 0 0 0-4.9-7.5zM7 14.2a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>',
+  dots: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+};
+
+// ---------- storage ----------
+let mem = null, storeOk = true;
+const S = (() => { try { const s = window.localStorage; s.setItem('octa_go_t', '1'); s.removeItem('octa_go_t'); return s; } catch { storeOk = false; return { getItem: () => mem, setItem: (_, v) => { mem = v; }, removeItem: () => { mem = null; } }; } })();
+const RELAY_URL = window.OCTA_RELAY || RELAY;   // tests point this at a local relay
+const goBack = location.origin + '/go';
+
+// ---------- what the address bar carried (then gone from it) ----------
+const frag = parseFragment(location.hash);
+if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+let host = loadHost(S);
+let fresh = false;
+if (frag.host) { host = mergeHost(host, frag.host); saveHost(S, host); fresh = true; }
+const web = frag.web || '';
+
+// ---------- the screens ----------
+const view = document.getElementById('view'), foot = document.getElementById('foot');
+const hostName = () => esc(host?.n || W.pc[IDX]);
+const hero = (cls, icon, spin) => `<div class="hero ${cls}"><img src="/icon-192.png" alt="">${spin ? '<span class="ring" aria-hidden="true"></span>' : ''}${icon ? `<span class="dot">${IC[icon]}</span>` : ''}</div>`;
+const chip = () => host ? `<div class="host">${IC.pc}<span>${hostName()}</span></div>` : '';
+function paintFoot() {
+  foot.innerHTML = host ? `<span>${t('privacy')}</span><br><button class="lnk" id="forget">${t('forget')}</button>` : `<span>${t('privacy')}</span>`;
+  const f = document.getElementById('forget');
+  if (f) f.onclick = () => { if (confirm(W.forgetQ[IDX].replace('{name}', host?.n || W.pc[IDX]))) { S.removeItem(STORE_KEY); host = null; stopTimer(); none(); } };
+}
+function busy(key) {
+  view.innerHTML = `${hero('idle', '', true)}<h1>${t(key)}</h1>${chip()}`;
+  paintFoot();
+}
+function none() {
+  view.innerHTML = `${hero('idle', 'qr')}<h1>${t('none')}</h1><p class="sub">${t('noneSub')}</p>
+    <ol class="steps"><li><span class="k">${IC.pc}</span><span>${t('n1')}</span></li><li><span class="k">${IC.gear}</span><span>${t('n2')}</span></li><li><span class="k">${IC.qr}</span><span>${t('n3')}</span></li></ol>
+    ${storeOk ? '' : `<p class="note warn">${t('noStore')}</p>`}`;
+  paintFoot();
+}
+function codeBad() {
+  view.innerHTML = `${hero('warn', 'qr')}<h1>${t('codeBad')}</h1><p class="sub">${t('codeBadSub')}</p>${chip()}`;
+  paintFoot();
+}
+let timer = null, left = 0;
+const stopTimer = () => { clearInterval(timer); timer = null; };
+function down(code) {
+  const k = code === 'relay-down' ? 'relay' : code === 'off' ? 'off' : 'down';
+  view.innerHTML = `${hero('warn', 'off')}<h1>${t(k)}</h1><p class="sub">${t(k + 'Sub')}</p>${chip()}
+    <div class="acts"><button class="btn s" id="retry">${t('retry')}</button></div><p class="tick" id="tick" aria-live="off"></p>`;
+  document.getElementById('retry').onclick = () => { stopTimer(); run(); };
+  stopTimer(); left = 10;
+  const tick = () => { const el = document.getElementById('tick'); if (el) el.textContent = W.retryIn[IDX].replace('{n}', left); if (left-- <= 0) { stopTimer(); run(); } };
+  tick(); timer = setInterval(tick, 1000);
+  paintFoot();
+}
+function ready(url) {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const android = /Android/.test(navigator.userAgent);
+  const rows = [
+    `<li><span class="k">${IC.apple}</span><span><b>${t('ios')}</b>${t('iosHow', { share: `<span class="kbd">${IC.share}</span>` })}</span></li>`,
+    `<li><span class="k">${IC.android}</span><span><b>${t('android')}</b>${t('androidHow', { dots: `<span class="kbd">${IC.dots}</span>` })}</span></li>`];
+  if (android && !ios) rows.reverse();
+  view.innerHTML = `${hero('ok', 'ok')}<h1>${t('ready')}</h1><p class="sub">${t('readySub')}</p>${chip()}
+    <h2 class="sr">${t('addHome')}</h2><p class="note" style="margin-top:18px;text-align:center;color:var(--ink);font-weight:600">${t('addHome')}</p>
+    <ol class="steps" style="margin-top:10px">${rows.join('')}</ol>
+    ${storeOk ? '' : `<p class="note warn">${t('noStore')}</p>`}
+    <div class="acts"><a class="btn p" id="openApp" href="${esc(url)}">${t('go')}</a></div>`;
+  paintFoot();
+}
+
+// ---------- find the host, then open the app there ----------
+let running = false;
+async function run() {
+  if (running) return; running = true; stopTimer();
+  try {
+    if (!host) return none();
+    busy(host.c ? 'pairing' : 'find');
+    let where;
+    try { where = await locate(host, { relay: RELAY_URL }); }
+    catch (e) { return down(e.code); }
+    if (where.name && where.name !== host.n) host.n = where.name;
+    host.u = where.url;
+    if (host.c) {
+      try { host.t = await pairWith(where.url, host.c); delete host.c; }
+      catch (e) { saveHost(S, host); return e.code === 'code' ? codeBad() : down('down'); }
+    }
+    saveHost(S, host);
+    if (!host.t) return none();
+    const url = appUrl(where.url, { t: host.t, web, go: goBack });
+    if (fresh) { fresh = false; return ready(url); }   // the first time: show how to keep this page on the home screen
+    busy('open');
+    location.replace(url);
+  } finally { running = false; }
+}
+// coming back to this tab (the app was on an old address): look again
+addEventListener('pageshow', e => { if (e.persisted) run(); });
+run();
+</script>
+</body>
+</html>

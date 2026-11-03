@@ -25,6 +25,9 @@ export const newId = () => randomBytes(9).toString('base64url');
 // the relay topic and the encryption key both come from the shared secret; the topic alone tells nothing
 export const topicOf = secret => base32(sha('octa-topic:' + secret)).slice(0, 32);
 const keyOf = secret => sha('octa-key:' + secret);
+// 4.4 phones: they read the same topic but get only this key (derived one way from the secret), so a phone can find
+// the host's address but can't read (or forge) the computers' messages. The browser side is site/go-core.js.
+export const phoneKeyOf = secret => sha('octa-phone:' + secret).toString('base64url');
 
 // AES-256-GCM: "o1." + base64url(iv | tag | ciphertext)
 export function seal(obj, secret) {
@@ -77,15 +80,16 @@ const withTimeout = (fetch, ms) => (url, init = {}) => {
 };
 
 // the host: tell the linked computers where it is now
-export async function publishHost({ secret, url, epoch, hostId, hostName, fetch = globalThis.fetch, relay = RELAY, now = Date.now() }) {
-  const body = seal({ v: 1, url: trimUrl(url), epoch: +epoch || 0, hostId, hostName: hostName || '', ts: now }, secret);
+// (key: seal with another secret on the same topic — the phones' copy, phoneKeyOf(secret))
+export async function publishHost({ secret, key, url, epoch, hostId, hostName, fetch = globalThis.fetch, relay = RELAY, now = Date.now() }) {
+  const body = seal({ v: 1, url: trimUrl(url), epoch: +epoch || 0, hostId, hostName: hostName || '', ts: now }, key || secret);
   const r = await withTimeout(fetch, 15000)(`${relay}/${topicOf(secret)}`, { method: 'POST', body, headers: { 'content-type': 'text/plain' } });
   if (!r.ok) throw Object.assign(new Error('轉送服務回應 ' + r.status), { code: 'relay-down' });
   return true;
 }
 
 // a remote control: the newest address the host published (highest epoch, then the latest), or null
-export async function pollHost({ secret, fetch = globalThis.fetch, relay = RELAY, since = '24h', now = Date.now() }) {
+export async function pollHost({ secret, key, fetch = globalThis.fetch, relay = RELAY, since = '24h', now = Date.now() }) {
   let r;
   try { r = await withTimeout(fetch, 15000)(`${relay}/${topicOf(secret)}/json?poll=1&since=${since}`); }
   catch (e) { throw Object.assign(new Error('連不到轉送服務 ntfy.sh'), { code: 'relay-down', cause: e }); }
@@ -94,7 +98,7 @@ export async function pollHost({ secret, fetch = globalThis.fetch, relay = RELAY
   for (const line of (await r.text()).split('\n')) {
     let ev; try { ev = JSON.parse(line); } catch { continue; }
     if (ev?.event !== 'message') continue;
-    const m = unseal(ev.message, secret);
+    const m = unseal(ev.message, key || secret);
     if (!m || m.v !== 1 || !hostUrlOk(m.url) || !Number.isFinite(m.epoch) || typeof m.hostId !== 'string' || !m.hostId) continue;
     if (!Number.isFinite(m.ts) || m.ts > now + 10 * 60000) continue;   // a clock far in the future is not trusted
     if (!best || m.epoch > best.epoch || (m.epoch === best.epoch && m.ts > best.ts)) best = m;

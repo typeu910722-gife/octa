@@ -181,6 +181,10 @@ async function ensureCloudflared(dir) {
   return bin;
 }
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+// 4.4: the phone's stable entry (a static page on the OCTA site; site/go.html). It finds this computer's current
+// address on ntfy.sh and signs the phone in with what it keeps in its own storage.
+export const GO_URL = 'https://octa.yzprojecttw.com/go';
+const PHONE_IDLE = 90 * 86400000;   // a paired phone unused this long is signed out (desktop/api/util.mjs SESSION_IDLE)
 const newCode = () => Array.from({ length: 8 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('');
 
 // ---------- main ----------
@@ -220,6 +224,8 @@ export async function startServer(opts = {}) {
   const tzOffset = -new Date().getTimezoneOffset();
   let runnerSeen = 0;
   const remote = { on: false, url: '', code: '', fails: 0 };   // phone pairing over the tunnel
+  const goUrl = opts.goUrl || process.env.OCTA_GO_URL || GO_URL;
+  const goOrigin = new URL(goUrl).origin;
   // 4.2 手機遙控: live pictures of the bots' browsers (only while someone watches) and the phone's input into them
   // (OCTA's own embedded browser takes the phone's input through Electron: opts.hooks.screenInput)
   const screen = opts.screen || createScreens({ resolvePort: async bot => (await loadRunner()).livePortOf(bot), inputHook: a => opts.hooks?.screenInput?.(a) });
@@ -227,7 +233,10 @@ export async function startServer(opts = {}) {
     DB: db, TZ_OFFSET_MIN: String(tzOffset), ALLOW_SIGNUP: 'false', screen,
     // 接手 / 我好了 from any screen: the page's own flag, and the computer's 僅觀看 / 取得控制權 switch
     onHandoff: (bot, on) => { screen.flag(bot, on); try { opts.hooks?.onHandoff?.(bot, on); } catch { } },
-    remoteLink: () => (remote.on && remote.url) || ''
+    // links in notices (Telegram / LINE) go through /go, so they still work after this computer restarts
+    remoteLink: () => (remote.on && remote.url ? goUrl : ''),
+    // a paired phone asks what its /go page needs (the phones' relay key, this host's id and name)
+    phoneGo: () => (linking?.role() === 'host' ? { ...linking.phoneInfo(), u: remote.url, go: goUrl } : null)
   };
   const callApi = async (req, res, env, origin) => {
     const request = await toRequest(req, origin);
@@ -272,7 +281,13 @@ export async function startServer(opts = {}) {
   // the key itself is the secret) come in without pairing while the tunnel is open.
   const remoteSrv = http.createServer(async (req, res) => {
     try {
-      if (req.url === '/__octa_ping') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }   // is the tunnel still alive
+      // is the tunnel still alive (the /go page asks too: which computer is this)
+      if (req.url === '/__octa_ping') { res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'no-store', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'x-octa-host, x-octa-phone', 'x-octa-host': linking?.link().id || '', 'x-octa-phone': remote.on ? 'on' : 'off' }); return res.end('ok'); }
+      // the /go page pairs a phone that scanned this computer's QR (the pairing code is in the QR)
+      if (req.url === '/api/pair' && req.headers.origin === goOrigin) {
+        res.setHeader('access-control-allow-origin', goOrigin); res.setHeader('vary', 'origin');
+        if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '600' }); return res.end(); }
+      }
       const hosting = linking?.role() !== 'remote';
       if (hosting && /^\/api\/hook\/[^/?]+(\?|$)/.test(req.url))
         return await callApi(req, res, { ...base, isLocal: true, runnerOnline: () => Date.now() - runnerSeen < 60000 }, 'https://' + (req.headers.host || 'remote'));
@@ -332,13 +347,42 @@ export async function startServer(opts = {}) {
   // the tunnel stays open while computers are linked to this one (4.3), even with the phone remote off
   let keepForLinks = async () => false;
   async function releaseTunnel() { if (!remote.on && !(await keepForLinks())) stopTunnel(); }
-  async function setRemote(on) {
+  // user: the switch in 設定 → 手機遠端 (remembered, so the phone remote comes back on after a restart)
+  async function setRemote(on, user) {
     if (on && linking.role() === 'remote') throw new Error('這台電腦正在遙控另一台電腦。手機請連到主機電腦（在主機電腦的「設定 → 手機遠端」開啟）。');
+    if (user) setPhoneWanted(!!on);
     if (!on) { Object.assign(remote, { on: false, url: '', code: '' }); await releaseTunnel(); return { on: false }; }
-    if (remote.on && remote.url && tunnel.url) return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
-    const url = await ensureTunnel();
-    Object.assign(remote, { on: true, url, code: newCode(), fails: 0 });
-    return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) };
+    if (!(remote.on && remote.url && tunnel.url && remote.url === tunnel.url)) {
+      const url = await ensureTunnel();
+      Object.assign(remote, { on: true, url, code: remote.code || newCode(), fails: 0 });
+    }
+    linking.publishPhone(false).catch(() => { });
+    return remoteInfo();
+  }
+  // what 設定 → 手機遠端 shows: the address and code, and the /go link (a QR) that pairs a phone and remembers this computer
+  async function remoteInfo() {
+    if (!remote.on) return { on: false };
+    const p = linking.phoneInfo();
+    const frag = new URLSearchParams({ tp: p.tp, k: p.k, h: p.h, n: p.n, u: remote.url, c: remote.code }).toString();
+    const go = goUrl + '#' + frag;
+    return { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url), go, goQr: await qr(go), relay: linking.phoneRelay() };
+  }
+  // ---------- 4.4: the phone remote stays on across restarts ----------
+  // desktop.json phoneRemote: true (the user turned it on) / false (turned it off) / unset (before 4.4: on when a phone
+  // is still paired)
+  const phoneWanted = () => { const v = opts.hooks?.getPhoneRemote ? opts.hooks.getPhoneRemote() : readCfgFile().phoneRemote; return typeof v === 'boolean' ? v : undefined; };
+  function setPhoneWanted(v) { if (opts.hooks?.setPhoneRemote) return opts.hooks.setPhoneRemote(v); const c = readCfgFile(); c.phoneRemote = v; writeFileSync(cfgPath, JSON.stringify(c, null, 2)); }
+  const livePhones = async () => !!(await db.prepare("SELECT 1 FROM sessions WHERE kind='web' AND COALESCE(seen,created)>? LIMIT 1").bind(Date.now() - PHONE_IDLE).first());
+  async function phoneKeep() {
+    if (linking.role() !== 'host' || linking.handing()) return;
+    const want = phoneWanted();
+    if (!(want === true || (want === undefined && await livePhones()))) return;
+    if (remote.on && tunnel.url) return linking.publishPhone(false);
+    try { await setRemote(true); } catch (e) { remote.error = e.message; }   // no network yet: the next check tries again
+  }
+  async function phones() {
+    const rows = (await db.prepare("SELECT token,label,ua,created,seen FROM sessions WHERE kind='web' ORDER BY created").all()).results;
+    return rows.map(r => ({ id: r.token.slice(0, 16), name: r.label && r.label !== 'phone' ? r.label : '手機', created: r.created, seen: r.seen || r.created }));
   }
 
   // 3.x cloud users: copy the account's data from the old cloud into a new database file, check it, then put it in
@@ -462,12 +506,17 @@ export async function startServer(opts = {}) {
         claude: engines.claude, engines,
         chrome: !!findChrome(),
         autostart: !!hooks.getAutostart(), extToken: !!hooks.getExtToken(), store: hooks.getStore(),
-        remote: remote.on ? { on: true, url: remote.url, code: remote.code, qr: await qr(remote.url) } : { on: false },
+        remote: await remoteInfo(),
         role: linking.role()
       });
     }
     try {
-      if (p === 'remote') return json(res, await setRemote(!!body.on));
+      if (p === 'remote') return json(res, await setRemote(!!body.on, true));
+      // 4.4: the phones paired with this computer; 移除 signs one out at once
+      if (p === 'phones') {
+        if (body.remove) await db.prepare("DELETE FROM sessions WHERE kind='web' AND token LIKE ?").bind(String(body.remove).replace(/[^0-9a-f]/g, '').slice(0, 16) + '%').run();
+        return json(res, { phones: await phones(), on: remote.on });
+      }
       if (p === 'link') return json(res, req.method === 'POST' ? await linking.desktop(body) : await linking.status());
       if (p === 'login-claude') { hooks.loginClaude(); return json(res, { ok: true }); }
       if (p === 'install') { await hooks.installEngine(String(body.engine || '')); return json(res, { ok: true }); }
@@ -544,12 +593,17 @@ export async function startServer(opts = {}) {
   // a remote control's own runner stays off: the host does the work
   if (linking.role() === 'host') startOwnRunner();
   await linking.start();
+  // 4.4: phone remote back on at start (when it was on, or a phone is paired), kept on while wanted (the tunnel can
+  // drop), and its address kept on the relay for the /go page
+  phoneKeep().catch(() => { });
+  const phoneTimer = setInterval(() => { phoneKeep().catch(() => { }); }, opts.watchMs || 60000);
+  phoneTimer.unref?.();
 
   return {
     url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
     desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
     cloudImport, link: linking, remotePort,
-    async close() { linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
+    async close() { clearInterval(phoneTimer); linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
   };
 }
 

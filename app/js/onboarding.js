@@ -51,6 +51,9 @@ function paintTour(){const s1=$('onb1'),s2=$('onb2');if(!s1||!s2)return;
   const all=s1.querySelector('[data-oall]');if(all)all.onclick=()=>openSettings('ai')}
 
 /* ---------- the phone: pair with the code shown on the computer ---------- */
+let PAIRED_NOW=false;
+// 4.4: just paired with the code: offer the home-screen shortcut (/go) so the next restart of the computer needs no pairing
+function goHint(){confirmSheet('把 OCTA 加到手機主畫面',`<p>${I18N.t('電腦每次重開，這個網址都會換。從主畫面的捷徑打開，就會自動找到電腦，不用再配對。')}</p>${goHow()}`,'設定捷徑',false,()=>openGoSetup())}
 function showPair(){$('app').hidden=true;$('pair').hidden=false;closeSheet(true);boot.hide();
   $('pairLang').innerHTML=I18N.select('pairLangSel');$('pairLangSel').onchange=e=>I18N.set(e.target.value);
   setTimeout(()=>$('pairCode').focus(),50)}
@@ -58,5 +61,5 @@ $('pairCode').addEventListener('input',e=>{const v=pairCode(e.target.value);if(v
 $('pairForm').onsubmit=async e=>{e.preventDefault();const code=pairCode($('pairCode').value);
   if(code.length<4){$('pairErr').textContent=I18N.t('請輸入電腦上顯示的配對碼');return}
   $('pairGo').disabled=true;$('pairErr').textContent='';
-  try{const d=await api('pair','POST',{code});TOKEN=d.token;store.set('ebot_token',TOKEN);$('pairCode').value='';$('pair').hidden=true;boot.show(I18N.t('連線中…'));start()}
+  try{const d=await api('pair','POST',{code});TOKEN=d.token;store.set('ebot_token',TOKEN);PAIRED_NOW=true;$('pairCode').value='';$('pair').hidden=true;boot.show(I18N.t('連線中…'));start()}
   catch(err){$('pairErr').textContent=err.message}finally{$('pairGo').disabled=false}};

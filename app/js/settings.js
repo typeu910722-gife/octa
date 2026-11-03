@@ -107,25 +107,47 @@ SEC.noti=async()=>{
   $('tgDet').onclick=async()=>{try{await saveS();const r=await api('notify/detect','POST');$('tgChat').value=r.chat;say(I18N.t('找到 Chat ID ✓'))}catch(e){say(e.message)}}};
 
 /* ---------- 手機遠端 ---------- */
-function remoteInfo(r){return `<div class="remote"><div class="kv"><span>網址</span><b class="mono sel" data-u>${esc(r.url)}</b><span>配對碼</span><b class="code-out" data-u>${esc(r.code)}</b></div>
-  ${r.qr?`<img class="qr" src="${r.qr}" alt="手機掃描開啟">`:''}</div>
+// 4.4: a phone scans the /go QR once (it pairs and remembers this computer); after that it opens OCTA from its home
+// screen even when this computer restarted (new address). The 網址＋配對碼 still work for a quick one-off.
+function remoteInfo(r){return `<div class="remote"><div class="kv"><span>網址</span><b class="mono sel" data-u>${esc(r.url)}</b><span>配對碼</span><b class="code-out" data-u>${esc(r.code)}</b></div></div>
   <div class="row2"><button type="button" class="ghost sm" data-copy="${esc(r.url)}">複製網址</button></div>
   <p class="hmuted">網址每次開啟都會不同。配對碼只給信任的人。</p>`}
+function goHow(){return `<ol class="gohow"><li>${ic('phone')}<span><b>iPhone（Safari）</b>分享 →「加入主畫面」</span></li><li>${ic('phone')}<span><b>Android（Chrome）</b>右上角 ⋮ →「加到主畫面」</span></li></ol>`}
+function remoteGo(r){return `<div class="goqr">${r.goQr?`<img class="qr" src="${r.goQr}" alt="用手機相機掃描">`:''}<div class="gotx">
+    <p><b>用手機相機掃描</b>：會自動配對，並記住這台電腦。</p>
+    <p class="hmuted">以後從手機主畫面的 OCTA 打開，這台電腦重開、網址換了也不用再配對。</p>${goHow()}
+    <div class="row2"><button type="button" class="ghost sm" data-copy="${esc(r.go)}">複製捷徑連結</button></div></div></div>
+  ${r.relay?.error?`<p class="note-box warn">${ic('info')}<span>暫時連不到 ntfy.sh，手機可能找不到這台電腦的新網址：<span data-u>${esc(r.relay.error)}</span></span></p>`:''}`}
+async function paintPhones(box){let d={phones:[]};try{d=await api('desktop/phones')}catch(e){}
+  box.innerHTML=d.phones.length?d.phones.map(p=>`<div class="kvrow"><span class="pcn">${ic('phone')}<span><b>${esc(I18N.t(p.name))}</b><small class="hmuted">${I18N.t('最近使用')} <span data-u>${agoTxt(p.seen)}</span> · ${I18N.t('配對於')} <span data-u>${new Date(p.created).toLocaleDateString(I18N.lang)}</span></small></span></span><button type="button" class="ghost sm danger" data-phx="${esc(p.id)}" data-phname="${esc(I18N.t(p.name))}">移除</button></div>`).join('')
+    :`<p class="hmuted">還沒有配對的手機。</p>`;
+  box.querySelectorAll('[data-phx]').forEach(b=>b.onclick=()=>confirmSheet(I18N.t('移除手機'),`<p><b data-u>${esc(b.dataset.phname)}</b>${I18N.t('會立刻登出，不能再連到這台電腦。之後要再用，需要重新掃描或輸入配對碼。')}</p>`,I18N.t('移除'),true,async()=>{await api('desktop/phones','POST',{remove:b.dataset.phx});toast(I18N.t('已移除'));paintPhones(box)}));
+  paintIcons(box)}
 SEC.remote=async()=>{
   if(CFG.via){block('sViaPhone','','手機請直接連到主機電腦：在主機電腦的「設定 → 手機遠端」開啟，用那裡顯示的網址和配對碼。這台電腦現在是遙控器，不開手機遠端。');return}
   if(!DESK()){const b=block('sPaired','這支手機');
-    b.innerHTML=`<p>${TOKEN?'這支手機已經和電腦配對，正在透過手機遠端連線。':'這個裝置正在透過網路連到電腦。'}</p>${TOKEN?`<div class="row2"><button class="ghost sm danger" id="unpair">${ic('x')}<span>中斷這支手機的連線</span></button></div>`:''}`;
-    if($('unpair'))$('unpair').onclick=()=>confirmSheet('中斷連線','<p>之後要再用，需要輸入電腦上新的配對碼。</p>','中斷連線',true,async()=>{unpaired()});return}
-  const b=block('sRemote','','開啟後會產生一個網址和配對碼，手機打開網址、輸入配對碼就能使用。連線走這台電腦自己開的 Cloudflare 通道，資料不經過其他伺服器。關掉就斷開。');
+    b.innerHTML=`<p>${TOKEN?'這支手機已經和電腦配對，正在透過手機遠端連線。':'這個裝置正在透過網路連到電腦。'}</p>${TOKEN?`<div class="row2"><button class="btn sm" id="goHome">${ic('phone')}<span>把 OCTA 加到手機主畫面</span></button><button class="ghost sm danger" id="unpair">${ic('x')}<span>中斷這支手機的連線</span></button></div>
+      <p class="hmuted">從主畫面的捷徑打開，電腦重開、網址換了也會自動連上，不用再配對。</p>`:''}`;
+    if($('goHome'))$('goHome').onclick=()=>openGoSetup();
+    if($('unpair'))$('unpair').onclick=()=>confirmSheet('中斷連線','<p>之後要再用，需要輸入電腦上新的配對碼。</p>','中斷連線',true,async()=>{unpaired()});paintIcons(b);return}
+  const b=block('sRemote','','開著的時候，手機可以從外面連到這台電腦。連線走這台電腦自己開的 Cloudflare 通道，資料不經過其他伺服器。電腦重開後會自動再打開，已配對的手機不用重新配對；關掉就斷開所有手機。');
   b.innerHTML='<p class="fade">讀取中…</p>';
   let ds=null;try{ds=await api('desktop/status')}catch(e){}
   REMOTE_URL=ds?.remote?.on?ds.remote.url:'';
   b.innerHTML=`${toggleRow('dRemote','手機遠端',!!ds?.remote?.on)}<div id="dRemoteInfo">${ds?.remote?.on?remoteInfo(ds.remote):''}</div>`;
+  const go=block('sGo','把這個捷徑加到手機主畫面','第一次用：手機掃描下面的 QR code。');
+  go.parentNode.hidden=!ds?.remote?.on;go.innerHTML=ds?.remote?.on?remoteGo(ds.remote):'';
+  const ph=block('sPhones','已配對的手機','這些手機可以指揮這台電腦。移除後立刻登出。');
+  paintPhones(ph);
   block('sHook','外部事件','開著的時候，例行任務的「外部事件」網址（LINE webhook、表單、Zapier）也能從外面呼叫；關掉就收不到。');
+  paintIcons($('sblocks'));
   $('dRemote').onclick=async()=>{const on=!$('dRemote').classList.contains('on'),sw=$('dRemote');sw.disabled=true;swSet(sw,on);
-    $('dRemoteInfo').innerHTML=on?'<p class="fade">連線中，第一次會下載連線工具，約 30 秒…</p>':'';
-    try{const r=await api('desktop/remote','POST',{on});REMOTE_URL=on?r.url||'':'';$('dRemoteInfo').innerHTML=on?remoteInfo(r):''}
+    $('dRemoteInfo').innerHTML=on?'<p class="fade">連線中，第一次會下載連線工具，約 30 秒…</p>':'';go.parentNode.hidden=true;
+    try{const r=await api('desktop/remote','POST',{on});REMOTE_URL=on?r.url||'':'';$('dRemoteInfo').innerHTML=on?remoteInfo(r):'';
+      go.parentNode.hidden=!on;go.innerHTML=on?remoteGo(r):'';paintIcons(go);paintPhones(ph)}
     catch(e){swSet(sw,!on);$('dRemoteInfo').innerHTML=`<p class="errmsg">${esc(e.message)}</p>`}finally{sw.disabled=false}}};
+// a phone paired with the code (or on an old address): set up /go on it — the page remembers this computer
+async function openGoSetup(){try{const g=await api('phone/go');location.href=goLink(g.go,g,TOKEN,location.origin)}catch(e){toast(e.message)}}
 
 /* ---------- 工作與排程 ---------- */
 const WARMS=[0,30,60,120,300,600,-1];
