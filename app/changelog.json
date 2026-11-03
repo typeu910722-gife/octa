@@ -1,5 +1,18 @@
 [
  {
+  "v": "4.5.1",
+  "date": "2026-11-03",
+  "notes": [
+   "修正 Windows 更新時跳出「無法卸載舊的應用程式檔案」：安裝前會先自動關掉還在背景執行的 OCTA"
+  ],
+  "notes_en": [
+   "Fixed the Windows update error \"cannot uninstall old application files\": the installer now closes OCTA programs still running in the background first"
+  ],
+  "notes_ja": [
+   "Windows の更新で「古いアプリのファイルをアンインストールできません」と出る問題を修正：インストール前にバックグラウンドの OCTA を自動で終了します"
+  ]
+ },
+ {
   "v": "4.5.0",
   "date": "2026-11-03",
   "notes": [
