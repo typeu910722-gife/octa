@@ -11,8 +11,9 @@ function renderBlank(){const b=$('blank');
   if(tourOn()){if(!b.querySelector('.onb')){b.innerHTML=`<div class="onb"><div class="onb-hd"><img src="/icon.png" alt="" class="onb-logo"><h1>歡迎使用 OCTA</h1>
       <p>用聊天指揮你的 AI 小幫手。它們在這台電腦上工作，用的是你自己的 AI 帳號，付錢、刪除、傳訊息給別人之前都會先問你。</p></div>
       <ol class="onb-steps"><li class="step" id="onb1"></li><li class="step" id="onb2"></li></ol>
-      <div class="onb-ft"><button type="button" class="link" id="onbSkip">先跳過，我自己看看</button></div></div>`;b._h='';
-      $('onbSkip').onclick=endTour;paintIcons(b);
+      <div class="onb-ft"><button type="button" class="link" id="onbSkip">先跳過，我自己看看</button></div>
+      ${DESK()?`<div class="onb-pc"><span class="oe-t"><b>已經有一台電腦在用 OCTA？</b><small>把這台電腦當那台的遙控器：看到同一份機器人和對話，工作都在那台電腦上做。</small></span><button type="button" class="ghost sm" id="onbPc">${ic('monitor')}<span>連到另一台電腦（當遙控器）</span></button></div>`:''}</div>`;b._h='';
+      $('onbSkip').onclick=endTour;if($('onbPc'))$('onbPc').onclick=()=>linkSheet(false);paintIcons(b);
       if(DESK()&&TOUR.chrome==null)api('desktop/status').then(d=>{TOUR.chrome=!!d?.chrome;paintTour()}).catch(()=>{})}
     paintTour();return}
   if(!S.bots.length){setHTML(b,`<div class="empty-state"><span class="es-ic">${ic('bot')}</span><h2>還沒有機器人</h2><p>取個名字，然後直接跟它說要做什麼；或從範本開始。</p><div class="row2 center"><button type="button" class="btn" data-blank="new">${ic('plus')}<span>新機器人</span></button><button type="button" class="ghost" data-blank="tour">入門導覽</button></div>${tplHtml()}</div>`);bindTpl(b);return}

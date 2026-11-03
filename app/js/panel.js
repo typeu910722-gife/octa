@@ -173,7 +173,7 @@ $('failbar').onclick=e=>{const b=e.target.closest('[data-fail]');if(!b||!cur)ret
 /* ---------- 瀏覽器: the computer shows the bot's real browser right here; a phone sees its live picture ---------- */
 function webIds(){const c=conv(cur);if(!c)return [];return isG(cur)?c.members.filter(bot):[cur]}
 function webBot(){const ids=webIds();let id=WP.webBot[cur];if(!ids.includes(id)){id=ids.find(x=>stateOf(x)==='browsing')||ids[0]||'';WP.webBot[cur]=id}return id}
-const embedHere=()=>!!window.octaDesktop?.dock;
+const embedHere=()=>!!window.octaDesktop?.dock&&!CFG.via;   // a remote control (4.3) watches the host's browser like a phone does
 function paintWeb(force){const ids=webIds(),id=webBot(),b=bot(id);
   setHTML($('webHd'),ids.length>1?`<div class="wbots" role="radiogroup" aria-label="${esc(I18N.t('看誰的瀏覽器'))}">${ids.map(x=>`<button type="button" class="wbot${x===id?' on':''}" role="radio" aria-checked="${x===id}" data-wbot="${esc(x)}"><span class="av xs" data-u>${avOf(x,true)}</span><span data-u>${esc(bot(x).name)}</span></button>`).join('')}</div>`:'');
   if(!b){$('webPh').innerHTML=`<p class="wempty">${I18N.t('群組裡還沒有機器人')}</p>`;$('stage').hidden=true;setHTML($('webFt'),'');return}

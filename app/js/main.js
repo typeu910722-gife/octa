@@ -21,9 +21,10 @@ async function start(){$('pair').hidden=true;
   $('app').hidden=false;
   focusBrowser();
   boot.set(100,I18N.t('完成'));boot.hide();
-  render(true);live();scrDeepLink();
+  render(true);live();scrDeepLink();viaStart();
   if(tourOn())startTour();else whatsNew()}
 (async()=>{boot.set(25,I18N.t('連線中…'));
   try{CFG=await (await fetch('/api/config')).json()}catch(e){}
   boot.set(45,I18N.t('載入介面…'));
-  if(CFG.pair&&!TOKEN)showPair();else start()})();
+  if(CFG.pair&&!TOKEN)showPair();else start();
+  if(CFG.via)document.documentElement.classList.add('via')})();

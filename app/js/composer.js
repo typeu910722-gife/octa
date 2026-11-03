@@ -21,7 +21,7 @@ $('msg').addEventListener('input',()=>{grow();clearTimeout(grow.t);grow.t=setTim
 /* "/" at the start: built-in actions, saved instructions and the bot's skills; "@" in a group: members */
 let atSel=0;
 function slashItems(){const c=conv(cur);if(!c)return [];const ids=isG(cur)?c.members:[cur];
-  const items=[...(window.octaDesktop?[{k:'browser',t:'/瀏覽器',d:I18N.t('打開瀏覽器')},{k:'hide',t:'/收起瀏覽器',d:I18N.t('收到背景')}]:[{k:'browser',t:'/瀏覽器',d:I18N.t('看這個機器人的即時畫面')}]),{k:'stop',t:'/停止',d:I18N.t('停止目前的工作')},
+  const items=[...(OWN_PC()?[{k:'browser',t:'/瀏覽器',d:I18N.t('打開瀏覽器')},{k:'hide',t:'/收起瀏覽器',d:I18N.t('收到背景')}]:[{k:'browser',t:'/瀏覽器',d:I18N.t('看這個機器人的即時畫面')}]),{k:'stop',t:'/停止',d:I18N.t('停止目前的工作')},
     {k:'shots',t:'/歷史畫面',d:I18N.t('以前的截圖')},{k:'edit',t:'/詳細資料',d:I18N.t('名稱、任務、排程、記憶')},{k:'compact',t:'/壓縮對話',d:I18N.t('重點寫進記憶、刪舊訊息，省額度')},{k:'clear',t:'/清空對話',d:I18N.t('清空對話紀錄')}];
   if(phoneRemote())items.splice(1,0,{k:'url',t:'/網址',d:I18N.t('操控電腦上的網址')});
   for(const id of ids)for(const k of ((S.skills||{})[id]||[]))items.push({k:'skill',t:'/'+k.name,d:'🧩 '+(isG(cur)?bot(id)?.name+' · ':'')+I18N.t('技能'),v:k.name,b:id});

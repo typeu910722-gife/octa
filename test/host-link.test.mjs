@@ -280,3 +280,16 @@ test('two computers: link, work through the host, reconnect, remove, switch the 
   assert.ok(!('switching' in A.link.link()));
   cutA = null;
 });
+
+test('interface: 設定 → 電腦, the remote control degrades the host-only features, ntfy.sh is explained', async () => {
+  const { js, scripts, dict, css } = await import('./app-source.mjs');
+  // a remote control (CFG.via) uses none of this computer's own features: they belong to the host
+  assert.match(js, /const DESK=\(\)=>!CFG\.via&&/);
+  assert.match(js, /const embedHere=\(\)=>!!window\.octaDesktop\?\.dock&&!CFG\.via/, 'the 瀏覽器 tab shows the live picture (4.2) instead of docking');
+  assert.match(scripts['link.js'], /ntfy\.sh 傳遞加密後的連線網址，不經過 OCTA 伺服器/);
+  for (const k of ['連到另一台電腦（當遙控器）', '換成這台當主機', '停止遙控，回到這台電腦自己的資料', '連不到主機電腦，重新連線中…', '讓另一台電腦連進來'])
+    assert.ok(dict.en?.[k] || dict.T?.[k] || JSON.stringify(dict).includes(k), k + ' is translated');
+  assert.match(scripts['onboarding.js'], /linkSheet\(false\)/, 'first run offers to become a remote control');
+  assert.match(scripts['link.js'], /act:'switch'/);
+  assert.match(css, /\.viab\{position:fixed/, 'the "can\'t reach the host" banner does not block the page');
+});

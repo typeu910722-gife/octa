@@ -1,11 +1,11 @@
 /* OCTA web app — each bot's own browser: open, hide, open an address, past screenshots, the phone's live view. */
 'use strict';
-const showBrowserLabel=()=>window.octaDesktop?'打開瀏覽器':'在電腦上打開瀏覽器';
-const browserHint=()=>window.octaDesktop?'這個視窗裡的瀏覽器':'電腦上 OCTA 的瀏覽器';
+const showBrowserLabel=()=>OWN_PC()?'打開瀏覽器':'在電腦上打開瀏覽器';
+const browserHint=()=>OWN_PC()?'這個視窗裡的瀏覽器':'電腦上 OCTA 的瀏覽器';
 async function openBrowser(id,url,hide){const b=bot(id);if(!b)return false;
   if(!hide&&embedHere()&&cur&&webIds().includes(id)){WP.webBot[cur]=id;openPanel('web')}   // it opens inside the work panel's 瀏覽器 tab
   else if(!hide&&window.octaDesktop?.focusBot){try{await window.octaDesktop.focusBot(id)}catch(e){}}
-  try{await api('open','POST',{bot:id,conv:cur,url:url||'',hide:!!hide,expand:!hide});toast(I18N.t(!S.runnerOnline?'電腦上的 OCTA 沒有在執行，開始後就會處理':hide?'已收到背景':(window.octaDesktop?'已打開':'已請電腦打開瀏覽器')));refresh();return true}
+  try{await api('open','POST',{bot:id,conv:cur,url:url||'',hide:!!hide,expand:!hide});toast(I18N.t(!S.runnerOnline?'電腦上的 OCTA 沒有在執行，開始後就會處理':hide?'已收到背景':(OWN_PC()?'已打開':'已請電腦打開瀏覽器')));refresh();return true}
   catch(e){toast(e.message);return false}}
 const phoneRemote=()=>phoneUI()&&!window.octaDesktop;
 function browserMenu(anchor){
@@ -55,7 +55,7 @@ function paintRemote(fill){
   const input=$('uu');if(fill&&input&&document.activeElement!==input)input.value=page||'';
 }
 function shotSheet(ids){
-  openSheet(`${sheetHead('機器人的瀏覽器',window.octaDesktop?'平常縮成圓角小卡，可以拖到你要的位置。打開後是這個機器人自己的側邊視窗，可以拖、也可以拉大小。換到別的機器人不會把這個瀏覽器帶過去。':'每個機器人在電腦上的 OCTA 裡有自己的瀏覽器。這裡是它最後停在哪一頁。')}
+  openSheet(`${sheetHead('機器人的瀏覽器',OWN_PC()?'平常縮成圓角小卡，可以拖到你要的位置。打開後是這個機器人自己的側邊視窗，可以拖、也可以拉大小。換到別的機器人不會把這個瀏覽器帶過去。':'每個機器人在電腦上的 OCTA 裡有自己的瀏覽器。這裡是它最後停在哪一頁。')}
   ${ids.map(id=>{const b=bot(id);return `<div class="bw" data-id="${id}"><div class="hd"><span class="av sm" data-u>${avOf(b.id)}</span><b data-u>${esc(b.name)}</b>${botRunning(id)?'<span class="pill warn">工作中</span>':''}</div>
     ${b.shot_ts?`<img class="shot" alt="${esc(b.name)}" id="img_${id}"><div class="meta"><span>截圖：</span>${ago(b.shot_ts)}${b.page?' · <span data-u>'+esc(b.page)+'</span>':''}</div>`:`<div class="noshot">還沒有畫面。機器人用過瀏覽器後，這裡會顯示它最後停在哪一頁。</div>`}
     ${b.browser==='mine'?`<div class="meta">這個機器人使用你的 Chrome，直接在你的 Chrome 裡查看它的分頁群組即可。</div>`:`${DESK()?`<div data-bm="${id}"></div>`:''}<div class="row2"><button class="btn sm" data-open="${id}">${I18N.t(showBrowserLabel())}</button><button class="ghost sm" data-hide="${id}">收到背景</button><button class="ghost sm" data-url="${id}">讓它打開網址…</button></div>`}</div>`}).join('')}

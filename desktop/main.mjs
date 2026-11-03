@@ -1242,6 +1242,24 @@ async function start() {
         return { ok: true, cookies: 0 };
       },
       setExtToken: t => { cfg = { ...cfg, extToken: t }; writeCfg(cfg); },
+      // 4.3 主機電腦／遙控器: the link settings live in desktop.json with everything else
+      getLink: () => cfg.link || null,
+      setLink: l => { cfg = { ...cfg, link: l }; writeCfg(cfg); },
+      // another computer is taking over the data: nothing may change it meanwhile
+      pauseHost: async () => { runnerWanted = false; stopRunner(); },
+      resumeHost: async () => { await startLocalRunner().catch(e => logError('runner', e)); },
+      onRole: async r => {
+        if (r === 'remote') {   // this computer is now a remote control: the host does the work
+          runnerWanted = false; stopRunner();
+          await closeBrowsers(); browsersClosed = false;
+          for (const b of embeds.values()) holdOffscreen(b);
+          new Notification({ title: 'OCTA', body: `這台電腦現在是「${server.link.viaName()}」的遙控器，機器人在那台電腦上工作。`, icon: icon() }).on('click', showWindow).show();
+        } else {
+          await startLocalRunner().catch(e => logError('runner', e));
+          new Notification({ title: 'OCTA', body: '這台電腦現在是主機，機器人在這台電腦上工作。', icon: icon() }).on('click', showWindow).show();
+        }
+        if (win && !win.isDestroyed()) win.loadURL(server.url).catch(() => { });
+      },
       getAutostart: () => app.getLoginItemSettings({ args: LOGIN_ARGS }).openAtLogin,   // Windows needs the same args to find the entry
       setAutostart: on => { app.setLoginItemSettings({ openAtLogin: on, args: LOGIN_ARGS, path: process.execPath }); cfg = { ...cfg, autostartChosen: true }; writeCfg(cfg); }
     }
@@ -1257,7 +1275,7 @@ async function start() {
     if (!r.ok) { progress(90, '雲端資料這次沒能取回，先使用這台電腦的資料，之後可在設定重試。'); await new Promise(ok => setTimeout(ok, 3500)); }
   }
   progress(92, '準備機器人…');
-  await startLocalRunner();
+  if (server.link.role() === 'host') await startLocalRunner();   // a remote control's bots run on the host computer
   clearTimeout(slow);
 
   tray = new Tray(icon().resize({ width: 16, height: 16 }));

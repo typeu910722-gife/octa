@@ -106,15 +106,15 @@ test('text size applies to the whole interface and is remembered on the device',
   assert.match(css, /\.bub\{[^}]*font-size:calc\(15px \* var\(--fz\)\)/);
 });
 
-test('settings is one page with seven sections', () => {
+test('settings is one page with eight sections', () => {
   const secs = [...fnSrc('SECTIONS').matchAll(/\['(\w+)','([^']+)'/g)].map(m => [m[1], m[2]]);
-  assert.deepEqual(secs, [['look', '外觀與語言'], ['ai', 'AI 連線'], ['browser', '瀏覽器'], ['noti', '通知'], ['remote', '手機遠端'], ['work', '工作與排程'], ['adv', '進階']]);
+  assert.deepEqual(secs, [['look', '外觀與語言'], ['ai', 'AI 連線'], ['browser', '瀏覽器'], ['noti', '通知'], ['remote', '手機遠端'], ['pcs', '電腦'], ['work', '工作與排程'], ['adv', '進階']]);
   for (const [k] of secs) assert.match(js, new RegExp('SEC\\.' + k + '='), k + ' renders');
   // switching sections asks about unsaved edits first; sub pages have a way back
   assert.match(fnSrc('settingsFrame'), /\.snav \[data-s\]'\)\.forEach\(b=>b\.onclick=\(\)=>leaveOk\(/);
   assert.match(fnSrc('subPage'), /SUB\.back=back/);
   // what lives where
-  for (const [k, what] of [['look', /nick/], ['ai', /openAI\(focus\)/], ['ai', /warmSel/], ['browser', /desktop\/ext-token/], ['browser', /shareBrowser/], ['noti', /notify\/test/], ['remote', /desktop\/remote/], ['work', /schedList\(\)/], ['work', /jobMax/], ['work', /review\/run/], ['work', /openLogs\(\)/], ['work', /openBoard\(\)/], ['adv', /notes/], ['adv', /paintConnectors/], ['adv', /paintStore/], ['adv', /openCode\(\)/], ['adv', /desktop\/autostart/], ['adv', /paintVersion/]]) {
+  for (const [k, what] of [['look', /nick/], ['ai', /openAI\(focus\)/], ['ai', /warmSel/], ['browser', /desktop\/ext-token/], ['browser', /shareBrowser/], ['noti', /notify\/test/], ['remote', /desktop\/remote/], ['pcs', /linkGet\(\)/], ['work', /schedList\(\)/], ['work', /jobMax/], ['work', /review\/run/], ['work', /openLogs\(\)/], ['work', /openBoard\(\)/], ['adv', /notes/], ['adv', /paintConnectors/], ['adv', /paintStore/], ['adv', /openCode\(\)/], ['adv', /desktop\/autostart/], ['adv', /paintVersion/]]) {
     const a = js.indexOf('SEC.' + k + '='), rest = js.slice(a + 4), b = rest.search(/\n(?:SEC\.|\/\* -{5})/);
     const src = rest.slice(0, b < 0 ? undefined : b);
     assert.match(src, what, k + ' has ' + what);

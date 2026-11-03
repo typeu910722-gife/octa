@@ -10,7 +10,10 @@ let S=EMPTY_S(), cur=store.get('ebot_cur'), liveOn=false;
 let MSG={};
 
 // this computer's own features (Chrome status, install an AI, files on disk…): the desktop app, or the page served to this computer
-const DESK=()=>!!window.octaDesktop||(!!CFG.local&&!CFG.pair);
+// (not while this computer is a remote control of another one: 4.3, CFG.via — those features belong to the host)
+const DESK=()=>!CFG.via&&(!!window.octaDesktop||(!!CFG.local&&!CFG.pair));
+// the desktop app showing its own data (labels such as 打開瀏覽器 vs 在電腦上打開瀏覽器)
+const OWN_PC=()=>!!window.octaDesktop&&!CFG.via;
 const ready=()=>!!(S.loaded&&!$('app').hidden);
 
 const HEAVY=/^(template|pair|engine-test|desktop\/install|desktop\/remote|desktop\/autostart)/;
@@ -119,7 +122,7 @@ function notifyNew(prevTop){
     if(!document.hidden){if(cur&&conv(cur))showHint(c,needsYou(c)?'ask':'new','n:'+c+':'+l.id);else toast(who+'：'+l.text.slice(0,40))}
     if(notiOn()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||c!==cur)){
       try{const n=new Notification('OCTA · '+who,{body:l.text.replace(/\s+/g,' ').slice(0,180),icon:'/icon.png',tag:'octa-'+c});
-        n.onclick=()=>{window.focus();window.octaDesktop?.show?.();if(needsHand(l.text)&&bot(l.by)&&!window.octaDesktop?.dock)goWeb(c,l.by);else openConv(c);n.close()}}catch(e){}}}}   // it needs you to sign in: its 瀏覽器 tab, ready to 接手
+        n.onclick=()=>{window.focus();window.octaDesktop?.show?.();if(needsHand(l.text)&&bot(l.by)&&!embedHere())goWeb(c,l.by);else openConv(c);n.close()}}catch(e){}}}}   // it needs you to sign in: its 瀏覽器 tab, ready to 接手
 /* 核准 nobody looked at for 15 minutes: one more notice on this device (Telegram / LINE are sent by the server) */
 const NAG_MS=15*60000;
 function apprNag(){if(!ready())return;let seen=[];try{seen=JSON.parse(store.get('octa_nag')||'[]')}catch(e){}

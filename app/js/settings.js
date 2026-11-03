@@ -1,5 +1,5 @@
-/* OCTA web app — Settings: one page, seven sections.
-   外觀與語言 · AI 連線 · 瀏覽器 · 通知 · 手機遠端 · 工作與排程 · 進階 */
+/* OCTA web app — Settings: one page, eight sections.
+   外觀與語言 · AI 連線 · 瀏覽器 · 通知 · 手機遠端 · 電腦（4.3, link.js） · 工作與排程 · 進階 */
 'use strict';
 const SECTIONS=[
   ['look','外觀與語言','palette','配色、字體大小、語言、稱呼'],
@@ -7,6 +7,7 @@ const SECTIONS=[
   ['browser','瀏覽器','globe','共用登入、使用我的 Chrome'],
   ['noti','通知','bell','這個裝置、Telegram、LINE'],
   ['remote','手機遠端','phone','用手機指揮這台電腦'],
+  ['pcs','電腦','monitor','另一台電腦當遙控器、換主機'],
   ['work','工作與排程','clock','例行任務、工作時間、紀錄'],
   ['adv','進階','sliders','共用資料、檔案、連接器、版本']];
 const SEC={};   // section key → render(arg)
@@ -15,7 +16,7 @@ function settingsOpen(){return !!$('sbody')}
 function settingsFrame(){
   if(settingsOpen())return;
   $('veil').innerHTML=`<div class="sheet settings page" role="dialog" aria-modal="true" aria-label="設定"><div class="shd"><button type="button" class="ib back2 sback" id="sBack" data-back hidden aria-label="返回">${ic('back')}</button><h2 id="sTitle">設定</h2><button type="button" class="ib x" data-close aria-label="關閉">${ic('x')}</button></div>
-  <div class="sgrid at-nav" id="sgrid"><nav class="snav" aria-label="設定分類">${SECTIONS.map(([k,t,i,d])=>`<button type="button" data-s="${k}">${ic(i,'si')}<span class="st"><b>${t}</b><small>${d}</small></span>${ic('chev','sa')}</button>`).join('')}</nav>
+  <div class="sgrid at-nav" id="sgrid"><nav class="snav" aria-label="設定分類">${SECTIONS.filter(([k])=>k!=='pcs'||DESK()||CFG.via).map(([k,t,i,d])=>`<button type="button" data-s="${k}">${ic(i,'si')}<span class="st"><b>${t}</b><small>${d}</small></span>${ic('chev','sa')}</button>`).join('')}</nav>
   <div class="sbody" id="sbody"></div></div></div>`;
   $('veil').hidden=false;
   $('veil').querySelectorAll('.snav [data-s]').forEach(b=>b.onclick=()=>leaveOk(()=>{if(typeof stopCodePoll==='function')stopCodePoll();showSection(b.dataset.s)}));
@@ -65,7 +66,7 @@ SEC.browser=async()=>{
   sh.innerHTML=toggleRow('dShare','所有機器人共用登入',S.shareBrowser!==false,'開著：在任何一個機器人的瀏覽器登入過的網站（LINE、Google…），其他機器人下次工作時也直接能用。每個機器人還是有自己的瀏覽器，可以同時工作。關掉：每個機器人的登入各自獨立。');
   $('dShare').onclick=async()=>{const on=!$('dShare').classList.contains('on');swSet($('dShare'),on);
     try{await api('settings','PUT',{shareBrowser:on});S.shareBrowser=on;toast(I18N.t(on?'已改成共用登入，下次工作時生效':'已改成每個機器人的登入各自獨立，下次工作時生效'))}catch(e){swSet($('dShare'),!on);toast(e.message)}};
-  if(!DESK()){block('sBrNote','','Chrome 和「使用我的 Chrome」要在電腦上的 OCTA 設定。');return}
+  if(!DESK()){block('sBrNote','',CFG.via?'Chrome 和「使用我的 Chrome」要在主機電腦上的 OCTA 設定（機器人在那台電腦上用瀏覽器）。':'Chrome 和「使用我的 Chrome」要在電腦上的 OCTA 設定。');return}
   const box=block('sMine','使用我的 Chrome','讓選了「使用我的 Chrome」的機器人，直接用你 Chrome 已登入的網站和已儲存的密碼。每個機器人會在自己的分頁群組裡工作，不會動到你其他分頁。');
   const chrome=block('sChrome','Google Chrome');
   box.innerHTML=chrome.innerHTML='<p class="fade">讀取中…</p>';
@@ -111,6 +112,7 @@ function remoteInfo(r){return `<div class="remote"><div class="kv"><span>網址<
   <div class="row2"><button type="button" class="ghost sm" data-copy="${esc(r.url)}">複製網址</button></div>
   <p class="hmuted">網址每次開啟都會不同。配對碼只給信任的人。</p>`}
 SEC.remote=async()=>{
+  if(CFG.via){block('sViaPhone','','手機請直接連到主機電腦：在主機電腦的「設定 → 手機遠端」開啟，用那裡顯示的網址和配對碼。這台電腦現在是遙控器，不開手機遠端。');return}
   if(!DESK()){const b=block('sPaired','這支手機');
     b.innerHTML=`<p>${TOKEN?'這支手機已經和電腦配對，正在透過手機遠端連線。':'這個裝置正在透過網路連到電腦。'}</p>${TOKEN?`<div class="row2"><button class="ghost sm danger" id="unpair">${ic('x')}<span>中斷這支手機的連線</span></button></div>`:''}`;
     if($('unpair'))$('unpair').onclick=()=>confirmSheet('中斷連線','<p>之後要再用，需要輸入電腦上新的配對碼。</p>','中斷連線',true,async()=>{unpaired()});return}
@@ -217,7 +219,7 @@ async function paintConnectors(el){
   $('cAdd').onclick=async()=>{try{await api('connectors','POST',{name:$('cName').value,base:$('cBase').value,header:$('cHead').value,secret:$('cSec').value});toast(I18N.t('已接上'));paintConnectors(el)}catch(e){$('cMsg').textContent=e.message}};
   el.querySelectorAll('[data-rmc]').forEach(b=>b.onclick=async()=>{try{await api('connectors/'+b.dataset.rmc,'DELETE');paintConnectors(el)}catch(e){toast(e.message)}})}
 async function paintStore(el){
-  if(!DESK()){el.innerHTML='<p class="hmuted">附件、截圖和機器人做出的檔案都存在電腦上的 OCTA 資料夾，每個機器人和群組各有一個資料夾。手機要看時會從電腦即時讀取。要改存的位置，請在電腦上的 OCTA 設定。</p>';return}
+  if(!DESK()){el.innerHTML=CFG.via?'<p class="hmuted">附件、截圖和機器人做出的檔案都存在主機電腦的 OCTA 資料夾。在這台電腦打開時，會從主機電腦即時讀取並下載。要改存的位置，請在主機電腦上的 OCTA 設定。</p>':'<p class="hmuted">附件、截圖和機器人做出的檔案都存在電腦上的 OCTA 資料夾，每個機器人和群組各有一個資料夾。手機要看時會從電腦即時讀取。要改存的位置，請在電腦上的 OCTA 設定。</p>';return}
   let st=null;try{st=await api('desktop/store')}catch(e){}
   el.innerHTML=`<p class="sdesc">附件、截圖和機器人做出的檔案存在這個資料夾，每個機器人和群組各一個資料夾，機器人之間可以互相讀取。</p>
   <div class="kv"><span>目前位置</span><b data-u class="mono">${esc(st?.path||'')}</b></div>

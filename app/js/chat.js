@@ -127,7 +127,7 @@ function renderChat(scroll){
   const st=g?(busyIn(cur).some(x=>x.status==='running')?'working':''):stateOf(cur);
   setHTML($('psub'),st&&st!=='idle'?`<span class="pst">${esc(I18N.t(STATE_LABEL[st]))}…</span> · ${subLine(c)}`:subLine(c));
   const off=!S.runnerOnline;$('offb').hidden=!off;
-  if(off)setHTML($('offb'),`${ic('info')}<span>${DESK()?'機器人目前沒有在工作。訊息會先排著，OCTA 準備好就會做。':'電腦上的 OCTA 沒有在執行。訊息會先排著，電腦開機後就會做。'}</span>`);
+  if(off)setHTML($('offb'),`${ic('info')}<span>${DESK()?'機器人目前沒有在工作。訊息會先排著，OCTA 準備好就會做。':CFG.via?'主機電腦上的 OCTA 沒有在執行。訊息會先排著，主機電腦開機後就會做。':'電腦上的 OCTA 沒有在執行。訊息會先排著，電腦開機後就會做。'}</span>`);
   $('msg').placeholder=I18N.t(g&&!phoneUI()?'輸入指示，可用 @ 指定誰做':'輸入指示…');
   const qk=(S.quick||{})[cur]||[];
   setHTML($('quick'),qk.length?qk.map((q,i)=>`<button type="button" data-q="${i}" title="${esc(q)}">${ic('zap')}<span data-u>${esc(q.length>24?q.slice(0,24)+'…':q)}</span></button>`).join(''):'');

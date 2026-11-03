@@ -271,7 +271,7 @@ test('phone UI: full-screen live picture, 接手 / 我好了, keyboard row, deep
   assert.match(fnSrc('scrDone'), /HAND_BUSY\.delete\(id\)\|\|handWaits\(id\)/, '我好了 continues the job the same way as the computer');
   assert.match(fnSrc('scrDone'), /登入好了，繼續剛才的工作/);
   assert.match(fnSrc('scrStop'), /\/bye/);
-  assert.match(js, /if\(needsHand\(l\.text\)&&bot\(l\.by\)&&!window\.octaDesktop\?\.dock\)goWeb\(c,l\.by\)/, 'a sign-in notification opens the 瀏覽器 tab');
+  assert.match(js, /if\(needsHand\(l\.text\)&&bot\(l\.by\)&&!embedHere\(\)\)goWeb\(c,l\.by\)/, 'a sign-in notification opens the 瀏覽器 tab');
   assert.match(fnSrc('goWeb'), /SCR\.ready=id/);
   assert.match(js, /#web=/);
 });

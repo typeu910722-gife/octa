@@ -10,9 +10,10 @@ function rowHtml(c){const g=isG(c.id),on=cur===c.id,muted=(S.mute||{})[c.id],st=
     <span class="t"><span class="l1"><b data-u>${esc(c.name)}</b>${muted?`<span class="mut" title="已關閉通知">${ic('belloff')}</span>`:''}<span class="tm">${listTime(c.id)}</span></span><span class="l2">${st&&st!=='idle'&&!apprWait(c.id)?`<small class="lw">${esc(I18N.t(STATE_LABEL[st]))}…</small>`:`<small data-u>${esc(preview(c.id))}</small>`}${listTag(c.id)}</span></span>
   </button><button class="more" data-more="${c.id}" aria-label="更多">${ic('more')}</button></div>`}
 function renderList(){
-  $('online').classList.toggle('on',!!S.runnerOnline);
+  if(VIA())paintVia();   // a remote control (4.3): which computer it controls, and whether it is connected
+  else{$('online').classList.toggle('on',!!S.runnerOnline);
   $('onlineT').textContent=I18N.t(S.runnerOnline?'電腦在線':'電腦離線');
-  $('online').title=I18N.t(S.runnerOnline?'機器人在這台電腦上工作中':'電腦上的 OCTA 沒有在執行，訊息會先排隊');
+  $('online').title=I18N.t(S.runnerOnline?'機器人在這台電腦上工作中':'電腦上的 OCTA 沒有在執行，訊息會先排隊')}
   let h='';
   if(!S.loaded)h+=`<div class="empty fade">載入中…</div>`;
   const q=($('q')?.value||'').trim().toLowerCase(),hit=x=>!q||x.name.toLowerCase().includes(q)||(x.task||'').toLowerCase().includes(q);
