@@ -28,7 +28,7 @@ import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { copyFileSync, createReadStream, existsSync, mkdirSync, openSync, readSync, writeSync, closeSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join, dirname, sep } from 'node:path';
 import os from 'node:os';
-import { RELAY, REPUBLISH_MS, createRemoteClient, decodeLinkCode, encodeLinkCode, helloHost, hostUrlOk, newId, newSecret, phoneKeyOf, pollHost, publishHost, topicOf } from './host-link.mjs';
+import { RELAY, REPUBLISH_MS, createRemoteClient, decodeLinkCode, encodeLinkCode, helloHost, hostUrlOk, newId, newSecret, phoneKeyOf, pollHost, publishGone, publishHost, topicOf } from './host-link.mjs';
 
 export const PIECE = 4 * 1024 * 1024;
 export const FILES_LIMIT = 1024 * 1024 * 1024;   // above this the files folder is not moved (explained to the user)
@@ -135,7 +135,7 @@ export function createLinking(ctx) {
     // before telling everyone "I am the host": has another computer taken over meanwhile?
     try {
       const m = await pollHost({ secret: l.secret, fetch: fetchFn, relay });
-      if (m && m.hostId !== l.id && m.epoch > (+l.epoch || 0)) return supersede(m);
+      if (m && !m.gone && m.hostId !== l.id && m.epoch > (+l.epoch || 0)) return supersede(m);
     } catch { }
     try {
       await publishHost({ secret: l.secret, url, epoch: l.epoch || 0, hostId: l.id, hostName: myName(), fetch: fetchFn, relay });
@@ -555,6 +555,23 @@ export function createLinking(ctx) {
       if (role() === 'remote') { startClient(); return; }
       startWatch();
       keepTunnel().catch(() => { });
+    },
+    // 4.5 清除這台電腦的資料: a remote control says bye to its host (only its own link goes; the host's data is not
+    // touched); a host with linked computers tells them through ntfy.sh that it is gone. At most a few seconds.
+    async farewell() {
+      const l = link();
+      const wait = (p, ms) => Promise.race([Promise.resolve(p).then(() => true, () => false), new Promise(r => setTimeout(() => r(false), ms))]);
+      clearInterval(watchTimer); watchTimer = null; invite = null;
+      if (l.role === 'remote') {
+        const url = client?.url() || l.lastUrl;
+        client?.stop(); client = null;
+        const ok = url && l.token ? await wait(fetchFn(url + '/api/link/bye', { method: 'POST', headers: { authorization: 'Bearer ' + l.token } }).then(r => { if (!r.ok) throw new Error(r.status); }), 4000) : false;
+        return { role: 'remote', bye: ok };
+      }
+      const n = l.secret ? (await computers().catch(() => [])).length : 0;
+      if (!n) return { role: 'host', computers: 0 };
+      const ok = await wait(publishGone({ secret: l.secret, epoch: l.epoch || 0, hostId: l.id, hostName: myName(), fetch: fetchFn, relay }), 6000);
+      return { role: 'host', computers: n, told: ok };
     },
     publish, phoneInfo, publishPhone, phoneRelay: () => ({ ok: phonePub.ok, error: phonePub.error }),
     stop() { clearInterval(watchTimer); client?.stop(); if (handing) { clearInterval(handing.timer); rmSync(handing.snapshot, { force: true }); handing = null; } }

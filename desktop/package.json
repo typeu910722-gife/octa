@@ -35,6 +35,7 @@
       "cdp-bridge.mjs",
       "screen-cast.mjs",
       "host-link.mjs",
+      "wipe.mjs",
       "link-server.mjs",
       "embed-layout.mjs",
       "browser-catalog.mjs",

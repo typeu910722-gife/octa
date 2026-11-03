@@ -242,3 +242,17 @@ ul.chg{margin:0;padding-left:20px;gap:4px}
 .gohow li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:var(--r);background:var(--sunk);font-size:13px}
 .gohow li>.icon{width:18px;height:18px;flex:none;color:var(--mute);margin-top:2px}
 .gohow li b{display:block;font-size:12px;color:var(--mute);font-weight:600}
+/* 4.5 設定 → 進階: 清除這台電腦的所有資料 */
+.scard.dzone{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.scard.dzone>h3{color:var(--err)}
+.wlist{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:calc(13px * var(--fz));color:var(--ink2)}
+.wlist dt{font-weight:650;color:var(--ink);white-space:nowrap}
+.wlist dd{margin:0;min-width:0}
+.wopts{display:grid;gap:4px}
+.wopts .pick{align-items:flex-start;min-width:0}
+.wopts .pick input{margin-top:3px}
+.wopts .pick .grow{min-width:0;overflow-wrap:anywhere}
+.wopts .pick small{display:block;margin-top:2px}
+.sheet.sm.wipe{width:min(560px,100%)}
+.sheet.wipe .mono{overflow-wrap:anywhere}
+@media (max-width:480px){.wlist{grid-template-columns:1fr}.wlist dd{margin-bottom:4px}}

@@ -14,7 +14,8 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import { importFromCloud } from './cloud-import.mjs';
 import { createScreens } from './screen-cast.mjs';
-import { createLinking } from './link-server.mjs';
+import { createLinking, FILES_LIMIT } from './link-server.mjs';
+import { confirmOk, dirSize, isInside, backupRootFrom } from './wipe.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -502,6 +503,30 @@ export async function startServer(opts = {}) {
   async function desktopApi(req, res) {
     const p = new URL(req.url, 'http://x').pathname.slice('/api/desktop/'.length);
     const body = req.method === 'POST' ? await readJson(req) : {};
+    // 4.5 清除這台電腦的資料 (設定 → 進階): only on this computer's own port (the remote port refuses /api/desktop/*).
+    // On a remote control this is the remote control's own data; the host is not touched.
+    if (p === 'wipe-info') {
+      const store = hooks.getStore();
+      const size = dirSize(store, FILES_LIMIT);
+      const l = linking.link();
+      return json(res, {
+        can: !!hooks.wipe, dataDir, store, storeCustom: !isInside(store, dataDir), storeBytes: size.bytes, storeOver: size.over, limit: FILES_LIMIT,
+        backupRoot: hooks.backupRoot ? hooks.backupRoot() : backupRootFrom({ documents: join(os.homedir(), 'Documents') }),
+        role: linking.role(), hostName: linking.viaName(),
+        computers: l.role === 'remote' ? 0 : (await db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE kind='computer'").first())?.n || 0,
+        phones: l.role === 'remote' ? 0 : (await db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE kind='web'").first())?.n || 0
+      });
+    }
+    if (p === 'wipe') {
+      if (req.method !== 'POST') return json(res, { error: '找不到' }, 404);
+      if (!confirmOk(body.word)) return json(res, { error: '請輸入「刪除」確認' }, 400);
+      if (!hooks.wipe) return json(res, { error: '只有 OCTA 桌面版可以清除資料' }, 400);
+      if (linking.handing()) return json(res, HANDING, 503);
+      try {
+        const r = await hooks.wipe({ backup: body.backup !== false, deleteStore: !!body.deleteStore, lang: String(body.lang || 'zh-TW').slice(0, 8) }, { saveDb: () => db.save() });
+        return json(res, r || { ok: true }, r?.error ? 400 : 200);
+      } catch (e) { return json(res, { error: e.message }, 400); }
+    }
     if (p === 'status') {
       const engines = await engineStatus(!!body.fresh || new URL(req.url, 'http://x').searchParams.has('fresh'));
       const { findChrome } = await loadRunner();
@@ -607,6 +632,16 @@ export async function startServer(opts = {}) {
     url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
     desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
     cloudImport, link: linking, remotePort,
+    // 4.5: before this computer's data is deleted — say goodbye to linked computers, close the tunnel and the database
+    async wipeShutdown() {
+      clearInterval(phoneTimer);
+      const said = await linking.farewell().catch(() => ({}));
+      linking.stop(); runner?.stop(); runner = null; screen.stopAll?.();
+      Object.assign(remote, { on: false, url: '', code: '' }); stopTunnel();
+      try { db.close(); } catch { }
+      local.close(); remoteSrv.close(); local.closeAllConnections?.(); remoteSrv.closeAllConnections?.();
+      return said;
+    },
     async close() { clearInterval(phoneTimer); linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); local.closeAllConnections?.(); remoteSrv.closeAllConnections?.(); }
   };
 }

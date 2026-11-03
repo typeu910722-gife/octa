@@ -207,6 +207,7 @@ SEC.adv=async arg=>{
   const tpl=block('sTpl','範本','一鍵建立一組常用的機器人，之後都能改名、改任務。');
   const tools=block('sTools','工具');
   const ver=block('sVer','版本與更新');
+  if(window.octaDesktop?.isDesktop)paintWipe(block('sWipe','清除這台電腦的所有資料'));   // 4.5: only in the desktop app itself (never on a phone)
   tpl.innerHTML=tplHtml();bindTpl(tpl);
   tools.innerHTML=`<div class="rows"><button type="button" class="rrow" id="goCode">${ic('code','ri')}<span class="t"><b>程式任務</b><small>隔離工作區、測試與差異審查</small></span>${ic('chev','sa')}</button>
     <button type="button" class="rrow" id="goGuide">${ic('help','ri')}<span class="t"><b>重新看一次入門導覽</b><small>連接 AI、建立第一個機器人</small></span>${ic('chev','sa')}</button></div>

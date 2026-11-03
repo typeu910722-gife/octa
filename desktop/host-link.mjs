@@ -88,6 +88,14 @@ export async function publishHost({ secret, key, url, epoch, hostId, hostName, f
   return true;
 }
 
+// 4.5: the host cleared its data (清除這台電腦的資料): the linked computers stop looking for it
+export async function publishGone({ secret, epoch, hostId, hostName, fetch = globalThis.fetch, relay = RELAY, now = Date.now() }) {
+  const body = seal({ v: 1, gone: true, url: '', epoch: +epoch || 0, hostId, hostName: hostName || '', ts: now }, secret);
+  const r = await withTimeout(fetch, 15000)(`${relay}/${topicOf(secret)}`, { method: 'POST', body, headers: { 'content-type': 'text/plain' } });
+  if (!r.ok) throw Object.assign(new Error('轉送服務回應 ' + r.status), { code: 'relay-down' });
+  return true;
+}
+
 // a remote control: the newest address the host published (highest epoch, then the latest), or null
 export async function pollHost({ secret, key, fetch = globalThis.fetch, relay = RELAY, since = '24h', now = Date.now() }) {
   let r;
@@ -99,7 +107,7 @@ export async function pollHost({ secret, key, fetch = globalThis.fetch, relay = 
     let ev; try { ev = JSON.parse(line); } catch { continue; }
     if (ev?.event !== 'message') continue;
     const m = unseal(ev.message, key || secret);
-    if (!m || m.v !== 1 || !hostUrlOk(m.url) || !Number.isFinite(m.epoch) || typeof m.hostId !== 'string' || !m.hostId) continue;
+    if (!m || m.v !== 1 || !(m.gone === true || hostUrlOk(m.url)) || !Number.isFinite(m.epoch) || typeof m.hostId !== 'string' || !m.hostId) continue;
     if (!Number.isFinite(m.ts) || m.ts > now + 10 * 60000) continue;   // a clock far in the future is not trusted
     if (!best || m.epoch > best.epoch || (m.epoch === best.epoch && m.ts > best.ts)) best = m;
   }
@@ -137,6 +145,10 @@ export async function findHost({ link, fetch = globalThis.fetch, relay = RELAY, 
   if (!link.secret) throw lastErr || Object.assign(new Error('沒有主機電腦的網址'), { code: 'down' });
   const m = await pollHost({ secret: link.secret, fetch, relay, now });
   if (!m) throw lastErr?.code === 'moved' ? lastErr : Object.assign(new Error('主機電腦最近沒有上線'), { code: 'down' });
+  if (m.gone) {   // 4.5: the host cleared its OCTA data
+    if (m.hostId === link.hostId) throw Object.assign(new Error('主機電腦已清除 OCTA 資料'), { code: 'gone' });
+    throw lastErr || Object.assign(new Error('主機電腦最近沒有上線'), { code: 'down' });
+  }
   if (m.hostId !== link.hostId && m.epoch > (+link.epoch || 0))
     // another computer became the host (換成這台當主機 from a third computer): follow it if our token works there
     try { const info = await helloHost(m.url, link.token, { fetch }); return { url: m.url, info, via: 'relay', moved: m }; }
@@ -168,8 +180,8 @@ export function createRemoteClient({ getLink, saveLink, fetch = globalThis.fetch
         return r.url;
       } catch (e) {
         st.tries++;
-        set({ state: e.code === 'revoked' ? 'revoked' : e.code === 'relay-down' ? 'relay-down' : e.code === 'moved' ? 'moved' : 'offline', url: '', error: e.message });
-        if (!stopped && e.code !== 'revoked') timer = timers.setTimeout(() => { connect(); }, Math.min(60000, 5000 * 2 ** Math.min(st.tries - 1, 4)));
+        set({ state: e.code === 'revoked' ? 'revoked' : e.code === 'gone' ? 'gone' : e.code === 'relay-down' ? 'relay-down' : e.code === 'moved' ? 'moved' : 'offline', url: '', error: e.message });
+        if (!stopped && e.code !== 'revoked' && e.code !== 'gone') timer = timers.setTimeout(() => { connect(); }, Math.min(60000, 5000 * 2 ** Math.min(st.tries - 1, 4)));
         return null;
       }
     })().finally(() => { running = null; });

@@ -1,6 +1,6 @@
 // OCTA desktop (Electron). 4.0: everything runs and stays on this computer — the window always shows the local
 // server's page. Users of the old cloud version get their data moved here once, on the first start (cloud-import.mjs).
-import { app, BrowserWindow, WebContentsView, Tray, Menu, Notification, shell, nativeImage, dialog, ipcMain, screen, powerSaveBlocker, powerMonitor } from 'electron';
+import { app, BrowserWindow, WebContentsView, Tray, Menu, Notification, shell, nativeImage, dialog, ipcMain, screen, powerSaveBlocker, powerMonitor, session } from 'electron';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -9,6 +9,7 @@ import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmS
 import { startServer } from './server.mjs';
 import { cloudCaller, importStatus, migrateConfig } from './cloud-import.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
+import { backupRootFrom, doneText, finishPendingWipe, makeBackup, planWipe, wipeTargets, writeMarker } from './wipe.mjs';
 import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, phoneInput, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
 import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, SAME_TO_CDP, braveDownload, chromeDownload, clientHintHeaders, edgeDownload, electronCookie, firefoxDownload, googleRefused, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
@@ -33,6 +34,9 @@ const unpacked = p => p.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1');
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }   // already running: the first copy shows its window
 app.setAppUserModelId('tw.yzproject.octa');
+// 4.5 清除這台電腦的資料: what the wipe could not delete while OCTA was running goes now, before anything is opened
+let wipedNow = null;
+try { wipedNow = finishPendingWipe(app.getPath('userData')); } catch (e) { wipedNow = { marker: {}, left: [], error: String(e) }; }
 
 let win = null, tray = null, server = null, quitting = false, runner = null;
 const LOGIN_ARGS = ['--hidden'];
@@ -44,8 +48,11 @@ const oldDir = join(app.getPath('appData'), 'E·BOT');
 const dataDir = existsSync(join(oldDir, 'ebot.sqlite')) && !existsSync(join(app.getPath('userData'), 'ebot.sqlite')) ? oldDir : app.getPath('userData');
 const cfgFile = join(dataDir, 'desktop.json');
 const readCfg = () => { try { return JSON.parse(readFileSync(cfgFile, 'utf8')); } catch { return {}; } };
-const writeCfg = c => { try { mkdirSync(dataDir, { recursive: true }); writeFileSync(cfgFile, JSON.stringify(c, null, 2)); } catch { } };
+let wipeDone = false;   // after the wipe nothing may write the old settings back
+const writeCfg = c => { if (wipeDone) return; try { mkdirSync(dataDir, { recursive: true }); writeFileSync(cfgFile, JSON.stringify(c, null, 2)); } catch { } };
 let cfg = readCfg();
+// the wipe left autostart as the user had chosen it: keep that choice (otherwise it would be switched back on)
+if (wipedNow?.marker?.keep?.autostartChosen && !cfg.autostartChosen) { cfg = { ...cfg, autostartChosen: true }; writeCfg(cfg); }
 // 4.0 is local only: 雲端模式 / 主機模式 settings from 3.x are dropped; a cloud account's data is imported once (below)
 let pendingImport = '';
 if (cfg.mode !== 'local' || cfg.runnerToken || cfg.hostKey) {
@@ -641,10 +648,12 @@ async function embedStop(port) {
   try { await bucket.bridge?.close(); } catch { }
   layoutEmbed();
 }
+const usedPartitions = new Set();
 async function embedStart(bot, port) {
   if (embeds.has(port)) return;
   if (!win || win.isDestroyed()) throw new Error('視窗還沒開');
   const partition = 'persist:octa-bot-' + String(bot.id || 'bot').replace(/[^\w-]/g, '').slice(0, 40);
+  usedPartitions.add(partition);
   const prefs = { partition, contextIsolation: true, sandbox: true, backgroundThrottling: false };
   const view = new WebContentsView({ webPreferences: prefs });
   const name = String(bot.name || '機器人').replace(/[<&]/g, '');
@@ -1169,6 +1178,73 @@ handle('octa:cloud-import', async () => {
   return r;
 });
 
+// ---------- 4.5 清除這台電腦的 OCTA 資料 (設定 → 進階) ----------
+// Called by the local server (POST /api/desktop/wipe, this computer only). The backup is made first; if that fails
+// nothing is deleted. Then: stop the runner and every bot browser, say goodbye to linked computers, close the tunnel
+// and the database, clear the bots' browser sessions and the window's own storage, delete the folders, restart into
+// the first-run screen. Anything Windows still holds open is deleted at the very start of the next launch.
+const userDir = () => app.getPath('userData');
+const backupRoot = () => {
+  const get = k => { try { return app.getPath(k); } catch { return ''; } };
+  return backupRootFrom({ documents: get('documents'), downloads: get('downloads'), home: get('home') });
+};
+let wiping = false;
+async function wipeComputer(opts = {}, ctl = {}) {
+  if (wiping) return { error: '正在清除' };
+  const store = cfg.store || join(dataDir, 'files');
+  const get = k => { try { return app.getPath(k); } catch { return ''; } };
+  const plan = planWipe({ dataDir, userData: userDir(), store, deleteStore: !!opts.deleteStore, protect: ['home', 'documents', 'downloads', 'desktop', 'appData', 'pictures', 'music', 'videos'].map(get) });
+  if (plan.error) return { error: plan.error };
+  const lang = ['zh-TW', 'zh-CN', 'en', 'ja'].includes(opts.lang) ? opts.lang : 'zh-TW';
+  const wasHost = server.link.role() === 'host';
+  wiping = true;
+  runnerWanted = false; stopRunner();   // nothing changes the database while it is copied
+  let backup = null;
+  if (opts.backup !== false) {
+    try { ctl.saveDb?.(); backup = makeBackup({ dataDir, store, root: backupRoot(), lang }); }
+    catch (e) {
+      logError('wipe-backup', e);
+      wiping = false;
+      if (wasHost) await startLocalRunner().catch(err => logError('runner', err));
+      return { error: '備份失敗，沒有刪除任何資料：' + (e?.message || e) };
+    }
+  }
+  setTimeout(() => runWipe(plan, backup, lang).catch(e => { logError('wipe', e); app.relaunch(); app.exit(0); }), 1500);   // the page shows where the backup went meanwhile
+  return { ok: true, backup: backup ? { path: backup.path, files: backup.files } : null, role: server.link.role() };
+}
+async function runWipe(plan, backup, lang) {
+  quitting = true; runnerWanted = false; stopRunner();
+  try { await win?.loadFile(join(here, 'splash.html')); progress(50, '正在清除這台電腦的 OCTA 資料…'); } catch { }
+  await closeBrowsers();
+  for (const port of [...embeds.keys()]) await embedStop(port).catch(() => { });
+  const said = await Promise.race([server.wipeShutdown().catch(e => { logError('wipe-shutdown', e); return {}; }), new Promise(r => setTimeout(() => r({}), 9000))]);
+  // first the marker: whatever cannot be deleted now (or if OCTA stops half way) is deleted at the next start
+  writeMarker(userDir(), { at: Date.now(), targets: plan.targets, backup: backup?.path || '', lang, said, keep: cfg.autostartChosen ? { autostartChosen: true } : null });
+  wipeDone = true; cfg = {};
+  // every bot's browser (sign-ins, cookies, cache) and this window's own storage (language, drafts, 入門導覽)
+  const parts = new Set(usedPartitions);
+  try { for (const n of readdirSync(join(userDir(), 'Partitions'))) if (/^octa-bot-/i.test(n)) parts.add('persist:' + decodeURIComponent(n)); } catch { }
+  for (const p of parts) {
+    try { const ses = session.fromPartition(p); await ses.clearStorageData(); await ses.clearCache(); } catch { }
+  }
+  try { await session.defaultSession.clearStorageData(); await session.defaultSession.clearCache(); } catch { }
+  const left = await wipeTargets(plan.targets);
+  if (left.length) console.log('wipe: left for the next start', left.length);
+  tray?.destroy(); tray = null;
+  try { app.releaseSingleInstanceLock(); } catch { }
+  app.relaunch({ args: process.argv.slice(1).filter(a => a !== '--hidden') });
+  app.exit(0);
+}
+// after the restart: once, where the backup went (and 打開資料夾)
+function toldWipe() {
+  if (!wipedNow) return;
+  const m = wipedNow.marker || {};
+  const t = doneText(m.lang, m.backup || '', wipedNow.left || []);
+  wipedNow = null;
+  dialog.showMessageBox(win, { type: 'info', title: t.title, message: t.message, detail: t.detail, buttons: t.buttons, defaultId: t.buttons.length - 1, cancelId: t.buttons.length - 1, noLink: true })
+    .then(r => { if (m.backup && r.response === 0) shell.openPath(m.backup); }).catch(() => { });
+}
+
 // ---------- app ----------
 app.on('second-instance', () => {
   if (server) return showWindow();
@@ -1263,6 +1339,8 @@ async function start() {
         }
         if (win && !win.isDestroyed()) win.loadURL(server.url).catch(() => { });
       },
+      backupRoot,
+      wipe: (o, ctl) => wipeComputer(o, ctl),
       getAutostart: () => app.getLoginItemSettings({ args: LOGIN_ARGS }).openAtLogin,   // Windows needs the same args to find the entry
       setAutostart: on => { app.setLoginItemSettings({ openAtLogin: on, args: LOGIN_ARGS, path: process.execPath }); cfg = { ...cfg, autostartChosen: true }; writeCfg(cfg); }
     }
@@ -1292,6 +1370,7 @@ async function start() {
   tray.on('click', showWindow);
 
   await loadMain();
+  if (wipedNow) { if (wipedNow.left?.length) logError('wipe-left', wipedNow.left.join('\n')); setTimeout(toldWipe, 1500); }
   setTimeout(checkLastUpdate, 3000);
   setTimeout(checkUpdates, 8000);                       // look for a new version shortly after start…
   setInterval(checkUpdates, 6 * 3600 * 1000);           // …and every six hours

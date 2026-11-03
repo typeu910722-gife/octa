@@ -7,7 +7,7 @@
 'use strict';
 const VIA=()=>!!CFG.via;
 const LINK={st:null,timer:0};
-const VIA_TXT={online:'已連線',connecting:'連線中…',offline:'重新連線中…','relay-down':'找不到主機的新網址',revoked:'需要重新連線',moved:'主機換到另一台電腦了'};
+const VIA_TXT={online:'已連線',connecting:'連線中…',offline:'重新連線中…','relay-down':'找不到主機的新網址',revoked:'需要重新連線',moved:'主機換到另一台電腦了',gone:'主機已清除資料'};
 const RELAY_HELP='這台電腦的網址每次重新開機都會改變。OCTA 用免費的公開轉送服務 ntfy.sh 傳遞加密後的連線網址，不經過 OCTA 伺服器；只有連結過的電腦解得開。';
 async function linkGet(){try{LINK.st=await api_('desktop/link','GET')}catch(e){}return LINK.st}
 const linkDo=body=>api('desktop/link','POST',body);
@@ -19,9 +19,9 @@ function paintVia(){if(!VIA())return;const h=viaHost(),ok=h.state==='online';
   $('onlineT').textContent=I18N.t('遙控')+' '+(h.name||I18N.t('主機電腦'));$('onlineT').dataset.u='';
   el.title=I18N.t(ok?'這台電腦是遙控器，機器人在主機電腦上工作':VIA_TXT[h.state]||'連線中…');
   let b=$('viab');if(!b){b=document.createElement('div');b.id='viab';b.className='viab';b.setAttribute('role','status');document.body.appendChild(b)}
-  const down=['offline','relay-down','revoked','moved'].includes(h.state);
+  const down=['offline','relay-down','revoked','moved','gone'].includes(h.state);
   b.hidden=!down;if(!down)return;
-  const msg=h.state==='revoked'?'主機電腦已經移除這台電腦，請重新連線':h.state==='relay-down'?'找不到主機電腦的新網址，可以貼上主機顯示的網址':h.state==='moved'?'主機換到另一台電腦了，請重新連線':'連不到主機電腦，重新連線中…';
+  const msg=h.state==='gone'?'主機已清除資料，這台電腦不能再遙控它':h.state==='revoked'?'主機電腦已經移除這台電腦，請重新連線':h.state==='relay-down'?'找不到主機電腦的新網址，可以貼上主機顯示的網址':h.state==='moved'?'主機換到另一台電腦了，請重新連線':'連不到主機電腦，重新連線中…';
   setHTML(b,`<span class="vdot" aria-hidden="true"></span><span>${I18N.t(msg)}</span><button type="button" class="link" data-via="open">${I18N.t('查看')}</button>`)}
 document.addEventListener('click',e=>{if(e.target.closest('[data-via=open]'))openSettings('pcs')});
 // while this computer is a remote control: keep the mark fresh; the page reloads when the role changes
@@ -81,7 +81,8 @@ function pcsRemote(st){const h=st.host||{},ok=h.state==='online';
     ${h.error&&!ok?`<p class="hmuted" data-u>${esc(h.error)}</p>`:''}
     ${h.state==='relay-down'?`<p class="note-box warn">${ic('info')}<span>${I18N.t('主機電腦的網址換了，但暫時連不到 ntfy.sh 查新網址。可以在主機電腦的「設定 → 電腦」看網址，貼在這裡：')}</span></p>
       <form class="row2" id="lkAddr"><input id="lkAddrIn" class="grow mono" placeholder="https://…trycloudflare.com" aria-label="${esc(I18N.t('主機電腦的網址'))}"><button class="btn sm">${I18N.t('連線')}</button></form>`:''}
-    ${h.state==='revoked'||h.state==='moved'?`<div class="row2"><button type="button" class="btn sm" id="lkRe">${ic('link')}<span>${I18N.t('輸入新的連線碼…')}</span></button></div>`
+    ${h.state==='gone'?`<p class="note-box warn">${ic('info')}<span>${I18N.t('主機電腦已清除 OCTA 資料，那裡的機器人和對話都不在了。可以停止遙控回到這台電腦自己的資料，或用新的連線碼連到其他電腦。')}</span></p>`:''}
+    ${h.state==='revoked'||h.state==='moved'||h.state==='gone'?`<div class="row2"><button type="button" class="btn sm" id="lkRe">${ic('link')}<span>${I18N.t('輸入新的連線碼…')}</span></button></div>`
       :`<div class="row2"><button type="button" class="ghost sm" id="lkRetry">${ic('refresh')}<span>${I18N.t('立即重新連線')}</span></button></div>`}
     <p class="hmuted">${I18N.t(RELAY_HELP)}</p>`;
   if($('lkRetry'))$('lkRetry').onclick=async()=>{$('lkRetry').disabled=true;try{await linkDo({act:'retry'})}catch(e){toast(e.message)}SEC.pcs()};
