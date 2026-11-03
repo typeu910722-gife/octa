@@ -151,7 +151,10 @@ export function createLinking(ctx) {
   }
   let watchTimer = null;
   async function keepTunnel() {
-    if (!(await linked())) return;
+    if (!(await linked())) {   // nobody linked and the 連線碼 has run out: the tunnel is not needed for this
+      if (!(invite && Date.now() < invite.until) && !handing && role() === 'host') ctx.tunnel.release();
+      return;
+    }
     try { await ctx.tunnel.ensure(); await publish(false); } catch (e) { pub.error = e.message; }
   }
   function startWatch() { clearInterval(watchTimer); watchTimer = setInterval(() => { keepTunnel().catch(() => { }); }, ctx.watchMs || 60000); watchTimer.unref?.(); }
