@@ -42,6 +42,9 @@ let win = null, tray = null, server = null, quitting = false, runner = null;
 const LOGIN_ARGS = ['--hidden'];
 const hiddenStart = process.argv.includes('--hidden') || app.getLoginItemSettings({ args: LOGIN_ARGS }).wasOpenedAtLogin;
 const icon = () => nativeImage.createFromPath(join(here, 'icon.png'));
+// Started from the shortcut, OCTA's working folder is its install folder, and every program it starts (the bots' Chrome,
+// cloudflared, AI tools) inherits it: Windows then can't remove that folder and updates fail. Work from the home folder.
+try { process.chdir(app.getPath('home')); } catch { }
 
 // keep data from installs made before the rename
 const oldDir = join(app.getPath('appData'), 'E·BOT');
@@ -1099,9 +1102,9 @@ function freeInstallDir() {
   // the folder goes in through an environment variable: non-ASCII paths (e.g. E:\哲\OCTA) got garbled inside the command line
   const ps = `$me=${process.pid}; $dir=$env:OCTA_DIR; $all=Get-CimInstance Win32_Process; ` +
     `function Kids($p){ $all | ? { $_.ParentProcessId -eq $p } | % { Kids $_.ProcessId; $_.ProcessId } }; ` +
-    `$ids=@(Kids $me) + @($all | ? { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($dir, 'OrdinalIgnoreCase') -and $_.ProcessId -ne $me } | % { $_.ProcessId }); ` +
+    `$data=$env:OCTA_DATA; $ids=@(Kids $me) + @($all | ? { $_.ProcessId -ne $me -and (($_.ExecutablePath -and $_.ExecutablePath.StartsWith($dir, 'OrdinalIgnoreCase')) -or ($data -and $_.CommandLine -and $_.CommandLine.IndexOf($data, [StringComparison]::OrdinalIgnoreCase) -ge 0)) } | % { $_.ProcessId }); ` +
     `$ids | Select-Object -Unique | % { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; exit 0`;
-  try { execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 15000, windowsHide: true, env: { ...process.env, OCTA_DIR: dirname(process.execPath) } }); } catch (e) { logError('free-install-dir', e); }
+  try { execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 15000, windowsHide: true, env: { ...process.env, OCTA_DIR: dirname(process.execPath), OCTA_DATA: dataDir } }); } catch (e) { logError('free-install-dir', e); }
 }
 // the silent installer doesn't always start OCTA again, and a helper started by OCTA dies with it: Windows Task Scheduler
 // runs the helper on its own. It waits for the installer to finish, then opens OCTA (the new version, or the old one if

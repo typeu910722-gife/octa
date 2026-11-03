@@ -1,5 +1,21 @@
 [
  {
+  "v": "4.6.1",
+  "date": "2026-11-03",
+  "notes": [
+   "修正 Windows 更新一直失敗：安裝檔現在真的會先關掉還在背景執行的 OCTA 再安裝",
+   "機器人回報只講重點：先給結果，不寒暄、不描述過程、不加沒問的資訊"
+  ],
+  "notes_en": [
+   "Fixed Windows updates that kept failing: the installer now really closes OCTA programs still running in the background first",
+   "Bots report only the point: result first, no small talk, no step-by-step narration, nothing you did not ask for"
+  ],
+  "notes_ja": [
+   "Windows の更新が失敗し続ける問題を修正：インストーラーがバックグラウンドの OCTA を確実に終了してからインストールします",
+   "ボットの報告は要点だけ：結果を先に、あいさつや手順の説明、聞いていない情報はなし"
+  ]
+ },
+ {
   "v": "4.6.0",
   "date": "2026-11-03",
   "notes": [

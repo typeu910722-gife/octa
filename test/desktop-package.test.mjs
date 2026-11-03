@@ -90,3 +90,14 @@ test('the legacy cloud keeps only what old desktops need to move their data home
   assert.match(site, /請盡快打開桌面版/);
   assert.ok(existsSync(join(root, 'site', 'icon.png')));
 });
+
+test('the Windows installer closes running OCTA first: build/installer.nsh is where electron-builder looks for it', () => {
+  const nsh = readFileSync(join(root, 'desktop', 'build', 'installer.nsh'), 'utf8');
+  assert.match(nsh, /!macro customInit/);
+  assert.match(nsh, /taskkill \/F \/T \/IM "OCTA\.exe"/);
+  assert.match(nsh, /APPDATA\\OCTA/);
+  for (const l of nsh.split('\n')) assert.ok(l.length < 1000, 'NSIS line too long');
+  const p = JSON.parse(readFileSync(join(root, 'desktop', 'package.json'), 'utf8'));
+  assert.equal(p.build.nsis.include, undefined);
+  assert.ok(!p.build.directories?.buildResources || p.build.directories.buildResources === 'build');
+});
