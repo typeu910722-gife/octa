@@ -53,7 +53,7 @@ async function refresh(){
     const prevTop=S.loaded?topBotId():null,prevEng=JSON.stringify(S.engines||null);
     Object.assign(S,{me:d.me,prog:d.prog||0,bots:d.bots,groups:d.groups,folders:d.folders,routines:d.routines,busy:d.busy,runnerOnline:d.runnerOnline,engines:d.engines,
       last:d.last,ur:d.ur,rev:d.rev,quick:d.quick||{},allow:d.allow||{},warm:d.warm??120,tokens:d.tokens||{},models:d.models||{},pins:d.pins||[],mute:d.mute||{},gask:d.gask||{},
-      memory:d.memory||{},facts:d.facts||{},manuals:d.manuals||{},review:d.review!==false,skills:d.skills||{},nsk:d.nsk||{},shareBrowser:d.shareBrowser!==false,nick:d.nick||''});
+      memory:d.memory||{},facts:d.facts||{},manuals:d.manuals||{},review:d.review!==false,skills:d.skills||{},nsk:d.nsk||{},shareBrowser:d.shareBrowser!==false,nick:d.nick||'',hostOs:d.hostOs||'',hookTunnel:d.hookTunnel||''});
     if(cur&&!conv(cur))cur=null;
     // another device looking at another chat never moves this screen: at most a small hint you can tap
     if(d.focus?.conv&&d.focus.dev&&d.focus.dev!==myDev&&conv(d.focus.conv))followRemote(d.focus);

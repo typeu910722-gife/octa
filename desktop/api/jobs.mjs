@@ -33,7 +33,7 @@ export async function continueJob(db, U, job, kind, msg) {
   }
   const r = await db
     .prepare(
-      'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+      'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
     )
     .bind(
       U,
@@ -47,7 +47,8 @@ export async function continueJob(db, U, job, kind, msg) {
       n,
       job.id,
       job.via || null,
-      job.routine || null
+      job.routine || null,
+      job.hook || null
     )
     .run();
   if (job.routine)

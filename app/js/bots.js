@@ -123,7 +123,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
     body+=dsec('mem','記憶','brain',memHtml(c),false);
     const opts=Object.entries(ENG).filter(([k,v])=>!v.hide).flatMap(([k,v])=>[[k,v.full+(k==='claude'?'（預設 sonnet，較省額度）':'（預設模型）')],...modelsFor(k).map(m=>[k+'|'+m,v.full+'・'+m])]),fb=c.fb||[];
     const sel=(i,only)=>`<select id="sf_fb${i}"><option value="">不使用</option>${opts.filter(([v])=>!only||v.split('|')[0]===only).map(([v,l])=>`<option value="${esc(v)}"${fb[i]===v?' selected':''}>${esc(l)}${engState(v.split('|')[0])==='ok'?'':'（還沒連接）'}</option>`).join('')}</select>`;
-    body+=dsec('ai','AI 與模型','sparkle',`<label class="field"><span>AI 引擎</span><select id="sf_e">${Object.entries(ENG).filter(([k,v])=>!v.hide||c.engine===k).map(([k,v])=>`<option value="${k}" ${(c.engine||'claude')===k?'selected':''}>${v.full}${engState(k)==='ok'?'　✓ 已連接':engState(k)==='no'?'　（還沒連接）':''}</option>`).join('')}</select></label>
+    body+=dsec('ai','AI 與模型','sparkle',`<label class="field"><span>AI 引擎</span><select id="sf_e">${Object.entries(ENG).filter(([k,v])=>!v.hide||c.engine===k).map(([k,v])=>`<option value="${k}" ${(c.engine||'claude')===k?'selected':''}>${v.full}${k==='grokbot'&&grokWin()?'　'+I18N.t('（Windows 不支援，請改用交接網址）'):engState(k)==='ok'?'　✓ 已連接':engState(k)==='no'?'　（還沒連接）':''}</option>`).join('')}</select></label>
       <label class="field"><span>模型</span><select id="sf_m"></select></label><p class="hmuted" id="sf_hint"></p>
       <div class="field"><span>備援 AI</span><div class="fbs"><label><small>第一備援</small>${sel(0)}</label><label><small>第二備援</small>${sel(1)}</label><label><small>本機 Ollama</small>${sel(2,'opencode')}</label></div></div>
       <p class="hmuted">第一、第二備援，以及可選的本機 Ollama。模型說流量不夠或額度用完，會立刻改叫下一個備援，接手後該查的頁面、該建的例行任務一樣要做；這台電腦沒裝的會跳過。HTTP 429 先重試一次再切換。登入或 API Key 無效不會重複呼叫。程式錯誤不會因此換模型。</p>`,false);
@@ -136,8 +136,8 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
   }
   const stand=(()=>{if(g)return '';const r=S.routines.find(x=>x.conv===id&&x.name==='待命巡查'),ev=r&&r.enabled?((r.times||[]).find(t=>/^\*\//.test(t))||'').slice(2):'';
     return `<label class="field"><span>24 小時待命</span><select id="sf_stand" data-nodirty>${[['','不待命'],['10','每 10 分鐘巡一次'],['30','每 30 分鐘巡一次'],['60','每小時巡一次']].map(([v,l])=>`<option value="${v}"${v===ev?' selected':''}>${l}</option>`).join('')}</select></label><p class="hmuted">開啟後它會照指定任務定時自己檢查、有事就處理，需要時在背景找其他機器人幫忙；沒事不會出聲。這台電腦要開著。</p><p class="hmuted" id="sf_standnow">${standNow(ev,!r&&!c.stood)}</p>`})();
-  const hook=(()=>{if(g)return '';const r=S.routines.find(x=>x.conv===id&&x.hook&&x.name==='外部交接');return `<div class="field"><span>從其他 AI 交接工作（例如 Grok Bot）</span>${r?`<div class="row2"><input readonly class="mono grow" value="${esc(hookUrl(r))}" data-u><button type="button" class="ghost sm" id="sf_hcopy">複製</button></div>${hookNote()}
-    <p class="hmuted" data-u>${esc(I18N.t('把這段話給你的 Grok Bot（或其他 AI）：'))}「${esc(handoffSay(c.name,hookUrl(r)))}」</p>`:`<div class="row2"><button type="button" class="ghost sm" id="sf_hmake">產生交接網址</button></div><p class="hmuted">其他 AI 用這個網址把工作交給這個機器人，它會自動開始做。</p>`}</div>`})();
+  const hook=(()=>{if(g)return '';const r=S.routines.find(x=>x.conv===id&&x.hook&&x.name==='外部交接');return `<div class="field"><span>從其他 AI 交接工作（例如 Grok Bot）</span>${r?`<div class="row2"><input readonly class="mono grow" value="${esc(hookUrl(r))}" data-u><button type="button" class="ghost sm" id="sf_hcopy">複製</button></div>
+    <div class="row2"><button type="button" class="ghost sm" data-hookspec="${esc(r.id)}">${ic('copy')}<span>複製給外部 AI 的說明</span></button></div><p class="hmuted">貼給 Grok Bot（或其他 AI）：它就能交派工作、查結果、指正重做、教它做法。</p>${hookNote(r)}`:`<div class="row2"><button type="button" class="ghost sm" id="sf_hmake">產生交接網址</button></div><p class="hmuted">其他 AI 用這個網址把工作交給這個機器人，它會自動開始做。</p>`}</div>`})();
   body+=dsec('more','更多設定','sliders',`${stand}${hook}
     <label class="field"><span>常用指令（一行一個，會變成輸入框上方的快速按鈕）</span><textarea id="sf_q" maxlength="2000" placeholder="例如：整理今天的訂單&#10;把結果寫進試算表">${esc(((S.quick||{})[id]||[]).join('\n'))}</textarea></label>
     ${!g&&((S.skills||{})[id]||[]).length?`<div class="field"><span>它會的技能（🧩，輸入 / 叫用）</span><div class="picks" id="sf_sk">${S.skills[id].map((k,i)=>`<div class="pick"><span data-u class="grow" title="${esc(k.steps)}">${esc(k.name)}</span><button type="button" class="ib sm mv" data-unsk="${i}" aria-label="刪除">${ic('x')}</button></div>`).join('')}</div></div>`:''}
@@ -172,7 +172,9 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
       const opts=[...list];if(curShort&&!opts.includes(curShort))opts.push(curShort);
       if(k==='grokbot'){$('sf_m').innerHTML=opts.length?opts.map(m=>`<option value="${esc(m)}" ${m===curShort?'selected':''} data-u>${esc(m)}</option>`).join(''):`<option value="">${esc(I18N.t('讀不到 Grok Bot 機器人，先到 AI 連線測試'))}</option>`;return}
       $('sf_m').innerHTML=(k==='opencode'&&!opts.length?`<option value="">${esc(I18N.t('這台電腦還沒下載模型，先到 AI 連線下載'))}</option>`:`<option value="">${esc(I18N.t('預設（推薦）'))}</option>`)+opts.map(m=>`<option value="${esc(m)}" ${m===curShort?'selected':''} data-u>${esc(m)}</option>`).join('')};
-    const upd=()=>{const k=$('sf_e').value;fillModels();$('sf_hint').innerHTML=engState(k)==='ok'?'<span class="okt">這台電腦已連接這個 AI。</span>':`<span>這台電腦還沒連接這個 AI。</span><a href="#" id="sf_conn">看怎麼連接</a>`;if($('sf_conn'))$('sf_conn').onclick=ev=>{ev.preventDefault();openSettings('ai',k)}};$('sf_e').onchange=upd;upd();
+    const upd=()=>{const k=$('sf_e').value;fillModels();
+      if(k==='grokbot'&&grokWin()){$('sf_hint').innerHTML='<span class="errmsg">Windows 不支援，請改用交接網址</span> <a href="#" id="sf_conn">取得交接網址</a>';$('sf_conn').onclick=ev=>{ev.preventDefault();openSettings('ai','grokbot')};return}
+      $('sf_hint').innerHTML=engState(k)==='ok'?'<span class="okt">這台電腦已連接這個 AI。</span>':`<span>這台電腦還沒連接這個 AI。</span><a href="#" id="sf_conn">看怎麼連接</a>`;if($('sf_conn'))$('sf_conn').onclick=ev=>{ev.preventDefault();openSettings('ai',k)}};$('sf_e').onchange=upd;upd();
     bindMem(c);browserModes(box);
     box.querySelectorAll('.tpl button').forEach(b=>b.onclick=()=>{const t=$('st');t.value=(t.value?t.value+'；':'')+b.textContent;markDirty()});
     if($('sf_stand'))$('sf_stand').onchange=async e=>{const v=e.target.value,old=S.routines.find(x=>x.conv===id&&x.name==='待命巡查');e.target.disabled=true;try{if(old)await api('routines/'+old.id,'DELETE');if(v)await api('routines','POST',{conv:id,name:'待命巡查',times:['*/'+v],prompt:'（待命巡查）照你的指定任務檢查有沒有新狀況要處理（例如新訊息、新訂單、到期的事）。有就處理，需要同事幫忙就 @同事；處理完簡短回報。完全沒事就只回「（略過）」。'});await refresh();toast(I18N.t(v?'已開啟 24 小時待命':'已關閉待命'));if($('sf_standnow'))$('sf_standnow').textContent=I18N.t(standNow(v,false))}catch(x){toast(x.message)}e.target.disabled=false};
@@ -201,7 +203,6 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
   $('sfSave').onclick=async()=>{const b=$('sfSave');b.disabled=true;const ok=await saveAll();b.disabled=false;if(!ok)return;toast(I18N.t('已儲存 ✓'));DIRTY.el=null;await refresh();paintDetail(false)};
   $('sfUndo').onclick=()=>{cleanDirty();DIRTY.el=null;paintDetail(false)};
   focusBrowser()}
-const handoffSay=(name,url)=>`要把工作交給 OCTA 的「${name}」時，用 HTTP POST 傳 JSON 到 ${url} ，格式 {"text":"工作內容","from":"你的名字"}（Content-Type: application/json）。收到 {"ok":true} 就是交接成功，對方會自動開始做。`;
 
 /* ---------- delete / duplicate / compact / clear, each with a clear confirmation ---------- */
 function deleteConv(id){const c=conv(id);if(!c)return;const g=isG(id);

@@ -68,12 +68,13 @@ export async function addMsg(db, userId, conv, by, text, files = null, reply = n
     .run();
 }
 // chain: list of bot ids (all use `prompt`) or {b, p} steps
-// routine: the routines.id that started this work (the chain's later steps, retries and follow-ups keep it). Returns the new job id.
-export async function addJob(db, userId, conv, chain, prompt, depth = 0, routine = null) {
+// routine: the routines.id that started this work (the chain's later steps, retries and follow-ups keep it).
+// hook: the hook_jobs.id of 交接網址 work (kept the same way). Returns the new job id.
+export async function addJob(db, userId, conv, chain, prompt, depth = 0, routine = null, hook = null) {
   const steps = chain.map(s => (typeof s === 'string' ? { b: s, p: prompt } : s));
   if (!steps.length) return null;
   const r = await db
-    .prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,via,routine) VALUES (?,?,?,?,?,?,?,?,?)')
+    .prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,via,routine,hook) VALUES (?,?,?,?,?,?,?,?,?,?)')
     .bind(
       userId,
       conv,
@@ -83,7 +84,8 @@ export async function addJob(db, userId, conv, chain, prompt, depth = 0, routine
       now(),
       depth,
       steps[0].v ? JSON.stringify(steps[0].v) : null,
-      routine || null
+      routine || null,
+      hook || null
     )
     .run();
   return r?.meta?.last_row_id ?? null;
@@ -198,7 +200,13 @@ const MIGRATIONS = [
   'ALTER TABLE jobs ADD COLUMN routine TEXT',
   // 4.1: each bot's avatar colour; what is conversation and what goes to the work panel
   'ALTER TABLE bots ADD COLUMN color TEXT',
-  'ALTER TABLE messages ADD COLUMN kind TEXT'
+  'ALTER TABLE messages ADD COLUMN kind TEXT',
+  // 4.5: work handed over through a 交接網址 — its jobs point to it, its result and files are kept on the job
+  'ALTER TABLE jobs ADD COLUMN hook TEXT',
+  'ALTER TABLE jobs ADD COLUMN outs TEXT',
+  'CREATE INDEX IF NOT EXISTS job_hook ON jobs(hook)',
+  'CREATE TABLE IF NOT EXISTS hook_jobs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, routine TEXT NOT NULL, conv TEXT NOT NULL, from_ TEXT, text TEXT NOT NULL, parent TEXT, created INTEGER NOT NULL, seen INTEGER)',
+  'CREATE INDEX IF NOT EXISTS hook_job_routine ON hook_jobs(routine, created)'
 ];
 const schemaReady = new WeakSet();
 export async function ensureSchema(db) {
@@ -224,7 +232,10 @@ export async function ensureSchema(db) {
         'SELECT last_run, last_status, last_job, last_text FROM routines',
         'SELECT routine FROM jobs',
         'SELECT color FROM bots',
-        'SELECT kind FROM messages'
+        'SELECT kind FROM messages',
+        'SELECT hook, outs FROM jobs',
+        "SELECT id FROM jobs INDEXED BY job_hook WHERE hook=''",
+        'SELECT id, seen FROM hook_jobs'
       ].map(q => db.prepare(q + ' LIMIT 0'))
     );
     schemaReady.add(db);

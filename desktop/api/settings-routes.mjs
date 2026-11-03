@@ -2,7 +2,7 @@
 import { normalizeCustom } from '../lib/connectors.mjs';
 import { stripRetryNote } from '../lib/model-route.mjs';
 import { addMsg, bump, getSettings, loadAll, mask, putSettings } from './db.mjs';
-import { engineOk } from './engines.mjs';
+import { GROKBOT_WIN, engineOk, grokBotOff } from './engines.mjs';
 import { MANUAL_MAX, MEM_KEYS, boardData, weeklyReview } from './memory.mjs';
 import { sendNotify } from './notify.mjs';
 import { localNow } from './schedule.mjs';
@@ -12,6 +12,7 @@ export async function settingsRoutes(c) {
   const { env, db, path, m, url, body, me, U, ok } = c;
   if (path === 'grokbot/list' && m === 'POST') {
     // ask the host computer for the bots in the user's Grok Bot
+    if (grokBotOff(env)) return err(GROKBOT_WIN, 400);
     const r = await db
       .prepare(
         "INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,kind,url) VALUES (?,'__test','list:grokbot','[]','',?,'list','grokbot')"
@@ -32,6 +33,7 @@ export async function settingsRoutes(c) {
   }
   if (path === 'engine-test' && m === 'POST') {
     const engine = engineOk(body.engine);
+    if (engine === 'grokbot' && grokBotOff(env)) return err(GROKBOT_WIN, 400);
     const r = await db
       .prepare("INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,kind,url) VALUES (?,'__test',?,'[]',?,?,'test',?)")
       .bind(U, 'test:' + engine, '這是 OCTA 的連線測試，請只回覆兩個字：OK', now(), engine)
@@ -249,8 +251,8 @@ export async function settingsRoutes(c) {
       b = bots.find(x => x.id === j.bot_id);
     if (!b) return err('機器人已刪除');
     await db
-      .prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,retry_of) VALUES (?,?,?,?,?,?,?,?)')
-      .bind(U, j.conv, j.bot_id, j.chain || '[]', stripRetryNote(j.prompt), now(), j.depth || 0, j.id)
+      .prepare('INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,retry_of,hook) VALUES (?,?,?,?,?,?,?,?,?)')
+      .bind(U, j.conv, j.bot_id, j.chain || '[]', stripRetryNote(j.prompt), now(), j.depth || 0, j.id, j.hook || null)
       .run();
     await addMsg(db, U, j.conv, 'sys', `從工作紀錄重新執行「${b.name}」的工作`);
     await bump(db, U);

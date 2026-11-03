@@ -1,5 +1,27 @@
 [
  {
+  "v": "4.6.0",
+  "date": "2026-11-03",
+  "notes": [
+   "交接網址變成固定的 https://octa.yzprojecttw.com/api/hook/…，電腦重開也不會變，外部 AI（例如 Grok Bot）在雲端也連得到",
+   "外部 AI 可以用交接網址交派工作、查進度和結果、讀新完成的結果、指正後重做、教機器人新做法",
+   "交接網址旁邊多了「複製給外部 AI 的說明」，貼給對方就會用",
+   "Windows 上的 Grok Bot 直接顯示「Windows 不支援，請改用交接網址」，不再一直嘗試連線"
+  ],
+  "notes_en": [
+   "The hand-off link is now the fixed https://octa.yzprojecttw.com/api/hook/…, unchanged after restarts and reachable by cloud AIs such as Grok Bot",
+   "External AIs can use it to give work, check progress and results, read newly finished results, correct a result for a redo, and teach the bot",
+   "A \"Copy instructions for an external AI\" button sits next to the link",
+   "On Windows, Grok Bot now says \"Not supported on Windows, use the hand-off link instead\" and no longer keeps trying to connect"
+  ],
+  "notes_ja": [
+   "引き継ぎURLが固定の https://octa.yzprojecttw.com/api/hook/… になり、再起動しても変わらず、クラウドのAI（Grok Bot など）からも届きます",
+   "外部AIが仕事の依頼、進捗と結果の確認、新しい結果の受け取り、指摘してやり直し、やり方を教えることができます",
+   "URL の横に「外部AI向けの説明をコピー」を追加",
+   "Windows の Grok Bot は「Windows 非対応、引き継ぎURLを使ってください」と表示し、接続を試み続けなくなりました"
+  ]
+ },
+ {
   "v": "4.5.1",
   "date": "2026-11-03",
   "notes": [

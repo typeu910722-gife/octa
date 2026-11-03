@@ -1,7 +1,7 @@
 // Routes that manage bots, groups, folders (分區), routines and templates.
 import { NAME_SPACE, NAME_SPACE_ERR, STANDBY, autoStandby, autonomyOk, noSpaces } from './chat.mjs';
 import { addMsg, getSettings, loadAll } from './db.mjs';
-import { PALETTE, avatarOk, colorOk, engineOk, fbOk, modelOk } from './engines.mjs';
+import { GROKBOT_WIN, PALETTE, avatarOk, colorOk, engineOk, fbOk, grokBotOff, modelOk } from './engines.mjs';
 import { ROUTINE_NEEDS_PROMPT, tidyScan, triggerFrom } from './routines.mjs';
 import { cleanTimes, isEvery, localNow } from './schedule.mjs';
 import { TEMPLATES_I18N, TEMPLATE_AVATARS } from './templates.mjs';
@@ -117,6 +117,7 @@ export async function manageRoutes(c) {
     if (color === undefined) return err('顏色不正確');
     const id = uid(),
       engine = engineOk(body.engine);
+    if (engine === 'grokbot' && grokBotOff(env)) return err(GROKBOT_WIN);
     await db
       .prepare(
         'INSERT INTO bots (id,user_id,name,task,folder,engine,model,avatar,color,browser,created,fb,autonomy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
@@ -152,6 +153,7 @@ export async function manageRoutes(c) {
       const old = bots.find(b => b.id === id);
       if (NAME_SPACE.test(name) && name !== old?.name) return err(NAME_SPACE_ERR); // an old name with spaces may stay until it is renamed
       const engine = engineOk(body.engine);
+      if (engine === 'grokbot' && grokBotOff(env) && old?.engine !== 'grokbot') return err(GROKBOT_WIN); // a bot that already had it keeps its setting (its jobs explain why they can't run)
       const fb = body.fb === undefined ? JSON.stringify(old?.fb || []) : fbOk(body.fb);
       const autonomy = body.autonomy === undefined ? old?.autonomy || null : autonomyOk(body.autonomy);
       const color = body.color === undefined ? old?.color || null : colorOk(body.color); // left out: keep the colour it has
@@ -303,6 +305,7 @@ export async function manageRoutes(c) {
       )
       .run();
     if (name === STANDBY) await db.prepare('UPDATE bots SET stood=1 WHERE id=? AND user_id=?').bind(conv, U).run();
+    if (trig.hook) env.hooksChanged?.(); // 4.5: the host publishes where this new 交接網址 reaches it
     return ok({ id, hook: trig.hook });
   }
   if (path.startsWith('routines/')) {
@@ -349,6 +352,7 @@ export async function manageRoutes(c) {
           id
         )
         .run();
+      if (trig.hook && trig.hook !== r.hook) env.hooksChanged?.();
       return ok({ hook: trig.hook });
     }
     if (m === 'DELETE') {

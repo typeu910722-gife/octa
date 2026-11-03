@@ -140,7 +140,7 @@ SEC.remote=async()=>{
   const man=block('sManual','或在手機輸入網址和配對碼','不方便掃描時用。這個網址電腦重開後會換；之後請從主畫面的捷徑打開。');
   const paint=r=>{const on=!!r?.on;go.parentNode.hidden=man.parentNode.hidden=!on;go.innerHTML=on?remoteGo(r):'';man.innerHTML=on?remoteInfo(r):'';paintIcons(go)};
   paint(ds?.remote);paintPhones(ph);
-  block('sHook','外部事件','開著的時候，例行任務的「外部事件」網址（LINE webhook、表單、Zapier）也能從外面呼叫；關掉就收不到。');
+  block('sHook','外部事件與交接網址','例行任務的「外部事件」網址和給其他 AI 的交接網址，不用打開手機遠端也能從外面呼叫：網址在 OCTA 網站，會轉送到這台電腦，電腦重開也不用換。只要有這類網址，OCTA 開著時就會保持連線。');
   $('dRemote').onclick=async()=>{const on=!$('dRemote').classList.contains('on'),sw=$('dRemote');sw.disabled=true;swSet(sw,on);
     $('dRemoteNote').innerHTML=on?'<p class="fade">連線中，第一次會下載連線工具，約 30 秒…</p>':'';paint(null);
     try{const r=await api('desktop/remote','POST',{on});REMOTE_URL=on?r.url||'':'';$('dRemoteNote').innerHTML='';paint(r);paintPhones(ph)}
