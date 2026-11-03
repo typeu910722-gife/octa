@@ -12,7 +12,7 @@
 export const RELAY = 'https://ntfy.sh';
 export const TOKEN_RE = /^[0-9a-f]{48}$/;
 export const CACHE_MS = 30000;
-const MISS_MS = 10000;          // a token with no address is asked again sooner (the host may have just made it)
+const MISS_MS = 3000;           // a token with no address is asked again soon (the host may have just made it)
 export const FORWARD_MS = 25000;
 const MAX_BODY = 64 * 1024, MAX_REPLY = 1024 * 1024;
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -139,17 +139,21 @@ export async function forwardHook(request, token, rest, opts = {}) {
   const send = to => withTimeout(fetch, opts.timeoutMs || FORWARD_MS)(`${to}/api/hook/${token}${rest ? '/' + rest : ''}${search}`, {
     method: request.method, body, redirect: 'manual', headers
   });
-  let res;
+  // only the host's own JSON answers count; a Cloudflare error page (tunnel gone) means the host is not there
+  const isHost = r => (r.headers.get('content-type') || '').includes('application/json');
+  let res = null, timedOut = false;
   try { res = await send(url); }
-  catch {
-    // the cached address may be an old tunnel: look again once, and try the new address if there is one
+  catch (e) { timedOut = e?.name === 'AbortError'; }
+  if (!res || !isHost(res)) {
+    // the cached address may be an old tunnel (the host restarted): look again once and try the new address.
+    // Not after a timeout — the host may have taken the request, and it must not run twice.
+    if (timedOut) return J(HOST_DOWN, 503);
     let again = null;
     try { again = await find(true); } catch { }
     if (!again || again === url) return J(HOST_DOWN, 503);
     try { res = await send(again); } catch { return J(HOST_DOWN, 503); }
+    if (!isHost(res)) return J(HOST_DOWN, 503);
   }
-  // only the host's own JSON answers come back; a Cloudflare error page (tunnel gone) means the host is not there
-  if (!(res.headers.get('content-type') || '').includes('application/json')) return J(HOST_DOWN, 503);
   const text = await res.text();
   if (text.length > MAX_REPLY) return J({ error: '回覆太大' }, 502);
   return new Response(text, { status: res.status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...CORS } });

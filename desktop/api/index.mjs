@@ -9,6 +9,7 @@
 //
 // Modules:
 //   router.mjs           public routes (config, pair, hook), who is asking, and the route handlers in order
+//   hooks.mjs            4.5 交接網址: hook/<key> work, status, inbox, feedback, teach (other AIs; 401 without the key)
 //   files.mjs            file pieces and the file/ + files routes
 //   runner-routes.mjs    runner/* (the built-in runner); runner-done.mjs: runner/done
 //   chat-routes.mjs      long-poll, state, messages, compact, live view, opening a bot's browser

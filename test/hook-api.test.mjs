@@ -75,6 +75,41 @@ test('the OCTA site opens what the host seals for a hook token (Node crypto ↔ 
   assert.equal(HR.hostAllowed('http://127.0.0.1:9', ['http://127.0.0.1:9']), true);
 });
 
+test('the forwarder: an old tunnel\'s error page → looks again and uses the new address; a timeout is never sent twice', async () => {
+  const ntfy = fakeNtfy(), relay = 'https://ntfy.test', token = 'd4'.repeat(24), calls = [];
+  const fetch = async (url, init = {}) => {
+    if (url.startsWith(relay)) return ntfy.handle(url, init);
+    calls.push((init.method || 'GET') + ' ' + url);
+    if (url.startsWith('https://old.trycloudflare.com')) return new Response('<html>Error 1033</html>', { status: 530, headers: { 'content-type': 'text/html' } });
+    if (url.startsWith('https://new.trycloudflare.com')) return new Response(JSON.stringify({ ok: true, jobs: [] }), { headers: { 'content-type': 'application/json' } });
+    return new Promise((_, no) => init.signal.addEventListener('abort', () => no(Object.assign(new Error('aborted'), { name: 'AbortError' }))));
+  };
+  const req = (m = 'GET') => new Request('https://octa.test/api/hook/' + token + '/inbox', { method: m, headers: { 'content-type': 'application/json' }, body: m === 'POST' ? '{"text":"x"}' : undefined });
+  HR.clearCache();
+  await HL.publishHook({ token, url: 'https://old.trycloudflare.com', fetch: ntfy.handle, relay });
+  let r = await HR.forwardHook(req(), token, 'inbox', { fetch, relay });
+  assert.equal(r.status, 503);
+  assert.deepEqual(await r.json(), HR.HOST_DOWN);
+  // the host restarted and published a new address; the forwarder still has the old one cached
+  await HL.publishHook({ token, url: 'https://new.trycloudflare.com', fetch: ntfy.handle, relay, now: Date.now() + 1000 });
+  calls.length = 0;
+  r = await HR.forwardHook(req(), token, 'inbox', { fetch, relay });
+  assert.equal(r.status, 200);
+  assert.deepEqual(calls, ['GET https://old.trycloudflare.com/api/hook/' + token + '/inbox', 'GET https://new.trycloudflare.com/api/hook/' + token + '/inbox']);
+  assert.equal(r.headers.get('access-control-allow-origin'), '*');
+  // a host that takes too long: 503, and the request is not sent again anywhere
+  await HL.publishHook({ token, url: 'https://slow.trycloudflare.com', fetch: ntfy.handle, relay, now: Date.now() + 2000 });
+  HR.clearCache();
+  calls.length = 0;
+  r = await HR.forwardHook(req('POST'), token, '', { fetch, relay, timeoutMs: 50 });
+  assert.equal(r.status, 503);
+  assert.equal(calls.length, 1);
+  // too big a body never leaves the site
+  const big = new Request('https://octa.test/api/hook/' + token, { method: 'POST', body: 'x'.repeat(70000) });
+  assert.equal((await HR.forwardHook(big, token, '', { fetch, relay })).status, 413);
+  assert.equal((await HR.forwardHook(new Request('https://octa.test/x', { method: 'DELETE' }), token, '', { fetch, relay })).status, 405);
+});
+
 test('交接網址 API: work → status → inbox → feedback → teach; wrong tokens 401; groups; the OCTA site forwards it',
   { skip: !hasDeps && 'desktop packages not installed', timeout: 120000 }, async t => {
   const { startServer } = await import(pathToFileURL(join(repo, 'desktop/server.mjs')).href);
