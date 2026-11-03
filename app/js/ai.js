@@ -22,16 +22,22 @@ SEC.ai=focus=>{
   $('warmSel').onchange=async e=>{try{await api('settings','PUT',{warm:+e.target.value});S.warm=+e.target.value;toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}};
   const gb=block('sGrok','Grok Bot ⇄ OCTA','Grok Bot 在 xAI 的雲端工作，可以把任務交派給 OCTA 的機器人：它呼叫一個「交接網址」，指定的 OCTA 機器人就會在你的電腦上自動開始做，結果出現在那個機器人的對話裡。');
   paintGrok(gb)};
+/* 4.5: the Grok Bot app for Windows doesn't write the sign-in file grok-bot-cli needs, so on a Windows host only the
+   交接網址 is offered (Grok Bot calls OCTA): no install, test or import, and nothing is tried in the background */
+const grokWin=()=>S.hostOs==='win32';
 function paintGrok(gb){
-  gb.innerHTML=`<ol class="ol"><li>在下面選一個要接任務的 OCTA 機器人，按「產生交接網址」。</li><li>按「複製給 Grok Bot 的話」，貼到 Grok Bot 的對話（或它那個機器人的指示／記憶裡），讓它記住。</li><li>之後跟 Grok Bot 說「把○○交給 OCTA 的△△」，它就會自己傳過來。</li></ol>
+  const win=grokWin();
+  gb.innerHTML=`${win?`<div class="note-box warn" id="gbWin">${ic('info')}<span><b>Windows 不支援，請改用交接網址</b><br><span>Windows 版的 Grok Bot App 不會產生 grok-bot-cli 需要的登入檔，所以無法把 Grok Bot 帶進 OCTA。改成讓 Grok Bot 用交接網址把工作交給 OCTA 的機器人（下面的步驟）。</span></span><button type="button" class="ghost sm" id="gbGoHook">取得交接網址</button></div>`:''}
+  <ol class="ol"><li>在下面選一個要接任務的 OCTA 機器人，按「產生交接網址」。</li><li>按「複製給外部 AI 的說明」，貼到 Grok Bot 的對話（或它那個機器人的指示／記憶裡），讓它記住。</li><li>之後跟 Grok Bot 說「把○○交給 OCTA 的△△」，它就會自己傳過來、查結果，不滿意可以叫它指正重做。</li></ol>
   ${hookNote()}
-  <div class="rows">${S.bots.length?S.bots.map(b=>{const r=S.routines.find(x=>x.conv===b.id&&x.hook&&x.name==='外部交接');
-    return `<div class="kvrow"><span data-u>${esc(b.avatar||'🤖')} ${esc(b.name)}</span>${r?`<button type="button" class="ghost sm" data-copy="${esc(handoffSay(b.name,hookUrl(r)))}">複製給 Grok Bot 的話</button>`:`<button type="button" class="ghost sm" data-gbhook="${b.id}">產生交接網址</button>`}</div>`}).join(''):'<p class="hmuted">還沒有機器人，先建立一個。</p>'}</div>
+  <div class="rows" id="gbRows">${S.bots.length?S.bots.map(b=>{const r=S.routines.find(x=>x.conv===b.id&&x.hook&&x.name==='外部交接');
+    return `<div class="kvrow"><span data-u>${esc(b.avatar||'🤖')} ${esc(b.name)}</span>${r?`<button type="button" class="ghost sm" data-hookspec="${esc(r.id)}">複製給外部 AI 的說明</button>`:`<button type="button" class="ghost sm" data-gbhook="${b.id}">產生交接網址</button>`}</div>`}).join(''):'<p class="hmuted">還沒有機器人，先建立一個。</p>'}</div>
   <p class="hmuted">交接網址等同鑰匙，只給你信任的 AI，不要公開。要停用時，到那個機器人的例行任務，關掉「外部交接」。</p>
-  <div class="row2"><button type="button" class="ghost sm" data-gbimport ${S.runnerOnline?'':'disabled'}>${ic('bot')}<span>帶入 Grok Bot 的機器人…</span></button></div>`;
+  ${win?'':`<div class="row2"><button type="button" class="ghost sm" data-gbimport ${S.runnerOnline?'':'disabled'}>${ic('bot')}<span>帶入 Grok Bot 的機器人…</span></button></div>`}`;
   paintIcons(gb);
   gb.querySelectorAll('[data-gbhook]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api('routines','POST',{conv:b.dataset.gbhook,name:'外部交接',trigger:'hook',prompt:'其他 AI 把工作交接給你：照交接內容處理，完成後在這裡回報結果；資訊不夠就直接問使用者。'});await refresh();paintGrok(gb)}catch(e){toast(e.message);b.disabled=false}});
-  gb.querySelector('[data-gbimport]').onclick=grokImport}
+  if($('gbGoHook'))$('gbGoHook').onclick=()=>{const rows=$('gbRows');rows.scrollIntoView({behavior:'smooth',block:'center'});const f=rows.querySelector('button');if(f)f.focus({preventScroll:true})};
+  const imp=gb.querySelector('[data-gbimport]');if(imp)imp.onclick=grokImport}
 // an AI got installed (live update): redraw the cards if they are on screen
 function engineChanged(){if($('aiCards')&&!$('veil').hidden)openAI()}
 async function openAI(focus){

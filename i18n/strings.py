@@ -1443,3 +1443,27 @@ T.update({
  '或在手機輸入網址和配對碼': ('Or type the address and pairing code on the phone', 'またはスマホでアドレスとペアリングコードを入力'),
  '不方便掃描時用。這個網址電腦重開後會換；之後請從主畫面的捷徑打開。': ('For when scanning isn’t handy. This address changes when the computer restarts — afterwards, open OCTA from the home-screen shortcut.', '読み取れないとき用です。このアドレスはパソコンの再起動で変わるため、以後はホーム画面のショートカットから開いてください。'),
 })
+# 4.5: 交接網址 on the OCTA site (other AIs hand work over, read results, correct and teach); Grok Bot not on Windows
+T.update({
+ 'Windows 不支援，請改用交接網址': ('Not supported on Windows — use a hand-off URL instead', 'Windows では使えません。引き継ぎ URL を使ってください'),
+ '（Windows 不支援，請改用交接網址）': ('(not supported on Windows — use a hand-off URL)', '（Windows では使えません。引き継ぎ URL を使ってください）'),
+ 'Windows 版的 Grok Bot App 不會產生 grok-bot-cli 需要的登入檔，所以無法把 Grok Bot 帶進 OCTA。改成讓 Grok Bot 用交接網址把工作交給 OCTA 的機器人（下面的步驟）。': ('The Windows Grok Bot app doesn’t create the sign-in file grok-bot-cli needs, so Grok Bot can’t be brought into OCTA. Instead, let Grok Bot hand work to an OCTA bot through a hand-off URL (steps below).', 'Windows 版の Grok Bot アプリは grok-bot-cli に必要なログインファイルを作らないため、Grok Bot を OCTA に取り込めません。代わりに Grok Bot から引き継ぎ URL で OCTA のボットに仕事を渡してください（下の手順）。'),
+ '取得交接網址': ('Get a hand-off URL', '引き継ぎ URL を取得'),
+ '複製給外部 AI 的說明': ('Copy instructions for the other AI', '外部 AI 向けの説明をコピー'),
+ '已複製給外部 AI 的說明': ('Copied the instructions for the other AI', '外部 AI 向けの説明をコピーしました'),
+ '按「複製給外部 AI 的說明」，貼到 Grok Bot 的對話（或它那個機器人的指示／記憶裡），讓它記住。': ('Press “Copy instructions for the other AI” and paste them into your Grok Bot chat (or that bot’s instructions / memory) so it remembers.', '「外部 AI 向けの説明をコピー」を押し、Grok Bot の会話（またはそのボットの指示／メモリ）に貼り付けて覚えさせます。'),
+ '之後跟 Grok Bot 說「把○○交給 OCTA 的△△」，它就會自己傳過來、查結果，不滿意可以叫它指正重做。': ('Then tell Grok Bot “give ○○ to OCTA’s △△” — it sends the work, checks the result, and can ask for a redo with corrections.', 'あとは Grok Bot に「○○ を OCTA の △△ に渡して」と言えば、自分で送って結果を確認し、気に入らなければ指摘してやり直させられます。'),
+ '貼給 Grok Bot（或其他 AI）：它就能交派工作、查結果、指正重做、教它做法。': ('Paste them into Grok Bot (or another AI): it can then hand over work, read results, ask for redos and teach this bot.', 'Grok Bot（または他の AI）に貼り付けると、仕事の依頼、結果の確認、指摘してのやり直し、やり方を教えることができます。'),
+ '給 Grok Bot 這類會呼叫網址的 AI：貼上後它就能交派工作、查結果、指正重做、教它做法。': ('For AIs that can call URLs, like Grok Bot: once pasted, it can hand over work, read results, ask for redos and teach this bot.', 'Grok Bot のように URL を呼び出せる AI 向け：貼り付けると、仕事の依頼、結果の確認、指摘してのやり直し、やり方を教えることができます。'),
+ '直接連到這台電腦的網址': ('Direct address of this computer', 'このパソコンへの直接アドレス'),
+ '每次電腦重開都會換，平常用上面那個。': ('It changes every time the computer restarts — normally use the one above.', 'パソコンを再起動するたびに変わります。普段は上のものを使ってください。'),
+ '這個網址固定不變：經 OCTA 網站轉送到這台電腦（只轉送，不保存內容），電腦重開也不用換。這台電腦要開著 OCTA 才收得到。': ('This URL never changes: the OCTA website forwards it to this computer (forwarding only, nothing is stored), even after restarts. OCTA must be running on this computer to receive it.', 'この URL は変わりません。OCTA のサイトがこのパソコンへ転送します（転送のみで内容は保存しません）。再起動後もそのまま使えます。受け取るにはこのパソコンで OCTA が起動している必要があります。'),
+ '外部事件與交接網址': ('External events and hand-off URLs', '外部イベントと引き継ぎ URL'),
+ '例行任務的「外部事件」網址和給其他 AI 的交接網址，不用打開手機遠端也能從外面呼叫：網址在 OCTA 網站，會轉送到這台電腦，電腦重開也不用換。只要有這類網址，OCTA 開著時就會保持連線。': ('Routine “external event” URLs and hand-off URLs for other AIs can be called from outside without turning on the phone remote: they live on the OCTA website and are forwarded to this computer, unchanged across restarts. While any exist, OCTA keeps the connection open while it runs.', '定期タスクの「外部イベント」URL と他の AI 向けの引き継ぎ URL は、スマホリモートをオンにしなくても外部から呼び出せます。URL は OCTA のサイトにあり、このパソコンへ転送され、再起動しても変わりません。こうした URL がある間、OCTA は起動中ずっと接続を保ちます。'),
+})
+P.extend([
+ (r'^📨 來自 (.+?)：(.+)$', '📨 From $1: $2', '📨 $1 から：$2'),
+ (r'^✏️ (.+?) 指正，重做：(.+)$', '✏️ $1 corrected it, redoing: $2', '✏️ $1 の指摘でやり直し：$2'),
+ (r'^🧠 (.+?) 教了：(.+)$', '🧠 $1 taught: $2', '🧠 $1 が教えました：$2'),
+ (r'^🧠 (.+?) 教了做法，已存成做事手冊「(.+)」(.*)$', '🧠 $1 taught a procedure, saved as the manual “$2”$3', '🧠 $1 がやり方を教え、手順書「$2」として保存しました$3'),
+])

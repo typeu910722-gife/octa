@@ -30,21 +30,24 @@ const keyOf = secret => sha('octa-key:' + secret);
 export const phoneKeyOf = secret => sha('octa-phone:' + secret).toString('base64url');
 
 // AES-256-GCM: "o1." + base64url(iv | tag | ciphertext)
-export function seal(obj, secret) {
-  const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', keyOf(secret), iv);
+// (sealKey / unsealKey take the 32-byte key itself; seal / unseal derive it from a shared secret)
+export function sealKey(obj, key) {
+  const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', key, iv);
   const ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
   return 'o1.' + Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64url');
 }
-export function unseal(text, secret) {
+export function unsealKey(text, key) {
   try {
     if (typeof text !== 'string' || !text.startsWith('o1.')) return null;
     const raw = Buffer.from(text.slice(3), 'base64url');
     if (raw.length < 29) return null;
-    const d = createDecipheriv('aes-256-gcm', keyOf(secret), raw.subarray(0, 12));
+    const d = createDecipheriv('aes-256-gcm', key, raw.subarray(0, 12));
     d.setAuthTag(raw.subarray(12, 28));
     return JSON.parse(Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString('utf8'));
   } catch { return null; }
 }
+export const seal = (obj, secret) => sealKey(obj, keyOf(secret));
+export const unseal = (text, secret) => unsealKey(text, keyOf(secret));
 
 // an address the host may be at: the tunnel (https), or this computer itself (tests, the same machine)
 export function hostUrlOk(u) {
@@ -84,6 +87,19 @@ const withTimeout = (fetch, ms) => (url, init = {}) => {
 export async function publishHost({ secret, key, url, epoch, hostId, hostName, fetch = globalThis.fetch, relay = RELAY, now = Date.now() }) {
   const body = seal({ v: 1, url: trimUrl(url), epoch: +epoch || 0, hostId, hostName: hostName || '', ts: now }, key || secret);
   const r = await withTimeout(fetch, 15000)(`${relay}/${topicOf(secret)}`, { method: 'POST', body, headers: { 'content-type': 'text/plain' } });
+  if (!r.ok) throw Object.assign(new Error('轉送服務回應 ' + r.status), { code: 'relay-down' });
+  return true;
+}
+
+// 4.5 交接網址 (/api/hook/<token>): the public address https://octa.yzprojecttw.com/api/hook/<token> stays the same
+// across restarts. The host publishes its current tunnel address for each hook token, sealed with a key only the
+// token gives, on a topic derived from the token. The OCTA site's forwarder (legacy/hook-relay.mjs, WebCrypto)
+// derives the same two from the token in the request, reads the address and passes the request on; it keeps nothing.
+export const hookTopicOf = token => base32(sha('octa-hook-topic:' + token)).slice(0, 32);
+export const hookKeyOf = token => sha('octa-hook-key:' + token);
+export async function publishHook({ token, url, fetch = globalThis.fetch, relay = RELAY, now = Date.now() }) {
+  const body = sealKey({ v: 1, url: trimUrl(url), ts: now }, hookKeyOf(token));
+  const r = await withTimeout(fetch, 15000)(`${relay}/${hookTopicOf(token)}`, { method: 'POST', body, headers: { 'content-type': 'text/plain' } });
   if (!r.ok) throw Object.assign(new Error('轉送服務回應 ' + r.status), { code: 'relay-down' });
   return true;
 }

@@ -1,5 +1,6 @@
 import { classifyModelFailure, decideRoute, replyIsProviderRefusal, classifyJobFailure, FAIL_KINDS, MAX_AUTO_RETRY, autoRetryable, retryPrompt, stripRetryNote, failureNotice } from '../../legacy/model-route.mjs';
 import { normalizeCustom, publicConnectors, runConnector } from '../../legacy/connectors.mjs';
+import { forwardHook } from '../../legacy/hook-relay.mjs';
 // OCTA API — Cloudflare Pages Function, single router.
 // Web app uses a "web" session token; each computer's runner uses its own "runner" token.
 // One computer per account is the 主機 (host): it runs every bot. Phones and other computers
@@ -1963,6 +1964,12 @@ function publicCodeTask(row) {
 export async function onRequest(ctx) {
   const { request: req, env, params } = ctx;
   const path = (params.path || []).join('/');
+  // 4.5 交接網址: /api/hook/<token>[/<rest>] is passed on to the host computer that published its address for that
+  // token on ntfy.sh. Stateless (no database, no account); the token is checked by the host.
+  if (params.path?.[0] === 'hook') {
+    const allow = String(env.HOOK_ALLOW_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);   // tests / a local check only
+    return forwardHook(req, params.path[1], params.path.slice(2).join('/'), { relay: env.HOOK_RELAY || undefined, allow });
+  }
   await ensureSchema(ctx.env.DB);
   if (!env.isLocal && !CLOUD_ONLY.test(path) && !/^(hook|coach)\//.test(path)) {   // 主機模式: the host computer answers
     const fw = await viaHost(req, env, path);
@@ -2047,31 +2054,7 @@ async function route({ request: req, env, params }) {
       if (!env.pairCheck(String(body.code || ''))) return err('配對碼錯誤或已失效', 401);
       return J({ token: await newSession(db, 'local', 'web', 'phone', meta) });
     }
-    if (path.startsWith('hook/')) {   // external event: LINE webhook, Zapier, a form…
-      const key = path.slice(5);
-      if (!/^[0-9a-f]{48}$/.test(key)) return err('找不到', 404);
-      const r = await db.prepare('SELECT * FROM routines WHERE hook=?').bind(key).first();
-      if (!env.isLocal) {   // 主機模式: the routine lives on the host computer
-        const owner = r?.user_id || (await db.prepare('SELECT user_id FROM host_hooks WHERE k=?').bind(key).first())?.user_id;
-        const h = owner ? await hostOf(db, owner) : null;
-        if (h?.hmode === 1) {
-          const extra = { 'content-type': req.headers.get('content-type') || 'application/json', 'x-octa-origin': url.origin };
-          if (req.headers.get('x-line-signature')) extra['x-line-signature'] = req.headers.get('x-line-signature');
-          const fr = await toHost(h, owner, m, pathQuery, rawBody, extra);
-          if (fr) return fr;
-        }
-      }
-      if (!r) return err('找不到', 404);
-      if (m === 'GET') return J({ ok: true, routine: r.name });   // lets services check the address
-      if (!r.enabled) return J({ ok: true, skipped: 'disabled' });
-      const raw = rawBody || '';
-      const what = describeEvent(raw, body);
-      if (Array.isArray(body.events) && !body.events.length) return J({ ok: true });   // LINE "Verify" sends no events
-      const lim = [['hook:' + key, 120]];
-      if (await blocked(db, lim)) return J({ ok: false, error: 'too many events' }, 429);
-      await failed(db, lim);   // counts events per 15 minutes
-      return J({ ok: true, result: await fireEvent(env, db, r, what || '（沒有內容）') });
-    }
+    // hook/<key>: 4.5 forwards to the host computer before anything else (see onRequest and legacy/hook-relay.mjs)
     if (path.startsWith('coach/')) return coachApi(env, db, path, m, body, url, pathQuery, rawBody);
     if (path === 'cron') {   // called every few minutes (GitHub Actions); fires routines on time and tidies up
       // 主機模式 accounts are skipped: their host computer keeps the clock

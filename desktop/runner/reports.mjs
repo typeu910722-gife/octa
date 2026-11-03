@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { api } from './api-client.mjs';
 import { ENGINES, engineReady, has } from './engines.mjs';
-import { grokBots } from './grokbot.mjs';
+import { grokBotUnsupported, grokBots } from './grokbot.mjs';
 import { ollamaChoices } from './ollama.mjs';
 import { VERSION, WIN, cfg, log } from './state.mjs';
 
@@ -88,7 +88,7 @@ export async function modelReport() {   // every 30 minutes, or right away once 
     const t = (await runText('agy', ['models'])).replace(/\x1b\[[0-9;]*m/g, '');
     out.gemini = [...new Set(t.split("\n").map(l => (l.match(/^\s*([a-z][\w.\-]*-[\w.\-]+)\s/i) || [])[1]).filter(Boolean))].slice(0, 30);   // agy also serves Claude and GPT-OSS models (separate weekly quota)
   }
-  if (await has('gbot')) { try { out.grokbot = (await grokBots()).map(b => b.name).slice(0, 40); } catch { } }
+  if (!grokBotUnsupported() && await has('gbot')) { try { out.grokbot = (await grokBots()).map(b => b.name).slice(0, 40); } catch { } }
   if (await has('copilot')) {
     const t = await runText('copilot', ['--help']);
     const m = t.match(/--model[\s\S]{0,300}?choices:\s*([^)]+)\)/);

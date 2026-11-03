@@ -108,6 +108,8 @@ export async function chatRoutes(c) {
       prog: rev.results[0]?.prog ?? 0,
       engines: JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || 'null'),
       runnerOnline: env.runnerOnline ? env.runnerOnline() : true,
+      hostOs: env.hostOs || '', // 4.5: the host computer's system (Grok Bot's grok-bot-cli doesn't work on Windows)
+      hookTunnel: env.hookTunnel ? env.hookTunnel() : '', // the tunnel address the 交接網址 is forwarded to right now
       shareBrowser: st.shareBrowser !== false,
       nick: st.nick || '',
       quick: st.quick || {},

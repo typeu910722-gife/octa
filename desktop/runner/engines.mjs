@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { providerFailureText, replyIsProviderRefusal } from '../lib/model-route.mjs';
 import { storeDir } from './files.mjs';
-import { grokBotEnv } from './grokbot.mjs';
+import { grokBotEnv, grokBotUnsupported } from './grokbot.mjs';
 import { BU_WORDS, NO_TOOLS_TEXT, browserUseReady, ensureOllamaContext, ollamaCaps, ollamaModel } from './ollama.mjs';
 import { keepBrowserTask } from './prompts.mjs';
 import { JOB_TIMEOUT_MS, OLLAMA_NUM_CTX, QUIET_MS, WIN, q } from './state.mjs';
@@ -79,7 +79,8 @@ export async function has(bin, fresh) {   // a missing command can't be told apa
   installed[bin] = { ok: !!p, t: Date.now(), path: p };
   return !!p;
 }
-export const engineReady = async (k, fresh) => (await has(ENGINES[k].bin, fresh)) && (!ENGINES[k].also || await has(ENGINES[k].also, fresh))
+// (4.5: on Windows Grok Bot is not even looked for — grokbot.mjs grokBotUnsupported)
+export const engineReady = async (k, fresh) => !(k === 'grokbot' && grokBotUnsupported()) && (await has(ENGINES[k].bin, fresh)) && (!ENGINES[k].also || await has(ENGINES[k].also, fresh))
   && (k !== 'grokbot' || !grokBotEnv().missing);   // Grok Bot: the tool alone isn't enough, the app's sign-in must be readable
 
 // opts.onLine: called with each stdout line (live progress); opts.ctl.kill() stops the run

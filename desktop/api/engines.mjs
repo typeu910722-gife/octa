@@ -2,6 +2,10 @@
 import { clean, now } from './util.mjs';
 
 export const ENGINES = ['claude', 'codex', 'gemini', 'grok', 'grokbot', 'copilot', 'cursor', 'qwen', 'opencode'];
+// 4.5: the Grok Bot app for Windows doesn't write gateway-descriptor.json, so grok-bot-cli can't work there.
+// On a Windows host Grok Bot is offered only through the 交接網址 (Grok Bot calls OCTA, not the other way round).
+export const GROKBOT_WIN = 'Windows 不支援，請改用交接網址';
+export const grokBotOff = env => (env?.hostOs || '') === 'win32';
 // backup AIs: up to three "engine|model" entries (two backups plus an optional local Ollama / opencode)
 export const fbParse = v => {
   try {

@@ -54,7 +54,7 @@ test('desktop server: import a 3.x cloud account, pair a phone, take external ev
   const { startServer } = await import(pathToFileURL(join(repo, 'desktop/server.mjs')).href);
   const { cloudCaller } = await import(pathToFileURL(join(repo, 'desktop/cloud-import.mjs')).href);
   const dataDir = mkdtempSync(join(tmpdir(), 'octa-desk-'));
-  const s = await startServer({ dataDir, runner: false });
+  const s = await startServer({ dataDir, runner: false, relay: 'http://127.0.0.1:9', ...(process.platform === 'win32' ? { tunnel: async p => 'http://127.0.0.1:' + p } : {}) });   // (no real cloudflared: a hook keeps a tunnel open)
   t.after(async () => { await s.close(); rmSync(dataDir, { recursive: true, force: true }); });
   // something written locally before the import is kept in the backup
   await jpost(s.url + '/api/bots', { name: '舊的本機機器人', task: '' });
@@ -81,6 +81,11 @@ test('desktop server: import a 3.x cloud account, pair a phone, take external ev
   // remote port: closed to the app until the phone remote is on…
   assert.equal((await fetch(s.remoteUrl + '/api/state')).status, 503);
   assert.equal((await fetch(s.remoteUrl + '/__octa_ping')).status, 200);
+  // (4.5: a hook keeps the tunnel open — a fake cloudflared prints a tunnel address, see the phone remote below)
+  if (process.platform !== 'win32') {
+    mkdirSync(join(dataDir, 'bin'), { recursive: true });
+    writeFileSync(join(dataDir, 'bin', 'cloudflared'), '#!/bin/sh\necho "https://phone-test.trycloudflare.com" 1>&2\nexec sleep 600\n'); chmodSync(join(dataDir, 'bin', 'cloudflared'), 0o755);
+  }
   // …but external events (the hook key is the secret) need no pairing
   const hk = await (await jpost(s.url + '/api/routines', { conv: bot, name: '收到訂單', trigger: 'hook', prompt: '處理訂單' })).json();
   assert.match(hk.hook || '', /^[0-9a-f]{48}$/, JSON.stringify(hk));
@@ -90,13 +95,11 @@ test('desktop server: import a 3.x cloud account, pair a phone, take external ev
   const fired = await jpost(s.remoteUrl + '/api/hook/' + hk.hook, { order: 'A-17' });
   assert.equal(fired.status, 200);
   assert.equal((await fired.json()).ok, true);
-  assert.equal((await fetch(s.remoteUrl + '/api/hook/' + '0'.repeat(48))).status, 404);
+  assert.equal((await fetch(s.remoteUrl + '/api/hook/' + '0'.repeat(48))).status, 401, '4.5: a wrong key is 401');
   assert.equal((await fetch(s.remoteUrl + '/api/hookx/' + hk.hook)).status, 503, 'only the hook route skips pairing');
 
   // phone remote: a fake cloudflared prints a tunnel address; the phone pairs with the code and sees this computer's data
   if (process.platform !== 'win32') {
-    mkdirSync(join(dataDir, 'bin'), { recursive: true });
-    writeFileSync(join(dataDir, 'bin', 'cloudflared'), '#!/bin/sh\necho "https://phone-test.trycloudflare.com" 1>&2\nexec sleep 600\n'); chmodSync(join(dataDir, 'bin', 'cloudflared'), 0o755);
     const on = await (await jpost(s.url + '/api/desktop/remote', { on: true })).json();
     assert.equal(on.on, true, JSON.stringify(on));
     assert.equal(on.url, 'https://phone-test.trycloudflare.com');

@@ -7,7 +7,7 @@ import {
   runEngine
 } from './engines.mjs';
 import { botDir, storeDir } from './files.mjs';
-import { grokBots } from './grokbot.mjs';
+import { GROKBOT_WIN_TEXT, grokBotUnsupported, grokBots } from './grokbot.mjs';
 import {
   buildPrompt, dayInfo, keepBrowserTask, manualLines, mustMarkLines, records, routineLines, seeNow, studioAim,
   tabsNow, turnGuide, whoAmI, workLoop, workNotes
@@ -155,6 +155,7 @@ export async function warmClaude(job, b, here, live) {
 }
 
 export async function testJob(job) {
+  if (job.engine === 'grokbot' && grokBotUnsupported()) return api('runner/done', { id: job.id, ok: false, text: GROKBOT_WIN_TEXT.replace(/^⚠ /, '') });   // 4.5: nothing is tried on Windows
   if (job.engine === 'grokbot') {
     const ok = await has('gbot', true);
     let bots = [], why = '';

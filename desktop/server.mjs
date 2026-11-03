@@ -15,6 +15,7 @@ import os from 'node:os';
 import { importFromCloud } from './cloud-import.mjs';
 import { createScreens } from './screen-cast.mjs';
 import { createLinking } from './link-server.mjs';
+import { RELAY, REPUBLISH_MS, publishHook } from './host-link.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -98,7 +99,11 @@ const MIGRATIONS = ["ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'c
   'CREATE TABLE IF NOT EXISTS logins (k TEXT PRIMARY KEY, fails INTEGER NOT NULL, until INTEGER NOT NULL)',
   'CREATE TABLE IF NOT EXISTS live (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT, title TEXT, mime TEXT, data TEXT, ts INTEGER, handed INTEGER NOT NULL DEFAULT 0)',
   // 4.1: each bot's avatar colour; work-panel messages (background, failures, long notes) are kept apart from the conversation
-  'ALTER TABLE bots ADD COLUMN color TEXT', 'ALTER TABLE messages ADD COLUMN kind TEXT'];
+  'ALTER TABLE bots ADD COLUMN color TEXT', 'ALTER TABLE messages ADD COLUMN kind TEXT',
+  // 4.5: work handed over through a 交接網址 (status, inbox, feedback)
+  'ALTER TABLE jobs ADD COLUMN hook TEXT', 'ALTER TABLE jobs ADD COLUMN outs TEXT', 'CREATE INDEX IF NOT EXISTS job_hook ON jobs(hook)',
+  'CREATE TABLE IF NOT EXISTS hook_jobs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, routine TEXT NOT NULL, conv TEXT NOT NULL, from_ TEXT, text TEXT NOT NULL, parent TEXT, created INTEGER NOT NULL, seen INTEGER)',
+  'CREATE INDEX IF NOT EXISTS hook_job_routine ON hook_jobs(routine, created)'];
 
 // ---------- helpers ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
@@ -184,6 +189,10 @@ const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 // 4.4: the phone's stable entry (a static page on the OCTA site; site/go.html). It finds this computer's current
 // address on ntfy.sh and signs the phone in with what it keeps in its own storage.
 export const GO_URL = 'https://octa.yzprojecttw.com/go';
+// 4.5: the 交接網址 other AIs call is <HOOK_BASE>/api/hook/<token>; the OCTA site forwards it to this computer's tunnel
+// (legacy/hook-relay.mjs), which it finds through ntfy.sh (host-link.mjs publishHook)
+export const HOOK_BASE = 'https://octa.yzprojecttw.com';
+const HOOK_PATH = /^\/api\/hook\/[0-9a-zA-Z]{1,64}(\/(job\/[0-9a-zA-Z]{1,40}|inbox|feedback|teach))?\/?(\?[\w=&%.-]*)?$/;
 const PHONE_IDLE = 90 * 86400000;   // a paired phone unused this long is signed out (desktop/api/util.mjs SESSION_IDLE)
 const newCode = () => Array.from({ length: 8 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('');
 
@@ -226,6 +235,7 @@ export async function startServer(opts = {}) {
   const remote = { on: false, url: '', code: '', fails: 0 };   // phone pairing over the tunnel
   const goUrl = opts.goUrl || process.env.OCTA_GO_URL || GO_URL;
   const goOrigin = new URL(goUrl).origin;
+  const hookBase = (opts.hookBase || process.env.OCTA_HOOK_BASE || HOOK_BASE).replace(/\/+$/, '');
   // 4.2 手機遙控: live pictures of the bots' browsers (only while someone watches) and the phone's input into them
   // (OCTA's own embedded browser takes the phone's input through Electron: opts.hooks.screenInput)
   const screen = opts.screen || createScreens({ resolvePort: async bot => (await loadRunner()).livePortOf(bot), inputHook: a => opts.hooks?.screenInput?.(a) });
@@ -236,7 +246,12 @@ export async function startServer(opts = {}) {
     // links in notices (Telegram / LINE) go through /go, so they still work after this computer restarts
     remoteLink: () => (remote.on && remote.url ? goUrl : ''),
     // a paired phone asks what its /go page needs (the phones' relay key, this host's id and name)
-    phoneGo: () => (linking?.role() === 'host' ? { ...linking.phoneInfo(), u: remote.url, go: goUrl } : null)
+    phoneGo: () => (linking?.role() === 'host' ? { ...linking.phoneInfo(), u: remote.url, go: goUrl } : null),
+    // 4.5 交接網址: the public address other AIs call (the OCTA site forwards it here), and the tunnel it goes to now
+    hostOs: opts.platform || process.platform,
+    hookBase,
+    hookTunnel: () => (linking?.role() === 'host' ? tunnel.url : ''),
+    hooksChanged: () => { setTimeout(() => { hookKeep().catch(() => { }); }, 0); }
   };
   const callApi = async (req, res, env, origin) => {
     const request = await toRequest(req, origin);
@@ -262,7 +277,7 @@ export async function startServer(opts = {}) {
       if (req.url.startsWith('/api/desktop/')) return desktopApi(req, res);
       // a remote control: the page's API calls go to the host computer (this computer's own data is not used)
       if (linking?.role() === 'remote') {
-        if (/^\/api\/config(\?|$)/.test(req.url)) return json(res, { local: true, pair: false, via: { name: linking.viaName() } });
+        if (/^\/api\/config(\?|$)/.test(req.url)) return json(res, { local: true, pair: false, hook: hookBase, via: { name: linking.viaName() } });
         if (req.url.startsWith('/api/runner') || req.url.startsWith('/api/hook/')) { res.writeHead(503); return res.end(); }
         return linking.proxy(req, res);
       }
@@ -289,8 +304,12 @@ export async function startServer(opts = {}) {
         if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '600' }); return res.end(); }
       }
       const hosting = linking?.role() !== 'remote';
-      if (hosting && /^\/api\/hook\/[^/?]+(\?|$)/.test(req.url))
-        return await callApi(req, res, { ...base, isLocal: true, runnerOnline: () => Date.now() - runnerSeen < 60000 }, 'https://' + (req.headers.host || 'remote'));
+      // (4.5: also hook/<key>/job/<id>, /inbox, /feedback, /teach — only these exact shapes, so nothing like "../" can
+      // turn into another API path; and without the local trust: the hook route checks the key itself)
+      if (hosting && HOOK_PATH.test(req.url)) {
+        if (+(req.headers['content-length'] || 0) > 64 * 1024) return json(res, { error: '內容太大（上限 64 KB）' }, 413);
+        return await callApi(req, res, { ...base, runnerOnline: () => Date.now() - runnerSeen < 60000 }, 'https://' + (req.headers.host || 'remote'));
+      }
       // 4.3: other computers (pairing, finding the host, 換成這台當主機)
       if (req.url.startsWith('/api/link/') && linking) return await linking.remoteApi(req, res);
       // a linked computer works through here even while the phone remote is off
@@ -347,7 +366,8 @@ export async function startServer(opts = {}) {
   // the tunnel stays open while computers are linked to this one (4.3), even with the phone remote off
   let keepForLinks = async () => false;
   // (4.4: not while the phone remote is on or turning on — at start the two can overlap)
-  async function releaseTunnel() { if (remote.on || remote.starting || await keepForLinks() || remote.on || remote.starting) return; stopTunnel(); }
+  // (4.5: nor while a 交接網址 exists — other AIs reach this computer through it)
+  async function releaseTunnel() { if (remote.on || remote.starting || await keepForLinks() || await hooksExist() || remote.on || remote.starting) return; stopTunnel(); }
   // user: the switch in 設定 → 手機遠端 (remembered, so the phone remote comes back on after a restart)
   async function setRemote(on, user) {
     if (on && linking.role() === 'remote') throw new Error('這台電腦正在遙控另一台電腦。手機請連到主機電腦（在主機電腦的「設定 → 手機遠端」開啟）。');
@@ -383,6 +403,34 @@ export async function startServer(opts = {}) {
     if (!(want === true || (want === undefined && await livePhones()))) return;
     if (remote.on && tunnel.url) return linking.publishPhone(false);
     try { await setRemote(true); } catch (e) { remote.error = e.message; }   // no network yet: the next check tries again
+  }
+  // ---------- 4.5: 交接網址 reach this computer from the OCTA site ----------
+  // While any routine has a hook key, the tunnel stays open and, for each key, its current address is published on
+  // ntfy.sh, sealed with a key derived from the hook key (only someone holding the 交接網址 can read it): when the
+  // tunnel's address changes, when a hook is made, and every 6 hours (ntfy.sh keeps messages about 12 hours).
+  const hookPub = new Map();   // hook key → { url, at, error }
+  const hookState = { error: '', at: 0 };
+  const hookKeys = async () => (await db.prepare('SELECT hook FROM routines WHERE hook IS NOT NULL').all()).results.map(r => r.hook).filter(Boolean);
+  const hooksExist = async () => linking?.role() === 'host' && !!(await db.prepare('SELECT 1 FROM routines WHERE hook IS NOT NULL LIMIT 1').first());
+  let hookRun = null;
+  function hookKeep() {
+    if (hookRun) return hookRun;
+    hookRun = (async () => {
+      if (linking.role() !== 'host' || linking.handing()) return;
+      const keys = await hookKeys();
+      for (const k of [...hookPub.keys()]) if (!keys.includes(k)) hookPub.delete(k);
+      if (!keys.length) return;
+      let url;
+      try { url = await ensureTunnel(); } catch (e) { Object.assign(hookState, { error: e.message, at: Date.now() }); return; }
+      for (const token of keys) {
+        const p = hookPub.get(token);
+        if (p && p.url === url && Date.now() - p.at < REPUBLISH_MS) continue;
+        try { await publishHook({ token, url, fetch: opts.fetch || globalThis.fetch, relay: opts.relay || process.env.OCTA_RELAY || RELAY }); hookPub.set(token, { url, at: Date.now(), error: '' }); }
+        catch (e) { hookPub.set(token, { url, at: Date.now() - REPUBLISH_MS + 5 * 60000, error: e.message }); }   // try again in 5 minutes
+      }
+      Object.assign(hookState, { error: '', at: Date.now() });
+    })().finally(() => { hookRun = null; });
+    return hookRun;
   }
   async function phones() {
     const rows = (await db.prepare("SELECT token,label,ua,created,seen FROM sessions WHERE kind='web' ORDER BY created").all()).results;
@@ -494,7 +542,8 @@ export async function startServer(opts = {}) {
     const { ENGINES } = await loadRunner();
     const ver = bin => new Promise(ok => execFile(bin, ['--version'], { shell: WIN, timeout: 15000, windowsHide: true, encoding: 'utf8' },
       (err, out) => ok({ ok: !err, version: (out || '').trim().split(/\s/).find(x => /\d/.test(x)) || '' })));
-    engJob = Promise.all(Object.entries(ENGINES).map(async ([k, e]) => { const v = await ver(e.bin); if (v.ok && e.also) v.ok = (await ver(e.also)).ok; return [k, v]; }))
+    engJob = Promise.all(Object.entries(ENGINES).map(async ([k, e]) => { if (k === 'grokbot' && WIN) return [k, { ok: false, version: '', unsupported: true }];   // 4.5: grok-bot-cli doesn't work on Windows
+      const v = await ver(e.bin); if (v.ok && e.also) v.ok = (await ver(e.also)).ok; return [k, v]; }))
       .then(r => { engCache = Object.fromEntries(r); engAt = Date.now(); return engCache; }).finally(() => (engJob = null));
     return engJob;
   }
@@ -511,7 +560,9 @@ export async function startServer(opts = {}) {
         chrome: !!findChrome(),
         autostart: !!hooks.getAutostart(), extToken: !!hooks.getExtToken(), store: hooks.getStore(),
         remote: await remoteInfo(),
-        role: linking.role()
+        role: linking.role(),
+        // 4.5 交接網址: the public base, the tunnel it is forwarded to, and whether the addresses got published
+        hooks: { base: hookBase, tunnel: tunnel.url, published: [...hookPub.values()].filter(p => !p.error).length, error: hookState.error || [...hookPub.values()].find(p => p.error)?.error || '' }
       });
     }
     try {
@@ -600,7 +651,8 @@ export async function startServer(opts = {}) {
   // 4.4: phone remote back on at start (when it was on, or a phone is paired), kept on while wanted (the tunnel can
   // drop), and its address kept on the relay for the /go page
   phoneKeep().catch(() => { });
-  const phoneTimer = setInterval(() => { phoneKeep().catch(() => { }); }, opts.watchMs || 60000);
+  hookKeep().catch(() => { });   // 4.5: the 交接網址 work from the OCTA site after a restart
+  const phoneTimer = setInterval(() => { phoneKeep().catch(() => { }); hookKeep().catch(() => { }); }, opts.watchMs || 60000);
   phoneTimer.unref?.();
 
   return {

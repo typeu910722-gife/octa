@@ -1,10 +1,10 @@
 // Request routing.
 import { chatRoutes } from './chat-routes.mjs';
 import { codeRoutes } from './code-routes.mjs';
-import { auth, blocked, bump, ensureSchema, failed, newSession } from './db.mjs';
+import { auth, bump, ensureSchema, newSession } from './db.mjs';
 import { fileRoutes } from './files.mjs';
+import { hookRoute } from './hooks.mjs';
 import { manageRoutes } from './manage-routes.mjs';
-import { describeEvent, fireEvent } from './routines.mjs';
 import { runnerRoutes } from './runner-routes.mjs';
 import { screenRoutes } from './screen-routes.mjs';
 import { settingsRoutes } from './settings-routes.mjs';
@@ -47,7 +47,8 @@ async function route({ request: req, env, params }) {
 
   try {
     // ---------- public ----------
-    if (path === 'config' && m === 'GET') return J({ local: !!env.isLocal, pair: !!env.pairCheck });
+    // hook: the public base of the 交接網址 (https://octa.yzprojecttw.com → /api/hook/<token>)
+    if (path === 'config' && m === 'GET') return J({ local: !!env.isLocal, pair: !!env.pairCheck, hook: env.hookBase || '' });
     if (path === 'pair' && m === 'POST') {
       // a phone reaching this computer through the tunnel pairs with the code shown on the computer
       if (!env.pairCheck) return err('這個版本不使用配對碼', 404);
@@ -57,22 +58,8 @@ async function route({ request: req, env, params }) {
       const label = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Android 手機' : 'Android 平板') : /Macintosh|Windows|Linux|CrOS/.test(ua) ? '電腦的瀏覽器' : '手機';
       return J({ token: await newSession(db, 'local', 'web', label, ua.slice(0, 300)) });
     }
-    if (path.startsWith('hook/')) {
-      // external event: LINE webhook, Zapier, a form… (the key itself is the secret)
-      const key = path.slice(5);
-      if (!/^[0-9a-f]{48}$/.test(key)) return err('找不到', 404);
-      const r = await db.prepare('SELECT * FROM routines WHERE hook=?').bind(key).first();
-      if (!r) return err('找不到', 404);
-      if (m === 'GET') return J({ ok: true, routine: r.name }); // lets services check the address
-      if (!r.enabled) return J({ ok: true, skipped: 'disabled' });
-      const raw = rawBody || '';
-      const what = describeEvent(raw, body);
-      if (Array.isArray(body.events) && !body.events.length) return J({ ok: true }); // LINE "Verify" sends no events
-      const lim = [['hook:' + key, 120]];
-      if (await blocked(db, lim)) return J({ ok: false, error: 'too many events' }, 429);
-      await failed(db, lim); // counts events per 15 minutes
-      return J({ ok: true, result: await fireEvent(env, db, r, what || '（沒有內容）') });
-    }
+    // 交接網址 / external events: LINE webhook, Zapier, a form, another AI (the key itself is the secret; hooks.mjs)
+    if (path === 'hook' || path.startsWith('hook/')) return await hookRoute({ req, env, db, path, m, url, body, rawBody });
 
     // this computer (desktop window, built-in runner) is trusted; a phone must have paired
     const me = env.isLocal ? { user_id: 'local', kind: 'local', name: '本機', label: 'local' } : await auth(req, db);

@@ -118,7 +118,7 @@ export async function runnerDone(c) {
         const nextPrompt = decision.action === 'retry' ? retryPrompt(job.prompt, nextTries, fk, raw) : stripRetryNote(job.prompt);
         await db
           .prepare(
-            'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
           )
           .bind(
             U,
@@ -132,7 +132,8 @@ export async function runnerDone(c) {
             nextTries,
             job.id,
             job.via || null,
-            job.routine || null
+            job.routine || null,
+            job.hook || null
           )
           .run();
         const note =
@@ -143,7 +144,11 @@ export async function runnerDone(c) {
         await bump(db, U);
         return ok();
       }
-      if (decision.message) body.text = (decision.reason === 'cancelled' ? '' : '⚠ ') + decision.message;
+      if (decision.message)
+        body.text =
+          decision.reason === 'unavailable' && /Windows 不支援 Grok Bot/.test(raw)
+            ? raw.split('\n')[0] // 4.5: say why (Grok Bot can't run on Windows), not "not installed"
+            : (decision.reason === 'cancelled' ? '' : '⚠ ') + decision.message;
       if (decision.reason !== 'cancelled') {
         fail = {
           kind: classifyJobFailure(raw, { hint: body.err_kind, stalled: !!body.stalled }),
@@ -163,7 +168,7 @@ export async function runnerDone(c) {
           if (!once.meta.changes) return ok(); // the same result was reported twice
           await db
             .prepare(
-              'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+              'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
             )
             .bind(
               U,
@@ -177,7 +182,8 @@ export async function runnerDone(c) {
               n,
               job.id,
               job.via || null,
-              job.routine || null
+              job.routine || null,
+              job.hook || null
             )
             .run();
           await addMsg(
@@ -344,7 +350,7 @@ export async function runnerDone(c) {
   // only once: a runner that retries runner/done must not post the reply (and start the next step) twice
   const fin = await db
     .prepare("UPDATE jobs SET status=?, finished=?, tokens=?, result=COALESCE(?, result) WHERE id=? AND status='running'")
-    .bind(good ? 'done' : 'error', now(), tk, job.via || BG.test(job.prompt) ? text.slice(0, 1500) : null, job.id)
+    .bind(good ? 'done' : 'error', now(), tk, job.hook ? text.slice(0, 8000) : job.via || BG.test(job.prompt) ? text.slice(0, 1500) : null, job.id)
     .run();
   if (!fin.meta.changes) return ok();
   if (job.kind === 'chat' && !body.stopped) await statAdd(db, env, U, job, good, tk, !!body.browser);
@@ -370,6 +376,8 @@ export async function runnerDone(c) {
       .run();
     outs.push({ id, name, mime });
   }
+  // 交接網址 work: the caller reads the reply's files from the job (GET /api/hook/<token>/job/<id>)
+  if (job.hook && outs.length) await db.prepare('UPDATE jobs SET outs=? WHERE id=?').bind(JSON.stringify(outs), job.id).run();
   const isGroup = (await loadAll(db, U)).groups.some(g => g.id === job.conv);
   const quiet =
     isGroup || job.prompt.startsWith('（例行任務') || BG.test(job.prompt) || /^同事「[^」]*」回覆了你在背景問/.test(job.prompt); // where "（略過）" means nothing to show
@@ -615,7 +623,7 @@ export async function runnerDone(c) {
       );
       await bump(db, U);
     } else if (via?.k === 'ask' && JSON.parse(job.chain).length) {
-      await addJob(db, U, job.conv, JSON.parse(job.chain), job.prompt, job.depth, job.routine);
+      await addJob(db, U, job.conv, JSON.parse(job.chain), job.prompt, job.depth, job.routine, job.hook);
       await bump(db, U);
     }
   }
@@ -673,7 +681,8 @@ export async function runnerDone(c) {
       ],
       orig,
       job.depth,
-      job.routine
+      job.routine,
+      job.hook
     );
     await bump(db, U);
     return ok();
@@ -770,6 +779,6 @@ export async function runnerDone(c) {
   if (asks.length)
     rest = [...asks, { b: self.id, p: `同事已在上面回覆你的問題，請根據回覆繼續完成原本的指示：${job.prompt}` }, ...rest];
   if (gives.length || from) await bump(db, U);
-  await addJob(db, U, job.conv, rest, job.prompt, job.depth + (asks.length || handed.length ? 1 : 0), job.routine);
+  await addJob(db, U, job.conv, rest, job.prompt, job.depth + (asks.length || handed.length ? 1 : 0), job.routine, job.hook);
   return ok();
 }

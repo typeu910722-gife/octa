@@ -20,7 +20,7 @@ import { DAY, MIN, clean, now, perDb, randTok, uid } from './util.mjs';
 // Each routine carries its own instruction. The standing task is background only, and times written in it don't count.
 export const ROUTINE_NEEDS_PROMPT = '請寫這個例行任務每次要做什麼（每個排程有自己的說明，不會再回去讀指定任務）';
 const ROUTINE_FALLBACK = '（這個例行任務還沒寫自己的指示）照你的指定任務，做這個時間該做的事，完成後回報結果。';
-function routinePrompt(r, o = {}) {
+export function routinePrompt(r, o = {}) {
   const head = `（例行任務「${r.name}」${o.event ? '由事件觸發' : ''}）`;
   const when = o.catchup
     ? `這是主機重開後補做的一次${o.missed?.length > 1 ? `（錯過了 ${o.missed.join('、')}，只補做一次）` : ''}。先看今天的對話和工作紀錄：這次該做的如果已經做過、已經傳出去，就不要重做重傳，只補沒做到的；已經過時不用做的就說明略過。`

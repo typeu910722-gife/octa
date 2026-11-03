@@ -125,10 +125,24 @@ CREATE TABLE IF NOT EXISTS jobs (
   retry_of INTEGER,              -- the failed job this one tries again
   via TEXT,                      -- JSON {f: bot id, k: 'ask'|'give', w: what, c: conv}: another bot asked for / handed over this job (幕後)
   routine TEXT,                  -- routines.id that started this job (its result updates that routine's last_*)
-  beat INTEGER                   -- last heartbeat while running (a long job that keeps reporting is not stuck)
+  beat INTEGER,                  -- last heartbeat while running (a long job that keeps reporting is not stuck)
+  hook TEXT,                     -- 4.5: hook_jobs.id of the 交接網址 work this job belongs to (kept by retries and the chain's next steps)
+  outs TEXT                      -- 4.5: JSON [{id,name,mime}] files the reply came with (hook work only)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created);
+CREATE TABLE IF NOT EXISTS hook_jobs (   -- 4.5: work handed over through a 交接網址 (/api/hook/<token>), for its status, inbox and feedback
+  id TEXT PRIMARY KEY,           -- the id the caller gets back
+  user_id TEXT NOT NULL,
+  routine TEXT NOT NULL,         -- routines.id whose hook token it came in on (only that token can read it)
+  conv TEXT NOT NULL,
+  from_ TEXT,                    -- who sent it ("Grok Bot")
+  text TEXT NOT NULL,            -- the instruction (or the correction, for feedback)
+  parent TEXT,                   -- feedback: the hook_jobs.id being redone
+  created INTEGER NOT NULL,
+  seen INTEGER                   -- when the token read the finished result (inbox)
+);
+CREATE INDEX IF NOT EXISTS hook_job_routine ON hook_jobs(routine, created);
 CREATE TABLE IF NOT EXISTS stats (   -- 成果看板: totals per bot per day, added to when a chat job ends
   user_id TEXT NOT NULL,
   bot_id TEXT NOT NULL,

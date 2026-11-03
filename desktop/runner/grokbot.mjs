@@ -7,7 +7,15 @@ import { api } from './api-client.mjs';
 import { pause } from './browser.mjs';
 import { findBin, has, installed } from './engines.mjs';
 import { stopped } from './loop.mjs';
-import { JOB_TIMEOUT_MS, WIN, q } from './state.mjs';
+import { JOB_TIMEOUT_MS, WIN, cfg, q } from './state.mjs';
+
+// ---------- 4.5: not on Windows ----------
+// The Grok Bot app for Windows never writes gateway-descriptor.json, so grok-bot-cli can't sign in there. On Windows
+// nothing here runs (no looking for the tool or the app's files, no tries): the engine reports unavailable with this
+// reason, and Grok Bot works the other way round — it hands work to OCTA through a 交接網址.
+// (cfg.platform: the tests pretend to be another system)
+export const GROKBOT_WIN_TEXT = '⚠ Windows 不支援 Grok Bot：Windows 版的 Grok Bot App 不會產生 gateway-descriptor.json，grok-bot-cli 沒辦法用。請改用交接網址（AI 連線 → Grok Bot），讓 Grok Bot 把工作交給 OCTA 的機器人。';
+export const grokBotUnsupported = () => (cfg.platform || process.platform) === 'win32';
 
 // ---------- Grok Bot (through grok-bot-cli) ----------
 function jsonOut(text) { const t = String(text || '').trim(); const i = t.search(/[[{]/); if (i < 0) return null; try { return JSON.parse(t.slice(i)); } catch { return null; } }
@@ -17,6 +25,7 @@ const pickArr = o => (Array.isArray(o) ? o : o && (o.bots || o.items || o.entrie
 // somewhere else, look for it and point grok-bot-cli there
 let gbEnv = null, gbLook = 0;
 export function grokBotEnv() {
+  if (grokBotUnsupported()) return { missing: '(Windows)', unsupported: true };
   if (Date.now() - gbLook < 5 * 60000) return gbEnv;
   gbLook = Date.now(); gbEnv = null;
   const want = 'gateway-descriptor.json', home = os.homedir();
@@ -41,6 +50,7 @@ const runGbot = (args, timeout = 90000) => new Promise(ok => { const [cmd, a, sh
   (e, out, err) => ok({ code: e ? (e.code ?? 1) : 0, out: String(out || ''), err: String(err || '') + (e?.killed ? '\n（超過 90 秒沒有回應）' : '') })); });
 const gbotError = r => (r.err || r.out).replace(/\x1b\[[0-9;]*m/g, '').trim().split('\n').slice(-6).join('\n').slice(0, 600) || ('結束碼 ' + r.code);
 export async function grokBots() {   // [{name, description}] — groups included (they take messages too)
+  if (grokBotUnsupported()) throw new Error(GROKBOT_WIN_TEXT.replace(/^⚠ /, ''));
   const where = grokBotEnv();
   if (where.missing) throw new Error(`找不到 Grok Bot 桌面 App 的登入資料（${where.missing}${sep}gateway-descriptor.json）。請在這台電腦打開 Grok Bot App 並登入（用官方安裝版，不是複製來的資料夾），讓它連上一次後再試。`);
   const r = await runGbot(['bots', 'list', '--gateway', '--json']);
@@ -52,6 +62,7 @@ export async function grokBots() {   // [{name, description}] — groups include
 const entryText = e => typeof e === 'string' ? e : e.text || e.body || e.markdown || e.message?.text || (Array.isArray(e.content) ? e.content.map(c => c.text || '').join('') : typeof e.content === 'string' ? e.content : '');
 const fromUser = e => /^(user|me|human|you)$/i.test(String(e.role || e.author?.type || e.author || e.from || e.sender || e.kind || ''));
 export async function runGrokBot(job, live) {
+  if (grokBotUnsupported()) return { ok: false, text: GROKBOT_WIN_TEXT + '\n（這台電腦沒有安裝可用的 Grok Bot 連線，所以不會重試）' };   // "這台電腦沒有安裝": a backup AI takes over, no retries
   const name = job.bot.model;
   if (!(await has('gbot'))) return { ok: false, text: '⚠ 這台電腦還沒安裝 grok-bot-cli。請到「AI 連線 → Grok Bot」安裝。' };
   if (!name) return { ok: false, text: '⚠ 這個機器人還沒選擇要帶入的 Grok Bot 機器人，請到任務設定的「模型」選一個。' };
@@ -75,7 +86,8 @@ export async function runGrokBot(job, live) {
 }
 export async function listJob(job) {
   let result;
-  if (!(await has('gbot', true))) result = JSON.stringify({ error: '這台電腦還沒安裝 grok-bot-cli，請先在「AI 連線 → Grok Bot」按安裝' });
+  if (grokBotUnsupported()) result = JSON.stringify({ error: GROKBOT_WIN_TEXT.replace(/^⚠ /, '') });
+  else if (!(await has('gbot', true))) result = JSON.stringify({ error: '這台電腦還沒安裝 grok-bot-cli，請先在「AI 連線 → Grok Bot」按安裝' });
   else try { result = JSON.stringify(await grokBots()); } catch (e) { result = JSON.stringify({ error: e.message }); }
   await api('runner/done', { id: job.id, ok: true, text: result });
 }
