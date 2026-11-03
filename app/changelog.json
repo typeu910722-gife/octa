@@ -1,5 +1,33 @@
 [
  {
+  "v": "4.3.0",
+  "date": "2026-11-03",
+  "notes": [
+   "兩台電腦用同一份資料：在家裡的電腦打開 OCTA，就能看到並指揮店裡電腦的機器人和對話，工作都在店裡的電腦上做（設定 → 電腦）",
+   "連一次就好：在主機電腦按「產生連線碼」，貼到另一台電腦；第一次打開 OCTA 也可以直接選「連到另一台電腦（當遙控器）」",
+   "主機電腦重新開機、網址換了也會自動找回來：用免費的公開轉送服務 ntfy.sh 傳遞加密後的連線網址，不經過 OCTA 伺服器",
+   "連不到主機時，畫面上方會顯示「連不到主機電腦，重新連線中…」，連上就自動消失",
+   "一鍵「換成這台當主機」：把資料和檔案搬到這台電腦，原本的主機改當遙控器；中途失敗會自動復原",
+   "當遙控器時，機器人的瀏覽器用即時畫面觀看和接手；檔案從主機電腦下載"
+  ],
+  "notes_en": [
+   "Two computers, one set of data: open OCTA on your home computer to see and direct the bots and chats of your shop computer; the work still happens on the shop computer (Settings → Computer)",
+   "Link once: press Create link code on the host computer and paste it on the other one; on first start you can also pick Connect to another computer (as a remote)",
+   "When the host restarts and its address changes, the remote finds it again: the address is passed on encrypted through the free public relay ntfy.sh — no OCTA server involved",
+   "If the host can't be reached, a small banner says so and disappears once it's back",
+   "One-click Make this computer the host: moves the data and files here and turns the old host into a remote; anything failing midway is undone",
+   "On a remote, the bot's browser is watched and taken over through its live picture; files download from the host"
+  ],
+  "notes_ja": [
+   "2 台のパソコンで同じデータ：自宅のパソコンで OCTA を開くと、店のパソコンのボットと会話を確認・指示できます。作業は店のパソコンで行われます（設定 → パソコン）",
+   "リンクは 1 回だけ：ホストのパソコンで「接続コードを作成」を押し、もう 1 台に貼り付けます。初回起動時に「別のパソコンに接続（リモコンとして）」も選べます",
+   "ホストが再起動してアドレスが変わっても自動で見つけます。暗号化したアドレスを無料の公開中継サービス ntfy.sh で伝え、OCTA のサーバーは経由しません",
+   "ホストに接続できないときは画面上部に小さく表示され、つながると消えます",
+   "ワンクリックで「このパソコンをホストにする」：データとファイルをこのパソコンに移し、元のホストはリモコンになります。途中で失敗したら自動で元に戻ります",
+   "リモコンでは、ボットのブラウザをライブ画面で見たり操作を引き継いだりできます。ファイルはホストからダウンロードします"
+  ]
+ },
+ {
   "v": "4.2.0",
   "date": "2026-11-02",
   "notes": [

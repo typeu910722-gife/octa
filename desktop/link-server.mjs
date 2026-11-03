@@ -79,7 +79,7 @@ function readPiece(file, off) {
 export function createLinking(ctx) {
   const fetchFn = ctx.fetch || globalThis.fetch;
   const relay = ctx.relay || RELAY;
-  const myName = () => String(ctx.name || os.hostname() || '電腦').slice(0, 40);
+  const myName = () => String(ctx.name || process.env.OCTA_PC_NAME || os.hostname() || '電腦').slice(0, 40);
   const link = () => {
     let l = ctx.getLink() || {};
     if (!l.id) { l = { ...l, id: newId() }; ctx.saveLink(l); }

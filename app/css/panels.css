@@ -219,7 +219,7 @@ ul.chg{margin:0;padding-left:20px;gap:4px}
 .status.via #onlineT{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .status.via:not(.on) .sdot{background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
 .status.via.bad .sdot{animation:vpulse 1.4s ease-in-out infinite}
-.viab{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:var(--r-full);background:var(--raised);border:1px solid var(--warn);box-shadow:var(--sh-2);font-size:13px;color:var(--ink2)}
+.viab{position:fixed;top:calc(var(--head-h,56px) + 12px);left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:var(--r-full);background:var(--raised);border:1px solid var(--warn);box-shadow:var(--sh-2);font-size:13px;color:var(--ink2)}
 .viab .vdot{width:8px;height:8px;border-radius:50%;background:var(--warn);flex:none;animation:vpulse 1.4s ease-in-out infinite}
 @keyframes vpulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.viab .vdot,.status.via.bad .sdot{animation:none}}
@@ -232,4 +232,4 @@ ul.chg{margin:0;padding-left:20px;gap:4px}
 .pcn{display:flex;align-items:center;gap:10px;min-width:0}
 .pcn>.icon{width:20px;height:20px;color:var(--mute);flex:none}
 .pcn>span{display:grid;gap:2px;min-width:0}
-.onb-pc{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px dashed var(--line);border-radius:var(--r)}
+.onb-pc{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px dashed var(--line);border-radius:var(--r)}

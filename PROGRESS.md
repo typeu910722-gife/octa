@@ -202,3 +202,14 @@
 - [x] 測試：test/phone-remote.test.mjs（座標換算、CDP 指令、串流開始/跟著分頁/改截圖/30 秒停、輸入限流、遠端權限、Electron 輸入、介面）
 - [x] 實測：xvfb 下 Electron（內建瀏覽器收在背景）＋ Playwright 手機 390×844 透過遠端埠配對：畫面、點按鈕、打字、Enter 送出表單、刪除、捲動、雙指縮放後點擊、網址列、上一頁、我好了；也測過 server.mjs ＋ 真 Chromium（Chrome 視窗模式）。截圖 docs/screens/phone-remote-*.png（淺/深色）
 - 未實測：真手機經真的 trycloudflare 通道（延遲、iOS Safari 的手勢與鍵盤）、Windows 實機、內建瀏覽器的頁面縮放（Ctrl+＋）時的座標、「使用我的 Chrome」（不支援，照舊顯示說明）
+
+## 4.3.0 兩台電腦一份資料：主機電腦／遙控器（2026-11-03）
+- [x] 角色：desktop.json `link.role` 'host'（預設）／'remote'（`{hostId, hostName, token, lastUrl, secret, epoch}`）。遙控器的本機伺服器把頁面的 /api/* 轉送到主機的通道網址並自己加上電腦金鑰（金鑰不進頁面、清掉瀏覽器資料也不會掉）；/api/config 回 `via`；自己的執行器不跑，自己的資料庫不動（當備份）
+- [x] 連一次：設定 → 電腦 →「讓另一台電腦連進來」產生連線碼（`網址#octa-link=8碼`，10 分鐘、一次有效、猜錯 10 次作廢）；另一台在設定或第一次使用畫面貼上 → POST /api/link/pair → sessions.kind='computer'（不過期，主機可移除）＋共用的 32 位元組連線密鑰
+- [x] 找回主機：有連結的電腦時主機開機就開通道，網址變了或每 6 小時把 AES-256-GCM 加密的 {url, epoch, hostId} 發到 ntfy.sh（topic 由密鑰導出）；遙控器先試 lastUrl（/api/link/hello），不行再讀 ntfy.sh 最新訊息、解密、驗證後重連（5→60 秒退避）。ntfy.sh 連不到時顯示說明並可貼上新網址。desktop/host-link.mjs（純函式，fetch 可注入）
+- [x] 遙控器畫面：側欄「遙控 主機名稱」＋連線狀態、連不到時上方提示「連不到主機電腦，重新連線中…」；需要主機本機的功能改走遙控方式（瀏覽器分頁用 4.2 即時畫面＋接手，不嵌入；檔案經 API 下載；一鍵安裝 AI 改「在電腦上安裝」；檔案資料夾、Chrome、手機遠端顯示要到主機設定）
+- [x] 換成這台當主機：主機暫停執行器、拒絕寫入（503）→ 資料庫快照分段下載（4 MB，SHA-256）→ 核對每個資料表筆數 → 檔案資料夾 1 GB 以內一起搬（超過則說明要手動複製）→ 先備份自己的資料庫再換上 → 開通道 → 通知原主機（commit）→ 原主機改當遙控器、新主機 epoch+1 發布。任何一步失敗：還原資料庫、關通道、abort，原主機繼續；原主機 10 分鐘沒動靜自動恢復；中途當機下次開機依 `link.switching` 完成或還原；ntfy 上 epoch 較大的主機為準，舊主機看到就停手
+- [x] 端點：/api/link/pair、hello、bye、handover/begin（要 computer 金鑰＋confirm）、handover/db、files、file（要 ticket）、commit、abort；/api/desktop/link（本機設定頁）；遠端埠：電腦金鑰在手機遠端關閉時也能用，舊主機對電腦金鑰回 409 moved
+- [x] 測試 test/host-link.test.mjs：連線碼、加解密與 ntfy 輪詢（假 fetch）、lastUrl 失效→ntfy→新網址、兩個真的 startServer（A/B 不同資料夾、遠端埠直連、假 ntfy）：配對、轉送、job 排在 A、ntfy 找回、ntfy 掛掉＋貼網址、移除、交接中拒絕寫入與取消、換主機成功（檔案也搬）、換回途中失敗復原
+- [x] 實測：xvfb 下兩個 Electron（不同 HOME，OCTA_TEST_TUNNEL=direct 用遠端埠當通道，**真的 ntfy.sh**）：連線、B 看到 A 的機器人、B 傳訊息在 A 排工作、瀏覽器分頁即時畫面、A 關掉時 B 顯示提示、A 重開自動重連、B 換成主機（A 自動改當遙控器）、B 換了埠重開後 A 經 ntfy.sh 8 秒找回。截圖 docs/screens/pc-*.png
+- 未實測：真的 trycloudflare 通道（網址變動、Cloudflare 錯誤頁判斷）、Windows 實機、大檔案資料夾經通道的速度、兩台不同版本混用

@@ -29,7 +29,10 @@ async function viaTick(){clearTimeout(LINK.timer);const st=await linkGet();
   if(st&&(st.role==='remote')!==VIA()&&!(st.switching&&!st.switching.done)){location.reload();return}
   paintVia();if(settingsOpen()&&secNow==='pcs'&&!$('sbody').contains(document.activeElement))SEC.pcs();
   LINK.timer=setTimeout(viaTick,LINK.st?.host?.state==='online'?8000:3000)}
-function viaStart(){if(VIA()){paintVia();viaTick()}}
+function viaStart(){if(VIA()){paintVia();viaTick()}else if(DESK())switchedNote()}
+// 換成這台當主機 just finished: the window reloaded as the host, say so once (and what to do about the files folder)
+async function switchedNote(){const s=(await linkGet())?.switching;if(!s?.done||!s.ok)return;linkDo({act:'switch-clear'}).catch(()=>{});
+  openSheet(`${sheetHead('這台電腦現在是主機')}<p>${I18N.t('資料已經搬過來，機器人會在這台電腦上工作，原本的主機改當遙控器。')}</p>${s.filesNote?`<p class="note-box warn"><span data-u>${esc(s.filesNote)}</span></p>`:''}<p class="hmuted">${I18N.t('記得在這台電腦安裝並登入機器人用的 AI 和 Chrome。')}</p><div class="acts"><button class="btn" id="sx">知道了</button></div>`,'sm');$('sx').onclick=closeSheet}
 
 /* ---------- linking this computer to another one (onboarding and settings) ---------- */
 function linkSheet(replace){
@@ -104,7 +107,7 @@ function switchSheet(name){
     <li>${I18N.t('這台電腦原本的資料會先備份。')}</li>
     <li>${I18N.t('完成後機器人在這台電腦上工作，')}<b data-u>${esc(name)}</b> ${I18N.t('改當這台的遙控器。')}</li>
     <li>${I18N.t('中途失敗會自動復原，原本的主機繼續工作。')}</li></ol>
-    <p class="note-box">${ic('info')}<span>${I18N.t('這台電腦也要安裝並登入機器人用的 AI（例如 Claude）和 Chrome；網站的登入不會搬過來，機器人需要時會請你登入；手機要重新配對。')}</span></p></div>
+    <p class="note-box"><span>${I18N.t('這台電腦也要安裝並登入機器人用的 AI（例如 Claude）和 Chrome；網站的登入不會搬過來，機器人需要時會請你登入；手機要重新配對。')}</span></p></div>
     <div class="errmsg" id="swE"></div><div id="swP"></div>
     <div class="acts"><button type="button" class="ghost" id="sx">取消</button><button class="btn" id="swGo">${I18N.t('開始搬移')}</button></div>`,'sm');
   paintIcons($('veil'));$('sx').onclick=closeSheet;

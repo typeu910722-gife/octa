@@ -1409,4 +1409,7 @@ T.update({
  '手機請直接連到主機電腦：在主機電腦的「設定 → 手機遠端」開啟，用那裡顯示的網址和配對碼。這台電腦現在是遙控器，不開手機遠端。': ('Phones connect to the host computer directly: turn it on there under Settings → Phone access and use the address and pairing code it shows. This computer is a remote control and doesn’t offer phone access.', 'スマホはホストのパソコンに直接接続してください。ホストの「設定 → スマホからの接続」でオンにし、表示されるアドレスとペアリングコードを使います。このパソコンはリモコンなのでスマホ接続は使いません。'),
  '附件、截圖和機器人做出的檔案都存在主機電腦的 OCTA 資料夾。在這台電腦打開時，會從主機電腦即時讀取並下載。要改存的位置，請在主機電腦上的 OCTA 設定。': ('Attachments, screenshots and the files the bots make are kept in the OCTA folder on the host computer. Opening one here reads it from the host and downloads it. To change where they’re kept, use OCTA on the host computer.', '添付ファイル、スクリーンショット、ボットが作ったファイルはホストのパソコンの OCTA フォルダーに保存されます。ここで開くとホストから読み込んでダウンロードします。保存先の変更はホストのパソコンの OCTA で行います。'),
  '查看': ('View', '表示'),
+ '這台電腦現在是主機': ('This computer is now the host', 'このパソコンがホストになりました'),
+ '資料已經搬過來，機器人會在這台電腦上工作，原本的主機改當遙控器。': ('The data has moved here. The bots work on this computer now, and the old host is its remote control.', 'データを移しました。ボットはこのパソコンで動き、元のホストはリモコンになりました。'),
+ '記得在這台電腦安裝並登入機器人用的 AI 和 Chrome。': ('Remember to install and sign in to the bots’ AI and Chrome on this computer.', 'このパソコンにもボットが使う AI と Chrome をインストールしてログインしてください。'),
 })
