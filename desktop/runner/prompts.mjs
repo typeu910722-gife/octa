@@ -272,6 +272,7 @@ export function buildLocalPrompt(job, here) {
     hist.length ? '最近的對話：\n' + hist.join('\n') : '',
     notes ? '工作筆記節錄：\n' + notes : '',
     here ? `檔案在 ${here}。` : '',
+    '回覆用繁體中文，只寫結果，1–3 行：不寒暄、不說「讓我先…」、不描述步驟、不用粗體和編號清單。做不到就一句話說卡在哪。不要問使用者網站或工作內容是什麼：看上面的指定任務和對話。',
     `再看一次現在要做：${instruction.slice(0, 500)}`
   ];
   return fitLocal(lines.filter(Boolean).join('\n'), 4000);
