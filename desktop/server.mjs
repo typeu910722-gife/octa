@@ -603,7 +603,7 @@ export async function startServer(opts = {}) {
     url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
     desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
     cloudImport, link: linking, remotePort,
-    async close() { clearInterval(phoneTimer); linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); }
+    async close() { clearInterval(phoneTimer); linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); local.closeAllConnections?.(); remoteSrv.closeAllConnections?.(); }
   };
 }
 

@@ -1,8 +1,8 @@
 // OCTA /go — the phone's stable way back to its host computer (4.4).
 //
 // The host computer's address (a Cloudflare quick tunnel) changes every time OCTA restarts. The host publishes the
-// current address on ntfy.sh, encrypted (desktop/host-link.mjs `seal`); this page, on the stable origin
-// octa.yzprojecttw.com, keeps what the phone needs in its own localStorage, reads the newest message, checks it is
+// current address on ntfy.sh, encrypted (desktop/host-link.mjs `seal`); this page, on the OCTA site (a stable origin,
+// static hosting only), keeps what the phone needs in its own localStorage, reads the newest message, checks it is
 // from the right host, and opens the app there with the phone's session token in the URL fragment.
 //
 // Nothing here talks to an OCTA server: the fragment never leaves the phone, ntfy.sh only sees an encrypted blob.
@@ -67,7 +67,7 @@ export function parseFragment(hash) {
   const out = {};
   const web = g('web'); if (/^[\w-]{1,64}$/.test(web)) out.web = web;
   const tp = g('tp'), k = g('k'), h = g('h');
-  if (/^[a-z2-7]{16,64}$/.test(tp) && B64U.test(k) && /^[A-Za-z0-9_-]{4,64}$/.test(h)) {
+  if (/^[a-z2-7]{16,64}$/.test(tp) && B64U.test(k) && /^[A-Za-z0-9_-]{2,64}$/.test(h)) {
     const host = { tp, k, h, n: g('n').slice(0, 40) };
     if (hostUrlOk(g('u'))) host.u = g('u').replace(/\/+$/, '');
     const t = g('t'), c = g('c').toUpperCase().replace(/[^A-Z0-9]/g, '');
