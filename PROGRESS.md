@@ -313,3 +313,6 @@
 - [x] 測試：test/seabase.test.mjs（場景模型：艙室、狀態、泡泡、計數、交接、會議室；版面與路線；30 fps 迴圈、隱藏停止、靜態模式；釋放一次且只一次、關閉時移除監聽；three.js 在本機、版本固定、MIT、動態載入；busy 的 from；深海色票 WCAG AA、主題色在深海也可讀；設定與首屏）。全套 336 項，失敗只剩原本 4 項
 - [x] 實測（Playwright＋swiftshader 軟體繪圖）：docs/screens/seabase-49-*、desktop-49-sea-*、phone-49-sea-*；JS 每格 0.1–0.3 ms（含標籤），約 190 次 draw call、5.7 萬個三角形；沒有 GPU 的軟體繪圖一格 136–245 ms（真的顯示卡會快很多，所以有自動降解析度）；隱藏時 0 格、省電與減少動態靜止時 0 格；連續開關 8 次 canvas／標籤歸零、JS heap 維持 9–10 MB；手機點擊、雙指縮放、返回手勢可用
 - 未實測：Windows 實機的 GPU 與 CPU 用量、Electron 視窗裡的效能、真的手機（觸控手感、iOS Safari 的 WebGL）、很多機器人（30 個以上）時的擁擠程度
+## 4.8.2 例行任務「上次沒跑成」可以消掉（2026-11-04）
+- [x] 任務總覽卡片的「上次沒跑成」旁加「已處理」按鈕 → POST overview/routine-ok：last_status error→skipped、last_text「已手動處理」，卡片不再顯示；下次排程照常跑、照常回報
+- [x] 測試：overview-memory.test.mjs 新增一項

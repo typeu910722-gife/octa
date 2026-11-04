@@ -252,6 +252,23 @@ test('alerts: pushed at once with a retry link, the same bot and kind throttled 
   }
 });
 
+test('overview: a failed routine run can be marked 已處理 so the card stops showing 上次沒跑成', async () => {
+  const db = await setup();
+  const a = (await call(db, 'POST', 'bots', { body: { name: '首席', task: '算入住名單' } })).data.id;
+  await call(db, 'POST', 'routines', { body: { conv: a, name: '入住名單', times: ['23:59'], prompt: '算名單' } });
+  const rid = (await db.prepare('SELECT id FROM routines WHERE name=?').bind('入住名單').first()).id;
+  await db.prepare("UPDATE routines SET last_status='error', last_text='沒登入', last_run=? WHERE id=?").bind(Date.now(), rid).run();
+  assert.deepEqual((await call(db, 'GET', 'overview')).data.bots.find(x => x.id === a).routineErr.map(x => x.id), [rid]);
+  const ok = await call(db, 'POST', 'overview/routine-ok', { body: { id: rid } });
+  assert.equal(ok.status, 200);
+  assert.equal((await call(db, 'GET', 'overview')).data.bots.find(x => x.id === a).routineErr.length, 0);
+  assert.equal((await call(db, 'POST', 'overview/routine-ok', { body: { id: rid } })).status, 404);
+  const row = await db.prepare('SELECT last_status, last_text FROM routines WHERE id=?').bind(rid).first();
+  assert.deepEqual({ ...row }, { last_status: 'skipped', last_text: '已手動處理' });
+  assert.match(scripts['overview.js'], /data-rok/);
+  assert.ok(dict.en.t['已處理']);
+});
+
 test('app: overview, memory page, alerts, usage and role picker are wired in and translated', () => {
   for (const f of ['overview.js', 'memory-view.js']) assert.ok(html.includes(`<script defer src="/js/${f}"></script>`), f);
   assert.ok(html.includes('id="ovBtn"'));
