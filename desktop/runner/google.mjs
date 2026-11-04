@@ -7,6 +7,7 @@ import {
   addToJar, browsers, busyBots, cdp, cdpInfo, embedPortOf, knownBots, lookedBack, openBrowser, pagesOf, pause,
   pickLivePage, portOf, profileInUse, shareBrowser
 } from './browser.mjs';
+import { googleWorkspacePage } from '../browser-catalog.mjs';
 import { findChrome } from './files.mjs';
 import { realPage, showBrowser } from './live.mjs';
 import { cfg, log, workDir } from './state.mjs';
@@ -38,10 +39,14 @@ export function googleSignInUrl(url) {
   const cont = u.searchParams.get('continue') || 'https://www.google.com/';
   return 'https://accounts.google.com/ServiceLogin?continue=' + encodeURIComponent(cont);
 }
+// 4.8.1: a bot at work whose browser moves: botId → what to do with the Chrome window's port (chat.mjs goes on there)
+export const moving = new Map();
 export async function switchToChrome(botId, url, info = {}) {
   const bot = knownBots.get(botId);
-  const dest = googleSignInUrl(url);
+  // Google's sign-in, or (4.8.1) Gmail, Drive, Docs… which hang in the embedded browser even when signed in
+  const dest = googleSignInUrl(url) || (googleWorkspacePage(url) ? url : '');
   if (!bot || !dest || !cfg.embed) return false;
+  if (!findChrome()) { cfg.embed.useEmbedded?.(botId); return false; }   // no Chrome on this computer: stay in OCTA's browser
   lookedBack.add(botId);
   if (browsers.get(botId)?.embed) browsers.delete(botId);
   try { await cfg.embed.stop?.(embedPortOf(botId)); } catch { }
@@ -49,6 +54,7 @@ export async function switchToChrome(botId, url, info = {}) {
     const port = await openBrowser(bot, { noBack: true });
     await showBrowser(port, dest, false, true);
     log(`🌐 ${bot.name}：Google 不讓內嵌瀏覽器登入，已改用 Chrome 視窗`);
+    try { moving.get(botId)?.(port); } catch { }
     // 4.7: it stays in the Chrome window (no automatic way back: a copied Google sign-in logs out again)
     await chatNote(botId, 'Google 不讓 OCTA 內建瀏覽器登入，這個機器人改用自己的 Chrome 視窗，Google 的登入會一直留在那裡（重開 OCTA 也一樣）。在 Chrome 視窗或手機按「接手」登入一次就好。').catch(() => { });
     return true;

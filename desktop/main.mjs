@@ -901,13 +901,14 @@ function keepAwake(on) {
 async function restartRunner(why) {
   if (!runnerWanted || restarting || importing) return;   // a cloud import restarts the runner itself
   restarting = true;
-  try { logError('runner-restart', new Error(why)); stopRunner(); await startLocalRunner(); }
+  // 4.8.1: the bots' browsers stay open — an AI still working in one would otherwise lose it mid-step (「連不上 127.0.0.1:…」)
+  try { logError('runner-restart', new Error(why)); stopRunner({ keepBrowsers: true }); await startLocalRunner(); }
   catch (e) { logError('runner-restart', e); }
   finally { restarting = false; }
 }
 setInterval(() => { if (runner && runnerMod?.pollAge && runnerMod.pollAge() > 4 * 60000) restartRunner('超過 4 分鐘沒有收到伺服器回應'); }, 60000);
 app.whenReady().then(() => powerMonitor.on('resume', () => setTimeout(() => restartRunner('電腦從睡眠醒來'), 5000)));
-function stopRunner() { runner?.stop(); runner = null; keepAwake(false); }
+function stopRunner(opts) { runner?.stop(opts); runner = null; keepAwake(false); }
 async function startLocalRunner() {
   if (runner) return;
   const mod = await server.loadRunner(); runnerMod = mod;

@@ -303,7 +303,8 @@ test('Google: the in-app browser hands any Google sign-in page to the Chrome win
   for (const d of ['.instagram.com', 'line.me', 'notgoogle.com']) assert.equal(isGoogleCookie({ domain: d }), false, d);
   assert.equal(wantsGoogle({ prompt: '整理 Gmail' }), true);
   const main = readFileSync(join(import.meta.dirname, '..', 'desktop', 'main.mjs'), 'utf8');
-  assert.match(main, /if \(!googleRefused\(url, text\) && !googleSignInPage\(url\)\) return;/);
+  // 4.8.1: Gmail, Drive, Docs… too, even when signed in inside OCTA's browser
+  assert.match(main, /if \(!googleRefused\(url, text\) && !googleSignInPage\(url\) && !googleWorkspacePage\(url\)\) return;/);
   assert.match(main, /autoBack: \(\) => false/);
   assert.match(main, /useChrome, useEmbedded/);
 });

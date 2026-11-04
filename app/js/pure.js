@@ -221,7 +221,7 @@ const minsOf=ms=>Math.max(0,Math.floor((+ms||0)/60000));
    r: its reply's result {ok, text} when known; text: the reply's text. ok only when nothing says otherwise.
    tone: ok (green 完成) · warn (amber 未完成: it waits for you) · err (red 未完成) · stop (you pressed 停止) */
 const WAITS_YOU=['handed','not_logged_in','logout','need_user'];
-const OUT_LABEL={handed:'等你接手',not_logged_in:'需要登入',logout:'被登出',need_user:'需要你提供資料',api:'API 出錯',missing:'資料沒出現',site_changed:'網頁變了',quota:'額度用完',interrupted:'中斷',timeout:'逾時',tool_error:'工具出錯',unknown:'其他錯誤'};
+const OUT_LABEL={handed:'等你接手',not_logged_in:'需要登入',logout:'被登出',need_user:'需要你提供資料',api:'API 出錯',missing:'資料沒出現',site_changed:'網頁變了',quota:'額度用完',interrupted:'中斷',timeout:'逾時',browser:'瀏覽器沒有回應',tool_error:'工具出錯',unknown:'其他錯誤'};
 function jobOutcome(j,r,text){j=j||{};const k=j.err_kind||'',t=String(text||'');
   if(k==='stopped'||(j.status==='error'&&!k&&/已停止|使用者按了停止/.test(String(j.err_msg||'')+t)))return {tone:'stop',label:'已停止',why:''};
   if(k)return {tone:WAITS_YOU.includes(k)?'warn':'err',label:'未完成',why:OUT_LABEL[k]||OUT_LABEL.unknown,msg:String(j.err_msg||'').replace(/^⚠\s*/,'')};

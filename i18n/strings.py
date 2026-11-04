@@ -1020,6 +1020,8 @@ T.update({   # 工作紀錄: why a job failed
  '逾時': ('Timed out', 'タイムアウト'),
  '做太久，或 AI 很久沒有回應，已中止。': ('It took too long, or the AI stopped responding, so it was stopped.', '時間がかかりすぎたか AI が応答しなくなったため、中止しました。'),
  '工具出錯': ('Tool error', 'ツールのエラー'),
+ '瀏覽器沒有回應': ('Browser not responding', 'ブラウザが応答しない'),
+ '機器人的瀏覽器沒有回應，OCTA 自動重開後還是不行。': ('The bot’s browser stopped responding, and restarting it automatically didn’t help.', 'ボットのブラウザが応答せず、OCTA が自動で開き直しても直りませんでした。'),
  '瀏覽器、搜尋或其他工具出錯。': ('The browser, search or another tool failed.', 'ブラウザ、検索、その他のツールでエラーが起きました。'),
  '其他錯誤': ('Other error', 'その他のエラー'),
  '執行時發生錯誤。': ('Something went wrong while running.', '実行中にエラーが起きました。'),

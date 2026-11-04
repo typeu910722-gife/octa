@@ -152,7 +152,7 @@ SEC.work=async()=>{
     <button type="button" class="rrow" id="goBoard">${ic('chart','ri')}<span class="t"><b>成果看板</b><small>近 7 天／30 天每個機器人的成果</small></span>${ic('chev','sa')}</button></div>`;
   $('goLogs').onclick=()=>openLogs();$('goBoard').onclick=()=>openBoard()};
 // why a job failed, in plain words, with its screenshot and a 重試 button (工作紀錄)
-const FAILK={not_logged_in:['需要登入','網站把機器人登出了，或要先登入才能繼續。'],logout:['被登出','網站把機器人登出了。'],api:['API 出錯','用到的網站或服務的 API 沒有正常回應。'],missing:['資料沒出現','應該出現的清單或資料這次沒有出現。'],site_changed:['網頁變了','網頁上找不到要操作的地方，可能改版或跳出了別的畫面。'],quota:['額度用完','AI 的使用額度用完或被限流了。'],interrupted:['中斷','電腦斷線、睡眠或重新啟動，工作做到一半停了。'],timeout:['逾時','做太久，或 AI 很久沒有回應，已中止。'],tool_error:['工具出錯','瀏覽器、搜尋或其他工具出錯。'],handed:['等你接手','你按了接手，機器人停下來等你處理畫面。'],need_user:['需要你提供資料','機器人缺少資料或看不到要處理的東西，要你補給它。'],unknown:['其他錯誤','執行時發生錯誤。']};
+const FAILK={not_logged_in:['需要登入','網站把機器人登出了，或要先登入才能繼續。'],logout:['被登出','網站把機器人登出了。'],api:['API 出錯','用到的網站或服務的 API 沒有正常回應。'],missing:['資料沒出現','應該出現的清單或資料這次沒有出現。'],site_changed:['網頁變了','網頁上找不到要操作的地方，可能改版或跳出了別的畫面。'],quota:['額度用完','AI 的使用額度用完或被限流了。'],interrupted:['中斷','電腦斷線、睡眠或重新啟動，工作做到一半停了。'],timeout:['逾時','做太久，或 AI 很久沒有回應，已中止。'],browser:['瀏覽器沒有回應','機器人的瀏覽器沒有回應，OCTA 自動重開後還是不行。'],tool_error:['工具出錯','瀏覽器、搜尋或其他工具出錯。'],handed:['等你接手','你按了接手，機器人停下來等你處理畫面。'],need_user:['需要你提供資料','機器人缺少資料或看不到要處理的東西，要你補給它。'],unknown:['其他錯誤','執行時發生錯誤。']};
 function logFail(l){const k=l.err_kind&&(FAILK[l.err_kind]||FAILK.unknown);if(!k&&l.status!=='error')return '';
   const canRetry=(l.kind||'chat')==='chat'&&l.status==='error'&&!l.retried;
   return `<div class="lfail">${k?`<span class="pill err">${k[0]}</span><span>${k[1]}</span>`:''}${l.retried?'<span class="pill">已自動重試</span>':''}

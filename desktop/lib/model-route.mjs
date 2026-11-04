@@ -103,6 +103,8 @@ export const FAIL_KINDS = {
   quota: { label: '額度用完', why: 'AI 的使用額度用完或被限流了。', next: '等額度重置，或在任務設定加一個備援 AI。', retry: false },
   interrupted: { label: '中斷', why: '主機電腦斷線、睡眠或重新啟動，工作做到一半停了。', next: '主機連上後會自動接著做；沒有接上就按重試。', retry: true },
   timeout: { label: '逾時', why: '做太久，或 AI 很久沒有回應，已中止。', next: '把工作拆小一點再交代，或稍後按重試。', retry: true },
+  // 4.8.1: the bot's browser stopped answering and OCTA's own recovery (re-show, re-attach, restart it) did not bring it back
+  browser: { label: '瀏覽器沒有回應', why: '機器人的瀏覽器沒有回應，OCTA 自動重開後還是不行。', next: '按「重試」；一直這樣就重新啟動 OCTA。', retry: true },
   tool_error: { label: '工具出錯', why: '瀏覽器、搜尋或其他工具出錯。', next: '確認電腦的網路和瀏覽器正常，再按重試。', retry: true },
   handed: { label: '等你接手', why: '你按了接手，機器人停下來等你處理畫面。', next: '在它的瀏覽器處理好後按「繼續」。', retry: false },
   need_user: { label: '需要你提供資料', why: '機器人缺少資料或看不到要處理的東西，要你補給它。', next: '照它說的補上資料或截圖，再按重試。', retry: false },
@@ -118,6 +120,8 @@ const TIMEOUT_RE = /超過\s*\d+\s*分鐘|很久沒有回應|逾時|timed? ?out|
 // 4.7: an API call that answered with an error, and the data a run expected that was not there
 const API_RE = /API.{0,20}(錯誤|失敗|出錯|回應\s*[45]\d\d|error|failed)|\bHTTP\s*[45]\d\d\b|status(?: code)?\s*[45]\d\d|\b(400|403|404|500) (Bad Request|Forbidden|Not Found|Internal Server Error)\b|網站的?金鑰(失效|無效|過期)/i;
 const MISSING_RE = /找不到(?:這次|今天|今日|要處理的|任何)?.{0,8}(名單|清單|訂單|資料|紀錄|報表|檔案|項目|訊息|列表)|(名單|清單|訂單|資料|報表|列表)(是空的|沒有出現|不見了|找不到)|沒有(?:任何)?(?:新的?)?(名單|清單|資料|報表)可以/;
+// the bot's own browser (its local CDP port) refused or kept timing out — not the site
+const BROWSER_RE = /連不上\s*(瀏覽器|127\.0\.0\.1:\d+)|ECONNREFUSED 127\.0\.0\.1:\d+|connect(OverCDP)?\b.{0,40}127\.0\.0\.1:\d+.{0,40}(refused|timed? ?out|timeout)|瀏覽器(連線)?.{0,6}(一直)?(逾時|沒有回應|沒回應)|瀏覽器沒有回應/i;
 const TOOL_RE = /\bmcp\b|playwright|browser_\w+|tool (error|failed)|工具(錯誤|失敗|出錯)|target (page|closed)|net::ERR|ECONNREFUSED|ECONNRESET|瀏覽器(錯誤|失敗|打不開)|(瀏覽器|工具|網頁|頁面).{0,6}(連不上|開不起來|打不開|沒反應|卡住)|(停|卡)在(載入|讀取|loading)|一直(載入|轉圈|讀取)|載入不(出來|完)/i;
 const NEED_USER_RE = /需要你(提供|給|傳|告訴|確認)|請(你|您)(提供|給我|傳|告訴)|看不到.{0,20}(需要|請)|把(正確的?)?[^。\n]{0,16}(路徑|檔案|網址|資料|帳號)[^。\n]{0,8}給我|(檔案|路徑|資料夾)[^。\n]{0,12}(不存在|找不到)/;
 
@@ -132,6 +136,7 @@ export function classifyJobFailure(text, { hint, stalled } = {}) {
   if (model === 'quota' || model === 'rate_limit') return 'quota';
   if (MISSING_RE.test(t)) return 'missing';
   if (SITE_CHANGED_RE.test(t)) return 'site_changed';
+  if (BROWSER_RE.test(t)) return 'browser';
   if (TIMEOUT_RE.test(t)) return 'timeout';
   if (model === 'tool' || model === 'transient' || model === 'unavailable' || TOOL_RE.test(t)) return 'tool_error';
   if (NEED_USER_RE.test(t)) return 'need_user';

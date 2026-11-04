@@ -161,10 +161,11 @@ export function startRunner(opts) {
   resetWatches();
   const firstWatch = setTimeout(() => checkWatches().catch(() => { }), 15000);
   return {
-    stop: () => {
+    // keepBrowsers: a restart (after sleep, or the server not answering) leaves the bots' browsers open for the next run
+    stop: (opts = {}) => {
       stopped = true; poll?.abort();
       clearInterval(reaper); clearInterval(watcher); clearTimeout(firstWatch);
-      reapBrowsers(true).catch(() => { });
+      if (!opts.keepBrowsers) reapBrowsers(true).catch(() => { });
       for (const id of [...sessions.keys()]) closeSession(id);
     },
     active: () => active, standby: () => standby

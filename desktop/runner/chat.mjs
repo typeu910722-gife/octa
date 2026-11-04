@@ -4,10 +4,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { stripConnectorTask, takeConnectorTask, toolForBrowse } from '../lib/connectors.mjs';
 import { api, saveUpload } from './api-client.mjs';
-import { busyBots, cdp, ensureBrowser, pagesOf, setShareBrowser, shareBrowser, syncOut, touchBrowser } from './browser.mjs';
+import { busyBots, cdp, cdpInfo, embedPortOf, ensureBrowser, ensureHealthy, pagesOf, setShareBrowser, shareBrowser, syncOut, touchBrowser } from './browser.mjs';
 import { browseKind, has, runEngine } from './engines.mjs';
 import { botDir, convDir, freeName, newFiles, newestImage, rel, safeName, storeDir } from './files.mjs';
-import { chromeForGoogle, wantsGoogle } from './google.mjs';
+import { chromeForGoogle, moving, wantsGoogle } from './google.mjs';
 import { runGrokBot } from './grokbot.mjs';
 import { browserSnapshot, captureEyes, finishBrowserWindow, pushLive, settleBrowserWindow } from './live.mjs';
 import { browserUseReady } from './ollama.mjs';
@@ -34,9 +34,12 @@ async function chatRun(job) {
   let port = 0;
   if (own && !side && job.bot.engine !== 'grokbot') {
     if (wantsGoogle(job)) await chromeForGoogle(job.bot).catch(e => log('改用 Chrome：' + e.message));   // 4.7: Gmail & co. only in its own Chrome
-    try { port = await ensureBrowser(job.bot); } catch (e) { log('瀏覽器：' + e.message); }
+    try { port = await ensureBrowser(job.bot); } catch (e) { log('瀏覽器：' + e.message); job.browserDown = e.message; }
+    // 4.8.1: the browser must answer before the AI starts (not just its port: its page too); fixed here if it does not
+    if (port) { try { port = await ensureHealthy(job.bot, port); } catch (e) { log('瀏覽器：' + e.message); job.browserDown = e.message; port = 0; } }
+    if (job.browserDown) job.browserNote = `你的瀏覽器這次打不開（${String(job.browserDown).slice(0, 80)}），OCTA 已自動重開仍不行。要看網頁的部分不要猜：回覆第一行寫「⚠ 沒做成：瀏覽器沒有回應」，再說哪些沒做。`;
   }   // a Grok Bot works on xAI's cloud computer
-  const b = botDir(side ? job.bot.id + '-side' : job.bot.id, side ? 'own' : job.bot.browser, port), { dir } = b;
+  let b = botDir(side ? job.bot.id + '-side' : job.bot.id, side ? 'own' : job.bot.browser, port), { dir } = b;
   const here = convDir(job.conv || job.bot);
   if (port) busyBots.add(job.bot.id);
   for (const h of job.history) {   // attachments: already in the folder, or saved there now
@@ -108,6 +111,24 @@ async function chatRun(job) {
   let res;
   job.stopForHand = () => ctl.kill?.();
   const liveBeat = port ? setInterval(() => pushLive(port, job).catch(() => { }), 1500) : null;
+  // 4.8.1 watchdog: the browser's port went away under the AI (OCTA restarted it, it crashed): open it again on the same
+  // port, so the AI's browser tools connect again on their next step instead of 「連不上 127.0.0.1:…」 until the end
+  let dogBusy = false, dogMiss = 0;
+  const dog = port ? setInterval(async () => {
+    if (dogBusy || job.moved || stoppedByUser) return;
+    dogBusy = true;
+    try {
+      if (await cdpInfo(port)) { dogMiss = 0; return; }
+      if (++dogMiss < 2) return;
+      if (cfg.embed?.external?.(job.bot.id) && port === embedPortOf(job.bot.id)) return;   // moved to its Chrome window (handled below)
+      const again = await ensureHealthy(job.bot, port).catch(e => { log('瀏覽器：' + e.message); return 0; });
+      if (again && again !== port) job.moved = again;
+      dogMiss = 0;
+    } finally { dogBusy = false; }
+  }, 4000) : null;
+  // 4.8.1: Gmail & co. (or Google's sign-in) opened in the embedded browser mid-turn: the bot moves to its Chrome window.
+  // The AI's browser connection pointed at the embedded one, so it stops now and goes on in the Chrome window below.
+  if (port && !side) moving.set(job.bot.id, chromePort => { if (!job.moved) { job.moved = chromePort; log(`🌐 ${job.bot.name}：瀏覽器改到 Chrome 視窗，接著在那裡做`); ctl.kill?.(); } });
   try {
     if (port) await settleBrowserWindow(port, job);
     if (!side) refreshNotes(job);
@@ -121,6 +142,16 @@ async function chatRun(job) {
       const session = res.session || sid;
       if (!(await holdPaused()) || job.handed) break;
       res = await runEngine('claude', RESUME_PROMPT, b, job.bot.model, { ...live, session: { id: session, resume: true } });
+    }
+    // moved to its Chrome window mid-turn: the same work goes on there (Claude: the same session, so nothing is redone)
+    for (let hop = 0; job.moved && hop < 2 && !stoppedByUser && !job.handed; hop++) {
+      const to = job.moved; job.moved = 0;
+      port = to; job.bot.livePort = to; live.port = to;
+      b = botDir(job.bot.id, job.bot.browser, to);
+      if (!(await holdPaused())) break;
+      res = sid && !job.warm
+        ? await runEngine('claude', MOVED_PROMPT, b, job.bot.model, { ...live, session: { id: res?.session || sid, resume: true } })
+        : await runEngine(engine, taskPrompt(job, here) + '\n\n' + MOVED_PROMPT, b, job.bot.model, { ...live, session: null });
     }
     if (res?.paused) res = job.handed ? { ok: true, text: '' } : { ok: false, text: '已停止' };
     if (res?.ok && engine !== 'grokbot') {
@@ -145,7 +176,7 @@ async function chatRun(job) {
       }
     }
   }
-  finally { clearTimeout(timerP); clearInterval(beat); clearInterval(liveBeat); if (port) { busyBots.delete(job.bot.id); touchBrowser(job.bot.id); } }
+  finally { clearTimeout(timerP); clearInterval(beat); clearInterval(liveBeat); clearInterval(dog); moving.delete(job.bot.id); if (port) { busyBots.delete(job.bot.id); touchBrowser(job.bot.id); } }
   if (job.handed && res) { res.ok = true; res.text = '我先停手。你在旁邊的畫面登入或看完，按繼續我就重新讀頁再做。'; }
   if (res?.text) res.text = hideSecrets(stripStepMarks(stripConnectorTask(stripBrowserTask(res.text))), job) || '這次沒有新的結果。';
   if (port && res?.text) res.text = await finishBrowserWindow(port, job, res.text);
@@ -185,7 +216,7 @@ async function chatRun(job) {
     id: job.id, ok: res.ok, text: res.text, page, tokens: res.tokens ?? null,
     files: res.ok ? newFiles(join(here, '輸出'), start) : [], browser: !!port, stopped: stoppedByUser,
     ...(job.later ? { later: true } : {}), ...(nsk ? { nskills: nsk } : {}),
-    ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : {}), ...(shotB64 ? { shot: shotB64 } : {}),
+    ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : !res.ok && job.browserDown ? { err_kind: 'browser' } : {}), ...(shotB64 ? { shot: shotB64 } : {}),
     ...(job.handed ? { handed: true } : {}), ...(quse ? { quse } : {})
   });
   log(`${res.ok ? '✓' : '✗'} ${job.bot.name}`);
@@ -193,6 +224,8 @@ async function chatRun(job) {
   try { cfg.onDone?.(job, res); } catch { }
 }
 
+// 4.8.1: the bot's browser moved to its own Chrome window mid-turn (Gmail and Google's other apps only work there)
+export const MOVED_PROMPT = '（OCTA 剛把你的瀏覽器換成這個機器人自己的 Chrome 視窗：Gmail 等 Google 服務只能在那裡用，登入也在那裡）接著做剛才的工作。瀏覽器工具現在連到 Chrome 視窗：先用 browser_tabs 和 browser_snapshot 看目前的頁面，需要的網址重新打開；已經做完的步驟不要重做。要登入 Google 就照規則請使用者在 Chrome 視窗登入。做完照原本的規則寫回覆（單獨一行【回覆】之後）。';
 // 4.7: what a paused Claude session is told when 繼續 is pressed (same session, --resume)
 export const RESUME_PROMPT = '（使用者剛才按了暫停，現在按了繼續）接著做剛才的工作。暫停時使用者可能動過頁面：先用 browser_snapshot 重新讀目前的頁面再做下一步，不沿用之前的引用；已經做完的步驟不要重做。做完照原本的規則寫回覆（單獨一行【回覆】之後）。';
 // Relay (Ollama): the main turn cannot click. A logged-in page is one extra round on the same browser, then a text report.

@@ -154,6 +154,9 @@ function markProfile(profile, name) {
   } catch (e) { log('瀏覽器標記失敗：' + e.message); }
 }
 const onDesk = new Set();
+// 4.8.1: a bot's Chrome window keeps drawing and running its pages while it is behind other windows or minimised
+// (Windows otherwise marks it occluded: pages go hidden, screenshots and waits time out)
+export const CHROME_AWAKE = ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-features=CalculateNativeWinOcclusion'];
 export const knownBots = new Map();
 export const lookedBack = new Set();   // bots whose Chrome profile was already checked for a Google sign-in since this start
 // Google refuses sign-in inside the embedded browser ("這個瀏覽器或應用程式可能有安全疑慮").
@@ -198,7 +201,7 @@ export async function openBrowser(bot, opts = {}) {
   markProfile(profile, bot.name);
   const child = spawn(chrome, [`--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, '--no-first-run', '--no-default-browser-check', `--window-name=OCTA｜${bot.name}`,
     `data:text/html;charset=utf-8,${encodeURIComponent(`<title>${bot.name} 的瀏覽器</title><body style="margin:0;display:grid;place-items:center;height:100vh;background:${colorOf(bot.name)};color:#fff;font:600 32px system-ui,sans-serif">🐙 ${bot.name.replace(/[<&]/g, '')} 的瀏覽器<div style="font:400 15px system-ui;opacity:.85;margin-top:12px">OCTA 機器人專用，登入後網站會共用給其他機器人</div></body>`)}`,
-    '--restore-last-session', `--window-position=${40 + ((port - 9311) % 6) * 60},${30 + ((port - 9311) % 6) * 40}`, '--window-size=1200,820'], { detached: true, stdio: 'ignore', windowsHide: false });
+    '--restore-last-session', ...CHROME_AWAKE, `--window-position=${40 + ((port - 9311) % 6) * 60},${30 + ((port - 9311) % 6) * 40}`, '--window-size=1200,820'], { detached: true, stdio: 'ignore', windowsHide: false });
   child.on('error', () => { });
   child.unref();
   for (let i = 0; i < 40; i++) { if (await cdpInfo(port)) break; await pause(500); }
@@ -235,6 +238,55 @@ export async function reapBrowsers(all) {
       browsers.delete(id);
     } catch { browsers.delete(id); }
   }
+}
+
+// ---------- 4.8.1 watchdog: the bot's browser answers, and so does its page ----------
+// The port can be up while the page under it is stuck (not drawing, a dead debugger): read it and take a tiny picture.
+const within = (p, ms, what) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error(what + '逾時')), ms))]);
+export async function browserHealth(port, ms = 6000) {
+  if (!port || !(await cdpInfo(port))) return { ok: false, why: 'down' };
+  try {
+    return await within(cdp(port, async send => {
+      const p = pickLivePage(await pagesOf(send));
+      if (!p) return { ok: true, why: 'no-page' };
+      const { sessionId } = await send('Target.attachToTarget', { targetId: p.targetId, flatten: true });
+      try {
+        await send('Runtime.evaluate', { expression: 'document.readyState', returnByValue: true }, sessionId);
+        await send('Page.captureScreenshot', { format: 'jpeg', quality: 10, clip: { x: 0, y: 0, width: 16, height: 16, scale: 1 } }, sessionId);
+        return { ok: true, targetId: p.targetId };
+      } finally { send('Target.detachFromTarget', { sessionId }).catch(() => { }); }
+    }), ms, '瀏覽器檢查');
+  } catch (e) { return { ok: false, why: 'stuck', error: e.message }; }
+}
+// before a job (and when the watchdog sees the port gone): bring the bot's browser back by itself.
+// embedded: re-show / re-attach its pages (revive), else start it over; Chrome window: open it again.
+// Returns the port that works, or throws an error with kind 'browser' (shown as 「瀏覽器沒有回應」).
+export async function ensureHealthy(bot, port, opts = {}) {
+  let h = await browserHealth(port);
+  if (h.ok) return port;
+  log(`🩺 ${bot.name} 的瀏覽器沒有回應（${h.why}${h.error ? '：' + h.error : ''}），自動修復中…`);
+  const embedded = !!browsers.get(bot.id)?.embed || (cfg.embed && bot.browser !== 'mine' && !cfg.embed.external?.(bot.id) && port === embedPortOf(bot.id));
+  if (embedded && h.why === 'stuck' && cfg.embed?.revive) {
+    try { if (await cfg.embed.revive(port)) { h = await browserHealth(port); if (h.ok) { log(`🩺 ${bot.name} 的瀏覽器恢復了`); return port; } } } catch (e) { log('修復瀏覽器：' + e.message); }
+  }
+  if (!embedded && h.why === 'stuck') {   // a Chrome window whose page hangs: load the page again first
+    try { await within(cdp(port, async send => { const p = pickLivePage(await pagesOf(send)); if (p) { const { sessionId } = await send('Target.attachToTarget', { targetId: p.targetId, flatten: true }); await send('Page.reload', {}, sessionId); } }), 6000, '重新載入'); } catch { }
+    await pause(2000);
+    h = await browserHealth(port);
+    if (h.ok) { log(`🩺 ${bot.name} 的瀏覽器恢復了`); return port; }
+  }
+  // start it over: a waiting AI connected to the old one starts fresh too
+  if (sessions.has(bot.id)) closeSession(bot.id);
+  if (embedded) { try { await cfg.embed.stop?.(port); } catch { } }
+  else if (h.why === 'stuck') { try { await cdp(port, send => send('Browser.close')); } catch { } await pause(1500); }
+  browsers.delete(bot.id);
+  let again = 0;
+  try { again = await openBrowser(bot, { show: opts.show === true }); } catch (e) { h = { ok: false, why: 'down', error: e.message }; }
+  if (again) { for (let i = 0; i < 3 && !(h = await browserHealth(again)).ok; i++) await pause(1000); }
+  if (again && h.ok) { log(`🩺 ${bot.name} 的瀏覽器已重新開好`); return again; }
+  const err = new Error(`瀏覽器沒有回應（已自動重開仍不行${h.error ? '：' + h.error : ''}）`);
+  err.kind = 'browser';
+  throw err;
 }
 
 // 4.2 手機遙控: the CDP port of the browser this bot uses right now (OCTA's embedded one or its Chrome window), 0 if none is open.
