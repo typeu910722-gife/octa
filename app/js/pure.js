@@ -124,7 +124,8 @@ function octaFrag(hash){const p=new URLSearchParams(String(hash||'').replace(/^#
   const t=p.get('t')||'',web=p.get('web')||'',go=p.get('go')||'',retry=p.get('retry')||'';
   if(/^[A-Za-z0-9_-]{16,200}$/.test(t))o.t=t;
   if(/^[\w-]{1,64}$/.test(web))o.web=web;
-  if(o.web&&/^\d{1,12}$/.test(retry))o.retry=retry;   // 4.7: a 一鍵重試 link (only shows the button; retrying is an API call)
+  if(o.web&&/^\d{1,12}$/.test(retry))o.retry=retry;
+  if(/^(overview|base|sea)$/.test(p.get('view')||''))o.view='overview';   // 4.9.2: open 任務總覽 (older 深海基地 links too)   // 4.7: a 一鍵重試 link (only shows the button; retrying is an API call)
   if(/^(https:\/\/octa\.yzprojecttw\.com|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)\/go$/.test(go))o.go=go;
   return o}
 // the link that sets up /go on this phone (what it keeps: the relay key, which computer, this phone's token)

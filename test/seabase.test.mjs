@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { css, fnSrc, html, js, read, root, scripts } from './app-source.mjs';
+import { css, dict, fnSrc, html, js, read, root, scripts } from './app-source.mjs';
 
-const M = new Function(scripts['pure.js'] + '\n' + scripts['seamodel.js'] + '\nreturn { seaModel, seaLayout, seaSpot, seaRoute, seaLoop, seaDispose, seaCut, SEA_POD_COLS };')();
+const M = new Function(scripts['pure.js'] + '\n' + scripts['seamodel.js'] + '\nreturn { seaModel, seaLayout, seaSpot, seaRoute, seaLoop, seaDispose, seaCut, SEA_POD_COLS, seaActs, SEA_ACTS, seaHash };')();
 const now = Date.UTC(2026, 10, 4, 4);
 const state = () => ({
   bots: [{ id: 'a', name: '小美', folder: 'f1', color: '#E58C8A' }, { id: 'b', name: '阿哲', folder: 'f1' }, { id: 'c', name: '客服', folder: 'f2' },
@@ -108,7 +108,7 @@ test('closing frees every geometry, material and texture once (shared ones too),
   for (const m of adds) assert.match(src.slice(m.index, m.index + 900), /,sig\)|\{\.\.\.sig/, m[1] + ' is removed on close');
   // hidden or minimised: the loop stops; reduced motion and 省電模式: still pictures, smaller pixel ratio
   assert.match(scripts['seabase.js'], /visibilitychange',\(\)=>\{if\(SEA\.g\)\{if\(document\.hidden\)SEA\.g\.loop\.stop\(\)/);
-  assert.match(scripts['seabase.js'], /hidden:\(\)=>document\.hidden\|\|!SEA\.el,animate:\(\)=>!seaStill\(\)\|\|seaMoving\(G\)/);
+  assert.match(scripts['seabase.js'], /hidden:\(\)=>document\.hidden\|\|!SEA\.el\|\|seaFolded\(\),animate:\(\)=>!seaStill\(\)\|\|seaMoving\(G\)/);
   assert.match(fnSrc('seaStill'), /seaLow\(\)\|\|seaReduced\(\)/);
   assert.match(scripts['seabase.js'], /const seaPR=\(\)=>Math\.min\(devicePixelRatio\|\|1,seaLow\(\)\?1:1\.5\)/);
   // the phone's back gesture and Esc close it; the docked browser of the desktop app steps aside while it is open
@@ -127,11 +127,11 @@ test('three.js is vendored (pinned, MIT), loaded only when the view opens, from 
   assert.doesNotMatch(html, /vendor\/three/, 'not in the page itself');
   assert.match(read('desktop/server.mjs'), /p\.startsWith\('\/vendor\/'\) \? 'public, max-age=31536000, immutable'/);
   assert.ok(JSON.parse(read('desktop/package.json')).build.files.includes('web/**'));
-  // the page: the button beside 任務總覽, the scripts in order, a fallback without WebGL
-  assert.ok(html.includes('id="seaBtn"'));
+  // the page: opened from 任務總覽 (4.9.2), the scripts in order, a fallback without WebGL
+  assert.ok(!html.includes('id="seaBtn"'));
   assert.ok(html.indexOf('/js/seamodel.js') < html.indexOf('/js/seabase.js') && html.indexOf('/js/pure.js') < html.indexOf('/js/seamodel.js'));
   assert.match(fnSrc('openSea'), /if\(!seaHasGL\(\)\)\{seaFallback\(\);return\}/);
-  assert.match(css, /\.sea-cards\{/);
+  assert.match(css, /\.seaview\.flat\{/);
 });
 
 test('busy rows say who handed the job over (jobs.via f, or an older 〔背景:…〕 prompt)', async () => {
@@ -191,4 +191,137 @@ test('深海 in Settings, before first paint, the moving light, 省電模式', (
   assert.doesNotMatch(sea.replace(/\/\*[\s\S]*?\*\//g, ''), /@keyframes[^}]*\{[^}]*(filter|width|height|left|top)\s*:/, 'the moving light animates transforms only');
   assert.match(scripts['prefs.js'], /\$\('pLow'\)\.onchange=e=>\{store\.set\('octa_lowpower',e\.target\.checked\?'1':null\);seaFx\(\);if\(typeof seaPrefs==='function'\)seaPrefs\(\)\}/);
   assert.ok(html.includes('/css/sea.css') && html.includes('/css/seabase.css'));
+});
+
+// ---------- 4.9.2: nothing to do → something to do (遊戲角), and one page with 任務總覽 ----------
+const idleState = (busy = []) => ({
+  bots: ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ id, name: 'B' + id, folder: i % 2 ? 'f1' : null })),
+  folders: [{ id: 'f1', name: '台南店' }], groups: [], busy, now
+});
+
+test('idle bots find something to do: the same answer for the same moment, pairs at the tables, one at a time at the arcade', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e'];
+  assert.deepEqual(M.seaActs(ids, now), M.seaActs([...ids].reverse(), now), 'deterministic, whatever the order');
+  const seen = new Set(), pairs = new Set();
+  for (let k = 0; k < 400; k++) {
+    const t = now + k * 15000, a = M.seaActs(ids, t);
+    assert.deepEqual(Object.keys(a).sort(), ids, 'everyone gets something');
+    for (const [id, x] of Object.entries(a)) {
+      seen.add(x.k);
+      assert.ok(M.SEA_ACTS[x.k], x.k);
+      if (M.SEA_ACTS[x.k].two) { assert.equal(a[x.with].with, id, 'a game for two has both players'); assert.equal(a[x.with].k, x.k); assert.notEqual(a[x.with].side, x.side); pairs.add(x.at); }
+    }
+    // one bot at a time at the arcade, the jukebox and the bean bag; at most one game per table
+    for (const k2 of ['arcade', 'dance', 'read']) assert.ok(Object.values(a).filter(x => x.k === k2).length <= 1, k2);
+    for (const at of ['t0', 't1']) assert.ok(Object.values(a).filter(x => x.at === at).length <= 2, at);
+  }
+  assert.ok(seen.size >= 10, 'variety over time: ' + [...seen].join(','));
+  assert.deepEqual([...pairs].sort(), ['t0', 't1'], 'both tables get used');
+  // two idle bots: usually they play together
+  let together = 0; for (let k = 0; k < 200; k++) { const a = M.seaActs(['x', 'y'], now + k * 45000); if (a.x.with === 'y') together++; }
+  assert.ok(together > 120, 'two free bots mostly play a game for two (' + together + '/200)');
+  // each changes on its own rhythm (20–60 s), a nap is rare
+  let changes = 0, naps = 0, prev = M.seaActs(['solo'], now).solo.k;
+  for (let k = 1; k <= 600; k++) { const x = M.seaActs(['solo'], now + k * 5000).solo.k; if (x !== prev) changes++; if (x === 'nap') naps++; prev = x; }
+  assert.ok(changes >= 40 && changes <= 160, '50 minutes, a change every 20–60 s (' + changes + ')');
+  assert.ok(naps < 120, 'a nap is rare (' + naps + '/600)');
+});
+
+test('the scene model: free bots play (bubble says what), work wins at once and they go back to their desk', () => {
+  const m = M.seaModel(idleState()), L = M.seaLayout(m);
+  assert.ok(m.bots.every(b => b.act), 'nobody just dozes');
+  for (const b of m.bots) { assert.equal(b.bubble.lab, M.SEA_ACTS[b.act.k].word); assert.equal(b.word, M.SEA_ACTS[b.act.k].word); }
+  // 遊戲角: its own dome beside the hub, clear of everything, joined by a tube (it is a pod in the layout)
+  assert.ok(L.pods.play && L.spots.t0a && L.spots.arcadeB);
+  for (const [k, p] of Object.entries(L.pods)) if (k !== 'play') assert.ok(Math.hypot(p.x - L.pods.play.x, p.z - L.pods.play.z) > p.r + L.pods.play.r + 2, k);
+  for (const [k, sp] of Object.entries(L.spots)) assert.ok(Math.hypot(sp.x - L.pods.play.x, sp.z - L.pods.play.z) < L.pods.play.r, k + ' inside 遊戲角');
+  const player = m.bots.find(b => M.SEA_ACTS[b.act.k].two) || m.bots.find(b => ['arcade', 'dance', 'read'].includes(b.act.k));
+  if (player) { const sp = M.seaSpot(m, L, player); assert.equal(sp.node, 'pod:play'); assert.ok(M.seaRoute(L, 'pod:' + player.pod, 'pod:play', L.desks[player.id], sp).length >= 3, 'swims there through the tubes'); }
+  // a job starts: no game, back at its own desk, its bubble says the work
+  const id = (player || m.bots[0]).id;
+  const m2 = M.seaModel(idleState([{ job: 7, bot_id: id, status: 'running', kind: 'chat', conv: id, progress: { text: '查訂單', step: 1, total: 2 } }]));
+  const b2 = m2.bots.find(b => b.id === id);
+  assert.equal(b2.act, null); assert.equal(b2.bubble.tone, 'run');
+  assert.deepEqual(M.seaSpot(m2, M.seaLayout(m2), b2), { x: L.desks[id].x, z: L.desks[id].z, node: 'pod:' + L.desks[id].pod }, 'straight back to its console');
+  // waiting for you, failed, queued, paused, waiting on a colleague: not playing
+  const s = state(), mb = M.seaModel(s);
+  for (const id2 of ['b', 'd', 'e', 'p']) assert.equal(mb.bots.find(b => b.id === id2).act, null, id2);
+  // the 3D: the pose of the game, props from one pool per bot, a still pose when the picture is still
+  assert.match(fnSrc('seaBotState'), /b\.act&&!b\.job\?SEA_ACTS\[b\.act\.k\]\.pose/);
+  assert.match(scripts['seabase.js'], /const ak=!e\.route&&b\.act&&!b\.job\?b\.act\.k:''/, 'props only once it got there, never while working');
+  assert.doesNotMatch(fnSrc('seaPlay'), /new |\[\]|\{\s*\w+:/, 'no allocations per frame');
+  assert.doesNotMatch(fnSrc('seaLoungeFrame'), /new /);
+  assert.match(fnSrc('seaPropTex'), /if\(G\.tex\[key\]\)return G\.tex\[key\]/, 'prop pictures made once, freed with the rest');
+});
+
+test('one page: 任務總覽 holds the base and the list, one entry in the sidebar, old links open it', () => {
+  // one button (with its needs-you badge), no 深海基地 button
+  assert.equal((html.match(/class="ovbtn/g) || []).length, 1);
+  assert.ok(html.includes('id="ovBtn"') && html.includes('id="ovBadge"') && !html.includes('seaBtn'));
+  assert.match(html, /id="ovBtn"[^>]*><span data-i="sea"/);
+  assert.match(scripts['overview.js'], /\$\('ovBtn'\)\.onclick=\(\)=>\{if\(typeof leaveOk==='function'\)leaveOk\(openSea\);else openSea\(\)\}/);
+  assert.match(fnSrc('openOverview'), /openSea\(\)/);
+  assert.doesNotMatch(js, /\$\('seaBtn'\)|sea-cards|seaQc\(/, 'the module cards and the quick card are gone: one card system');
+  // the page: the stage (3D) and the list side by side; list collapsible and resizable (remembered); phone: the 3D folds
+  const open = fnSrc('openSea');
+  for (const k of ['seaStage', 'seaPanel', 'seaSplit', 'ovSeg', 'ovBody', 'seaFold', 'seaHide', 'seaShow']) assert.ok(open.includes(`id="${k}"`), k);
+  assert.match(open, /store\.get\('octa_ovc'\)==='1'/); assert.match(open, /store\.get\('octa_ovw'\)/); assert.match(open, /store\.get\('octa_ovfold'\)==='1'/);
+  // one set of counters, and they are the filters
+  const paint = fnSrc('paintOverview');
+  for (const k of ["'all'", "'run'", "'need'", "'done'", "'fail'"]) assert.ok(paint.includes('[' + k), k);
+  assert.match(paint, /role="tab" data-f=/);
+  assert.match(paint, /m\.pods\.map\(p=>/, 'cards grouped by 分區, in the base\'s order');
+  // older filters still mean something
+  assert.match(scripts['overview.js'], /f==='bad'\?'fail':f==='today'\?'done'/);
+  // #view=overview (and older 深海基地 links), the 一鍵重試 bar's 總覽
+  const octaFrag = new Function(scripts['pure.js'] + ';return octaFrag')();
+  assert.equal(octaFrag('#view=overview').view, 'overview'); assert.equal(octaFrag('#view=sea').view, 'overview'); assert.equal(octaFrag('#view=x').view, undefined);
+  assert.match(scripts['api.js'], /if\(f\.view\)try\{sessionStorage\.setItem\('octa_goview','1'\)/);
+  assert.match(fnSrc('viewDeepLink'), /openSea\(\)/);
+  assert.match(fnSrc('retryBar'), /data-al="ov"/);
+  // the list is painted with the picture: one poll, the done counts from the same overview request
+  assert.match(fnSrc('loadOverview'), /SEA\.done=Object\.fromEntries/);
+  assert.match(fnSrc('seaTick'), /loadOverview\(\)/);
+  assert.doesNotMatch(scripts['overview.js'], /setInterval\(\(\)=>\{if\(!ovOpen\(\)\)/, 'no second poll');
+  // every function stays: retry, 已處理, open chat, 工作, 它記得什麼, pause, go approve
+  const card = fnSrc('ovCard'), click = fnSrc('ovClick');
+  for (const a of ['data-retry', 'data-rok', 'data-open', 'data-work', 'data-mem', 'data-pz', 'data-ask']) { assert.ok(card.includes(a), a); assert.ok(click.includes(a.slice(5)) || click.includes(a), a); }
+  for (const s2 of ['遊戲角', '打桌球中 🏓', '收起清單', '點章魚看它的卡片', '關閉任務總覽']) assert.ok(dict.en.t[s2], s2);
+});
+
+test('the base and the list point at each other: an octopus finds its card, a card moves the camera, both light up', () => {
+  // a click in the picture → that card picked, scrolled into view, flashed (switching to 全部 if a filter hid it)
+  const click = fnSrc('seaClick');
+  assert.match(click, /if\(u\.bot\)\{seaSelect\(u\.bot,true\);return\}/);
+  assert.match(click, /if\(u\.room\)\{seaSelect\(u\.room,true\);return\}/);
+  assert.match(click, /seaFocus\(u\.pod\);if\(u\.pod!=='play'\)ovRevealPod\(u\.pod\)/);
+  assert.match(fnSrc('seaSelect'), /if\(from3d\)ovReveal\(id\);seaLook\(id\)/);
+  const rev = fnSrc('ovReveal');
+  assert.match(rev, /OV\.filter='all'/); assert.match(rev, /scrollIntoView/); assert.match(rev, /classList\.add\('flash'\)/);
+  // a card → the camera swims to its octopus (or meeting room); its 分區 header → into that module
+  assert.match(fnSrc('ovClick'), /if\(c\)seaSelect\(SEA\.sel===c\.dataset\.oc\?null:c\.dataset\.oc\)/);
+  assert.match(fnSrc('ovClick'), /seaFocus\(SEA\.focus===id\?null:id\)/);
+  const look = fnSrc('seaLook');
+  assert.match(look, /g\.tx=x;g\.tz=z/); assert.match(look, /seaFolded\(\)/, 'a folded phone picture does not move');
+  // hovering: a card lights its octopus (name tag, halo), an octopus lights its card
+  assert.match(scripts['seabase.js'], /addEventListener\('pointerover',e=>\{if\(e\.pointerType!=='mouse'\)return;const c=e\.target\.closest\('\[data-oc\]'\);seaHi\(c\?c\.dataset\.oc:null\)\},sig\)/);
+  assert.match(fnSrc('seaHover'), /SEA\.hover=hb;ovMark\(\)/);
+  assert.match(fnSrc('ovMark'), /classList\.toggle\('hov',SEA\.hover===id\)/);
+  assert.match(fnSrc('ovMark'), /classList\.toggle\('sel',SEA\.sel===id\)/);
+  assert.match(fnSrc('seaTags'), /lb\.el\.classList\.toggle\('hl',hl\)/);
+  assert.match(scripts['seabase.js'], /const hl=SEA\.hover===id\|\|SEA\.sel===id;e\.halo\.scale\.set\(hl\?4:2\.6/);
+  // what needs you / failed glows in both: the beacon in 3D, the card's glow
+  assert.match(fnSrc('ovCard'), /\$\{i\.bad\?' bad':''\}\$\{i\.need\?' ov-need':''\}/);
+  assert.match(css, /\.ov-card\.ov-need::after,\.ov-card\.bad::after\{[^}]*animation:ovGlow/);
+  assert.match(css, /\.seaview\.still \.ov-card::after/);
+  // the card's state comes from the same model as the picture
+  const info = new Function('SEA', 'apprWait', fnSrc('ovInfo') + '\n' + fnSrc('OV_PASS') + '\nreturn { ovInfo, OV_PASS };');
+  const m = M.seaModel(state()), { ovInfo, OV_PASS } = info({ m }, id => id === 'e');
+  const row = id => ({ id, failed: [], alert: null, routineErr: [], running: [], queued: 0, doneN: 0, done: [] });
+  assert.deepEqual(ovInfo(row('e'), false), { need: true, bad: false, run: false, pod: 'hub', act: null, job: null, paused: false });
+  assert.equal(ovInfo(row('d'), false).bad, true, 'its last run failed');
+  assert.equal(ovInfo(row('a'), false).run, true); assert.equal(ovInfo(row('a'), false).pod, 'f1');
+  assert.equal(ovInfo(row('g1'), true).need, true, 'a group card waiting for your 核准'); assert.equal(ovInfo(row('g1'), true).pod, 'f2');
+  assert.ok(OV_PASS.need(row('e'), ovInfo(row('e'), false)) && !OV_PASS.need(row('a'), ovInfo(row('a'), false)));
+  assert.ok(OV_PASS.done({ ...row('a'), doneN: 2 }) && !OV_PASS.done(row('a')));
 });

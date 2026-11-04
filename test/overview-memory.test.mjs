@@ -275,7 +275,7 @@ test('app: overview, memory page, alerts, usage and role picker are wired in and
   assert.ok(html.includes('id="quota"'));
   const ov = scripts['overview.js'], mv = scripts['memory-view.js'];
   assert.match(ov, /api\('overview'\)/);
-  assert.match(ov, /有問題的/);
+  assert.match(ov, /沒做成/);
   assert.match(ov, /api\('alerts/);
   assert.match(ov, /ai-usage/);
   assert.match(mv, /memview/);

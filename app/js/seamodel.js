@@ -50,7 +50,7 @@ function seaModel(d){d=d||{};const bots=d.bots||[],groups=d.groups||[],folders=d
   for(const k of links){const a=out.find(x=>x.id===k.from);if(a&&!a.job&&!a.visit){a.visit=k.to;if(!a.need&&!a.fail)a.bubble={lab:'等回覆',txt:seaCut(name(k.to),10),tone:'chat'}}}
   for(const x of out){pod(x.pod).bots.push(x.id);if(x.room)rooms.find(r=>r.id===x.room).busy=true}
   // 4.9.2 nothing to do: no dozing at the desk — each finds something to do (two of them play together); work always wins
-  const acts=seaActs(out.filter(seaFree).map(x=>x.id),now);
+  const acts=seaActs(out.filter(seaIsFree).map(x=>x.id),now);
   for(const x of out){const a=acts[x.id]||null;x.act=a;if(!a)continue;
     x.word=SEA_ACTS[a.k].word;x.bubble={lab:SEA_ACTS[a.k].word,txt:a.with?seaCut(name(a.with),8):'',tone:a.k==='nap'?'idle':'play'}}
   for(const r of rooms){const nt=needTag(lastOf(r.id),(d.lastJob||{})[r.id]);r.need=(d.gask||{})[r.id]?'ap':['ap','login','ask'].includes(nt.k)?nt.k:''}
@@ -76,8 +76,9 @@ const SEA_ACTS={
 const SEA_SOLO=Object.keys(SEA_ACTS).filter(k=>!SEA_ACTS[k].two);
 const SEA_PAIR_MS=45000;
 // free to play: nothing running, queued, waiting for you, failed, or waiting on a colleague
-const seaFree=x=>!x.job&&!x.queued&&!x.need&&!x.fail&&!x.visit&&!x.paused;
-function seaHash(s){let h=2166136261;for(const c of String(s)){h^=c.codePointAt(0);h=Math.imul(h,16777619)}return h>>>0}
+const seaIsFree=x=>!x.job&&!x.queued&&!x.need&&!x.fail&&!x.visit&&!x.paused;
+function seaHash(s){let h=2166136261;for(const c of String(s)){h^=c.codePointAt(0);h=Math.imul(h,16777619)}
+  h^=h>>>16;h=Math.imul(h,2246822507);h^=h>>>13;h=Math.imul(h,3266489909);h^=h>>>16;return h>>>0}   // FNV-1a, then mixed (similar names and slots differ)
 /* ids: the bots free to play; now: the time. → {id: {k, at, with?, side?}}
    The same bots at the same moment always get the same answer. Pairs change every 45 s (up to two tables, each used
    about three times in four); everyone else changes on their own rhythm, every 20–60 s; the arcade cabinet, the jukebox

@@ -180,6 +180,7 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
     const leg=new T.Mesh(new T.CylinderGeometry(.18,.3,.6,10),dark);leg.position.y=.82;g.add(leg);
     const holo=new T.Mesh(new T.ConeGeometry(.75,1.3,24,1,true),new T.MeshBasicMaterial({color:p.color,transparent:true,opacity:.16,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide,toneMapped:false}));holo.rotation.x=Math.PI;holo.position.y=1.85;g.add(holo);G.holos=(G.holos||[]);G.holos.push(holo);
     seaLabel(G,'r:'+r.id,{x:c.x,y:0,z:c.z,r:c.r+.9},`<small><span>會議室</span></small><b data-u>${esc(r.name)}</b>`,'sea-pl room',p.color)}
+  G.lounge=null;if(L.pods.play)seaLounge(G,base,L,dome);
   // tubes: the hub to each module, each module to its meeting rooms; light pulses run along them
   G.tubes=[];const glassT=seaGlass(T,U,0x6ff3ff,.03,0),collarM=new T.MeshStandardMaterial({color:0x2c5a6b,roughness:.4,metalness:.7,emissive:new T.Color(0x2fd8e6),emissiveIntensity:.25});
   const tube=(a,b,ra,rb,col,key)=>{const dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1,ux=dx/l,uz=dz/l;
@@ -191,6 +192,7 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
     const pulses=[];for(let i=0;i<2;i++){const s=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:col,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));s.scale.set(.9,.9,1);base.add(s);pulses.push(s)}
     G.tubes.push({key,curve,len,pulses,hot:0})};
   for(const p of m.pods.slice(1)){const a=L.pods.hub,b=L.pods[p.id];tube(a,b,a.r+.4,b.r+.4,p.color,'hub>'+p.id)}
+  if(L.pods.play){const a=L.pods.hub,b=L.pods.play;tube(a,b,a.r+.4,b.r+.4,SEA_PLAY_COL,'hub>play')}
   for(const r of m.rooms){const a=L.pods[r.pod],b=L.rooms[r.id];tube(a,b,a.r+.4,b.r+.4,m.pods.find(x=>x.id===r.pod).color,r.pod+'>'+r.id)}
   // desks: one mesh each for tops, monitors, screens and stools (instanced)
   const ids=m.bots.map(b=>b.id),n=Math.max(1,ids.length);
@@ -213,11 +215,14 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
     sp.center.set(.5,.1);sp.scale.set(SEA_OCT,SEA_OCT,1);sp.userData.bot=b.id;sp.renderOrder=5;base.add(sp);G.pick.push(sp);
     const sh=new T.Mesh(new T.PlaneGeometry(1.4,1.4).rotateX(-Math.PI/2),shadowM);base.add(sh);
     const halo=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:new T.Color(colorHex(b.color)||OC_DEFAULT),transparent:true,opacity:.3,depthWrite:false,blending:T.AdditiveBlending}));halo.scale.set(2.6,2.6,1);base.add(halo);
-    const e={sp,sh,halo,beam:null,ph:Math.random()*6,pos:old?old.pos:null,route:null,s:0,node:null,state:''};G.bots[b.id]=e;
+    // 4.9.2 what it plays with: one prop and three small bits (bubbles, notes, crumbs), shown only while it plays
+    const prop=new T.Sprite(new T.SpriteMaterial({map:G.glow,transparent:true,depthWrite:false,toneMapped:false}));prop.visible=false;prop.renderOrder=6;base.add(prop);
+    const bits=[0,1,2].map(()=>{const s=new T.Sprite(new T.SpriteMaterial({map:G.glow,transparent:true,depthWrite:false,toneMapped:false}));s.visible=false;s.renderOrder=6;base.add(s);return s});
+    const e={sp,sh,halo,beam:null,ph:Math.random()*6,pos:old?old.pos:null,route:null,s:0,node:null,state:'',prop,bits,ak:'',lk:0,hop:0};G.bots[b.id]=e;
     seaLabel(G,'b:'+b.id,null,'','sea-bt',colorHex(b.color)||OC_DEFAULT)}}
 // what a bot looks like now: its pose, screen, beacon, bubble — and where it should be (it swims there through the tubes)
 function seaBotState(G,b,m,L){const T=G.T,e=G.bots[b.id];if(!e)return;
-  const pose=b.need&&b.state==='idle'?'working':b.state;   // waiting for you: awake, not dozing
+  const pose=b.act&&!b.job?SEA_ACTS[b.act.k].pose:b.need&&b.state==='idle'?'working':b.state;   // waiting for you: awake, not dozing; playing: its game's pose
   if(e.state!==pose+b.color){e.state=pose+b.color;e.sp.material.map=seaOctTex(G,pose,b.color);e.sp.material.needsUpdate=true}
   e.sp.material.color.set(b.paused?0x8a99a3:0xffffff);
   const tone=b.need?'need':b.fail?'fail':'';
@@ -242,3 +247,79 @@ function seaPath(pts){const seg=[];let len=0;for(let i=1;i<pts.length;i++){const
 function seaAlong(r,s){let d=s*r.len;for(let i=0;i<r.seg.length;i++){if(d<=r.seg[i]||i===r.seg.length-1){const k=r.seg[i]?Math.min(1,d/r.seg[i]):1,a=r.pts[i],b=r.pts[i+1];return {x:a.x+(b.x-a.x)*k,z:a.z+(b.z-a.z)*k}}d-=r.seg[i]}return r.pts[r.pts.length-1]}
 function seaLabel(G,key,at,html,cls,col){const el=document.createElement('div');el.className='sea-tag '+cls;el.style.setProperty('--c',col);if(html)setHTML(el,html);$('seaTags').appendChild(el);
   G.labels[key]={el,at,h:html,x:-1e4,y:-1e4,w:0,vis:true}}
+
+/* ---------- 4.9.2 遊戲角: where the bots with nothing to do play, and the things they play with ---------- */
+const SEA_PLAY_COL='#FF9AD5';
+// a picture for a prop: an emoji (the system's colour font), or a drawn bubble / yo-yo
+function seaPropTex(G,k){const key='prop:'+k;if(G.tex[key])return G.tex[key];const T=G.T,cv=document.createElement('canvas');cv.width=cv.height=128;const x=cv.getContext('2d');
+  if(k==='bubble'){const g=x.createRadialGradient(52,50,6,64,64,58);g.addColorStop(0,'rgba(255,255,255,.9)');g.addColorStop(.25,'rgba(200,250,255,.15)');g.addColorStop(.85,'rgba(150,240,255,.35)');g.addColorStop(1,'rgba(150,240,255,0)');
+    x.fillStyle=g;x.beginPath();x.arc(64,64,58,0,7);x.fill();x.strokeStyle='rgba(220,255,255,.9)';x.lineWidth=4;x.beginPath();x.arc(64,64,52,0,7);x.stroke()}
+  else if(k==='yoyo'){x.fillStyle='#ff5e8a';x.beginPath();x.arc(64,64,50,0,7);x.fill();x.fillStyle='#ffd1de';x.beginPath();x.arc(64,64,20,0,7);x.fill();x.strokeStyle='#b82e57';x.lineWidth=6;x.beginPath();x.arc(64,64,50,0,7);x.stroke()}
+  else{x.font='96px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText({paddle:'🏓',book:'📖',note:'🎵',fish:'🐟'}[k]||'✨',64,70)}
+  const t=new T.CanvasTexture(cv);t.colorSpace=T.SRGBColorSpace;G.tex[key]=t;return t}
+// the low table's top: a chess board, or cards on felt
+function seaBoardTex(G,k){const key='board:'+k;if(G.tex[key])return G.tex[key];const T=G.T,cv=document.createElement('canvas');cv.width=cv.height=128;const x=cv.getContext('2d');
+  if(k==='chess'){for(let i=0;i<8;i++)for(let j=0;j<8;j++){x.fillStyle=(i+j)%2?'#2b3a4a':'#e8dcc0';x.fillRect(i*16,j*16,16,16)}
+    for(const [i,j,c] of [[1,1,'#fff'],[2,6,'#111'],[5,2,'#fff'],[6,5,'#111'],[3,3,'#fff'],[4,4,'#111']]){x.fillStyle=c;x.beginPath();x.arc(i*16+8,j*16+8,5.5,0,7);x.fill()}}
+  else{x.fillStyle='#1f7a52';x.beginPath();x.arc(64,64,62,0,7);x.fill();
+    [[-18,-14,'#fff','♥'],[0,-18,'#fff','♠'],[18,-14,'#fff','♦'],[-6,22,'#fff','♣']].forEach(([dx,dy,c,s],i)=>{x.save();x.translate(64+dx,64+dy);x.rotate((i-1.5)*.3);x.fillStyle=c;x.fillRect(-11,-15,22,30);x.fillStyle=i%2?'#111':'#d22';x.font='bold 16px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(s,0,1);x.restore()})}
+  const t=new T.CanvasTexture(cv);t.colorSpace=T.SRGBColorSpace;G.tex[key]=t;return t}
+function seaLounge(G,base,L,dome){const T=G.T,c=L.pods.play,g=dome(c.x,c.z,c.r,SEA_PLAY_COL,'play','pod');
+  const lg=new T.Group();lg.rotation.y=-c.a;g.add(lg);   // local x: away from the hub, z: across (the same spots as seaLayout)
+  const std=(col,o)=>new T.MeshStandardMaterial(Object.assign({color:col,roughness:.5,metalness:.2},o||{}));
+  const box=(w,h,d,m,x,y,z)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m);o.position.set(x,y,z);lg.add(o);return o};
+  const leg=std(0x1b3442,{metalness:.6});
+  // the ping-pong table (t0), long across the room
+  box(1.3,.07,2.6,std(0x1c6fb0,{roughness:.35}),-.3,1.25,-1.7);
+  box(.04,.01,2.6,new T.MeshBasicMaterial({color:0xe8f6ff}),-.3,1.29,-1.7);
+  box(1.42,.18,.03,new T.MeshBasicMaterial({color:0xdff3ff,transparent:true,opacity:.75}),-.3,1.37,-1.7);
+  box(1.1,.75,.08,leg,-.3,.87,-2.6);box(1.1,.75,.08,leg,-.3,.87,-.8);
+  // the low table (t1): chess or cards
+  const tt=new T.Mesh(new T.CylinderGeometry(.72,.72,.08,28),std(0x6b4a8a,{roughness:.4}));tt.position.set(.9,1,1.9);lg.add(tt);
+  const tl=new T.Mesh(new T.CylinderGeometry(.14,.26,.5,10),leg);tl.position.set(.9,.75,1.9);lg.add(tl);
+  const boardM=new T.MeshBasicMaterial({map:seaBoardTex(G,'chess'),toneMapped:false});
+  const board=new T.Mesh(new T.PlaneGeometry(.92,.92).rotateX(-Math.PI/2),boardM);board.position.set(.9,1.05,1.9);lg.add(board);
+  // the arcade cabinet: screen and marquee face the room
+  box(.85,1.9,.85,std(0x2a1745,{roughness:.6}),3.3,1.45,-.6);
+  const scrM=new T.MeshBasicMaterial({color:0x3a2a66,toneMapped:false}),scr=new T.Mesh(new T.PlaneGeometry(.62,.46),scrM);scr.rotation.y=-Math.PI/2;scr.position.set(2.865,1.9,-.6);lg.add(scr);
+  box(.9,.18,.9,new T.MeshBasicMaterial({color:0xff7ad9,toneMapped:false}),3.3,2.48,-.6);
+  box(.45,.08,.7,std(0x111822),2.75,1.4,-.6);
+  // the jukebox: an arch of light that changes colour
+  box(.8,1.3,.55,std(0x3b1f2a,{roughness:.4,metalness:.4}),2.3,1.15,-2.9);
+  const jM=new T.MeshBasicMaterial({color:0xffb86b,toneMapped:false}),jk=new T.Mesh(new T.TorusGeometry(.3,.06,6,24,Math.PI),jM);jk.position.set(2.3,1.45,-2.6);lg.add(jk);
+  // a bean bag and a soft rug
+  const bean=new T.Mesh(new T.SphereGeometry(.78,20,12),std(0xff7aa8,{roughness:.95,metalness:0}));bean.scale.set(1,.5,1);bean.position.set(-1.9,.75,2.9);lg.add(bean);
+  const rug=new T.Mesh(new T.CircleGeometry(c.r*.82,40).rotateX(-Math.PI/2),new T.MeshBasicMaterial({color:0xff9ad5,transparent:true,opacity:.13,depthWrite:false}));rug.position.y=.52;lg.add(rug);
+  const ball=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:0xffffff,transparent:true,depthWrite:false,toneMapped:false}));ball.scale.set(.34,.34,1);ball.visible=false;base.add(ball);
+  G.lounge={ball,boardM,boardK:'chess',scr:scrM,juke:jM};
+  seaLabel(G,'p:play',{x:c.x,y:0,z:c.z,r:c.r+.9},'<b>遊戲角</b>','sea-pl',SEA_PLAY_COL)}
+// what each game shows: a prop in front (scale ps), and bits (bubbles, notes, crumbs; n of them, scale bs, tint bc)
+const SEA_PROPS={pingpong:{prop:'paddle',ps:.7},read:{prop:'book',ps:.78},dance:{bits:'note',bs:.46},juggle:{bits:'bubble',bs:.44},yoyo:{bits:'yoyo',bs:.36,n:1},
+  feed:{prop:'fish',ps:.62,bits:'glow',bc:0xffb35c,bs:.22},coral:{bits:'glow',bc:0xff7ad9,bs:.55}};
+function seaPropSet(G,e,k){const T=G.T,P=SEA_PROPS[k]||{};
+  e.prop.visible=!!P.prop;if(P.prop){const m=e.prop.material;m.map=seaPropTex(G,P.prop);m.rotation=0;m.opacity=1;e.prop.scale.set(P.ps,P.ps,1);m.needsUpdate=true}
+  e.bits.forEach((s,i)=>{const on=!!P.bits&&i<(P.n||3);s.visible=on;if(!on)return;const m=s.material,gl=P.bits==='glow';
+    m.map=gl?G.glow:seaPropTex(G,P.bits);m.color.set(P.bc||0xffffff);m.blending=gl?T.AdditiveBlending:T.NormalBlending;m.rotation=0;m.opacity=1;s.scale.set(P.bs,P.bs,1);m.needsUpdate=true})}
+// one frame of a game (no allocations): where the prop and bits are; returns the octopus's tilt (or null), e.hop lifts it
+function seaPlay(G,e,b,k,x,y,z,t){const fx=G.fx||0,fz=G.fz||1,rx=fz,rz=-fx,P=e.prop,B=e.bits;let rot=null;
+  const at=(s,f,r,h)=>s.position.set(x+fx*f+rx*r,y+h,z+fz*f+rz*r);
+  switch(k){
+    case 'pingpong':{const sw=Math.sin(t*4.4+(b.act.side?Math.PI:0));at(P,.45,b.act.side?-.55:.55,1+sw*.12);P.material.rotation=sw*.5;e.hop=Math.abs(sw)*.08;G.pp[b.act.side?1:0]=e;break}
+    case 'chess':case 'cards':rot=Math.sin(t*.8+e.ph)*.06;e.hop=-.1;G.t1=k;break;
+    case 'arcade':e.hop=Math.abs(Math.sin(t*7+e.ph))*.05;G.arc=1;break;
+    case 'dance':rot=Math.sin(t*3.4+e.ph)*.3;e.hop=Math.abs(Math.sin(t*3.4+e.ph))*.3;G.juke=1;
+      for(let i=0;i<3;i++){const s=B[i],u=(t*.45+i/3)%1;at(s,.2,(i-1)*.55+Math.sin(u*6+i)*.15,1.6+u*1.6);s.material.opacity=Math.sin(u*Math.PI)}break;
+    case 'read':at(P,.6,.05,.85+Math.sin(t*1.2+e.ph)*.03);e.hop=-.18;rot=-.06;break;
+    case 'juggle':for(let i=0;i<3;i++){const an=t*2.6+i*2.094;at(B[i],.35,Math.cos(an)*.62,2.5+Math.sin(an)*.5)}e.hop=Math.abs(Math.sin(t*2.6))*.05;break;
+    case 'yoyo':{const d=Math.abs(Math.sin(t*2.2+e.ph));at(B[0],.45,.6,1.2-d*.8);B[0].material.rotation=t*8;break}
+    case 'feed':at(P,1,Math.sin(t*.9+e.ph)*.6,.7+Math.sin(t*2)*.08);
+      for(let i=0;i<3;i++){const s=B[i],u=(t*.55+i/3)%1;at(s,.8,(i-1)*.25,1.5-u*1.1);s.material.opacity=1-u}break;
+    case 'coral':for(let i=0;i<3;i++){const s=B[i],k2=.45+.2*Math.sin(t*2+i*1.7);at(s,.9,(i-1)*.5,.2+(i%2)*.25);s.scale.set(k2,k2,1)}rot=Math.sin(t*.7)*.05;break}
+  return rot}
+// the room's moving parts: the ping-pong ball between the two players, the board, the arcade screen, the jukebox
+function seaLoungeFrame(G,t,still){const L=G.lounge;if(!L)return;const A=G.pp[0],B=G.pp[1];
+  if(A&&B){const u=still?.35:(t*1.25)%2,s=u<1?u:2-u,a=A.sp.position,b=B.sp.position,k=.14+.72*s;L.ball.visible=true;L.ball.position.set(a.x+(b.x-a.x)*k,1.5+Math.sin(s*Math.PI)*.55,a.z+(b.z-a.z)*k)}
+  else L.ball.visible=false;
+  if(G.t1&&L.boardK!==G.t1){L.boardK=G.t1;L.boardM.map=seaBoardTex(G,G.t1);L.boardM.needsUpdate=true}
+  if(G.arc)L.scr.color.setHSL((t*1.7)%1,.9,.42+(still?0:.14*Math.sin(t*19)));else L.scr.color.setHSL(.72,.5,.2);
+  L.juke.color.setHSL((t*(G.juke?.25:.05))%1,.85,.6)}

@@ -34,21 +34,55 @@
 .qpw.warn b{color:var(--warn)}.qpw.err b{color:var(--err)}
 .qpn2{color:var(--mute);font-size:12px}
 
-/* ---------- 任務總覽 ---------- */
-.sheet.ovw,.sheet.memv{width:min(1180px,100%);height:min(860px,calc(100dvh - 48px));padding:0;gap:0;grid-template-rows:auto auto minmax(0,1fr);overflow:hidden}
-.sheet.memv{width:min(820px,100%)}
-.sheet.ovw>.shd,.sheet.memv>.shd{margin:0;padding:12px 12px 10px 22px;border-bottom:0;display:flex;align-items:center;gap:6px}
-.sheet.ovw>.shd h2,.sheet.memv>.shd h2{margin-right:auto}
-.ov-bar,.mv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:0 22px 12px;border-bottom:1px solid var(--line)}
-.ov-sum{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;font-size:calc(12.5px * var(--fz));color:var(--ink2)}
-.ov-s{display:inline-flex;align-items:baseline;gap:4px;padding:3px 10px;border-radius:var(--r-full);background:var(--sunk)}
-.ov-s b{font-size:calc(14px * var(--fz));color:var(--ink)}
-.ov-s.err{background:var(--err-soft)}.ov-s.err b{color:var(--err)}
-.ov-s.ap{background:var(--warn-soft)}.ov-s.ap b{color:var(--warn)}
-.ov-body,.mv-body{overflow:auto;padding:16px 22px 24px;background:var(--bg)}
-.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;align-items:start}
-.ov-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 14px 12px;display:grid;gap:10px;box-shadow:var(--sh-1);min-width:0}
-.ov-card.bad{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+/* ---------- 任務總覽 (4.9.2: the list beside 深海基地, app/css/seabase.css lays out the page) ---------- */
+.sheet.memv{width:min(820px,100%);height:min(860px,calc(100dvh - 48px));padding:0;gap:0;grid-template-rows:auto auto minmax(0,1fr);overflow:hidden}
+.sheet.memv>.shd{margin:0;padding:12px 12px 10px 22px;border-bottom:0;display:flex;align-items:center;gap:6px}
+.sheet.memv>.shd h2{margin-right:auto}
+.mv-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:0 22px 12px;border-bottom:1px solid var(--line)}
+.ov-bar{display:flex;align-items:stretch;gap:6px;padding:calc(14px + var(--safe-t)) 10px 12px 14px;border-bottom:1px solid var(--line);background:var(--bg)}
+.ov-cnt{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;flex:1;min-width:0}
+/* the counters are the filters: a tile each, the number big */
+.ov-f{position:relative;display:grid;align-content:center;justify-items:start;gap:1px;padding:7px 10px 6px;border-radius:12px;background:var(--sunk);border:1px solid transparent;color:var(--ink2);font-size:calc(11.5px * var(--fz));line-height:1.2;text-align:left;min-width:0;transition:background .15s,border-color .15s}
+.ov-f span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-f:hover{background:var(--hover)}
+.ov-f b{font-size:calc(19px * var(--fz));font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
+.ov-f.all b{color:var(--mute)}
+.ov-f.run.on b{color:var(--info)}
+.ov-f.done.on b{color:var(--ok)}
+.ov-f.need.on{background:var(--warn-soft);color:var(--ink)}.ov-f.need.on b{color:var(--warn)}
+.ov-f.need.on::before{content:"";position:absolute;right:9px;top:9px;width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 70%,transparent);animation:ovPing 1.6s infinite}
+.ov-f.fail.on{background:var(--err-soft);color:var(--ink)}.ov-f.fail.on b{color:var(--err)}
+.ov-f.sel{border-color:var(--accent);box-shadow:var(--ring)}
+.ov-f.all.sel{background:var(--accent-soft)}
+@keyframes ovPing{70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.ov-tools{display:grid;align-content:space-between;flex:none}
+.ov-tools .ib{width:30px;height:30px}
+.ov-bar>.ib{flex:none}
+.ov-body,.mv-body{overflow:auto;padding:14px 16px 24px;background:var(--bg)}
+.ov-body{overscroll-behavior:contain;scroll-padding:12px}
+/* one section per 分區, in the base's order; its header points the camera there */
+.ov-pod{display:grid;gap:10px;margin-bottom:18px}
+.ov-ph{display:flex;align-items:baseline;gap:8px;text-align:left;padding:5px 8px;margin:0 -8px;border-radius:10px;color:var(--ink);min-width:0;flex-wrap:wrap}
+.ov-ph:hover{background:var(--hover)}
+.ov-ph i{width:10px;height:10px;border-radius:3px;background:var(--pc);box-shadow:0 0 8px var(--pc);align-self:center;flex:none}
+.ov-ph b{font-size:calc(14.5px * var(--fz));font-weight:750}
+.ov-ph small{color:var(--mute);font-size:calc(12px * var(--fz))}
+.ov-ph.on{background:color-mix(in srgb,var(--pc) 16%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pc) 45%,transparent)}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;align-items:start}
+.ov-card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 14px 12px;display:grid;gap:10px;box-shadow:var(--sh-1);min-width:0;transition:border-color .2s,box-shadow .2s}
+.ov-hd{cursor:pointer}
+/* needs you / failed: they glow here as they do in the base */
+.ov-card.bad{border-color:color-mix(in srgb,var(--err) 55%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--err) 25%,transparent),0 0 18px color-mix(in srgb,var(--err) 16%,transparent)}
+.ov-card.ov-need{border-color:color-mix(in srgb,var(--warn) 65%,var(--line));box-shadow:0 0 0 1px color-mix(in srgb,var(--warn) 30%,transparent),0 0 20px color-mix(in srgb,var(--warn) 20%,transparent)}
+.ov-card.ov-need::after,.ov-card.bad::after{content:"";position:absolute;inset:-1px;border-radius:inherit;pointer-events:none;box-shadow:0 0 26px color-mix(in srgb,var(--warn) 45%,transparent);opacity:0;animation:ovGlow 2.6s ease-in-out infinite}
+.ov-card.bad::after{box-shadow:0 0 26px color-mix(in srgb,var(--err) 40%,transparent)}
+@keyframes ovGlow{50%{opacity:1}}
+.seaview.still .ov-card::after,.seaview.still .ov-f.need.on::before{animation:none}
+/* linked with the base: hovered (here or on its octopus), picked, just found */
+.ov-card.hov{border-color:color-mix(in srgb,var(--oc,var(--accent)) 70%,var(--line))}
+.ov-card.sel{border-color:var(--oc,var(--accent));box-shadow:0 0 0 2px color-mix(in srgb,var(--oc,var(--accent)) 55%,transparent),var(--sh-2)}
+.ov-card.flash{animation:ovFlash 1.4s var(--ease)}
+@keyframes ovFlash{0%,40%{box-shadow:0 0 0 4px color-mix(in srgb,var(--oc,var(--accent)) 60%,transparent),0 0 30px color-mix(in srgb,var(--oc,var(--accent)) 45%,transparent)}}
 .ov-hd{display:flex;align-items:center;gap:10px;min-width:0}
 .ov-hd .av{flex:none}
 .ov-who{display:grid;min-width:0;flex:1}
@@ -60,6 +94,7 @@
 .ov-chip.ap{background:var(--warn-soft);color:var(--warn)}
 .ov-chip.err{background:var(--err-soft);color:var(--err)}
 .ov-chip.idle{color:var(--mute)}
+.ov-chip.play{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ink2);font-weight:550;max-width:48%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ov-alert{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r);background:var(--err-soft);color:var(--ink);font-size:calc(13px * var(--fz))}
 .ov-alert>.icon{width:16px;height:16px;color:var(--err);flex:none}
 .ov-alert>span{flex:1;min-width:0}
@@ -159,11 +194,13 @@
 .rp-on{display:flex;align-items:center;gap:6px;margin-top:4px;font-weight:550}
 
 @media (max-width:760px){
-  .sheet.ovw,.sheet.memv{width:100%;height:100%;padding:var(--safe-t) 0 0}
-  .sheet.ovw>.shd,.sheet.memv>.shd{padding:6px 8px}
-  .ov-bar,.mv-bar{padding:0 16px 10px}
-  .ov-sum{margin-left:0}
-  .ov-body,.mv-body{padding:12px 16px calc(20px + var(--safe-b))}
+  .sheet.memv{width:100%;height:100%;padding:var(--safe-t) 0 0}
+  .sheet.memv>.shd{padding:6px 8px}
+  .mv-bar{padding:0 16px 10px}
+  .ov-bar{padding:12px 10px 10px 12px;border-radius:18px 18px 0 0;background:transparent}
+  .ov-cnt{gap:5px}.ov-f{padding:6px 7px 5px;font-size:calc(10.5px * var(--fz))}.ov-f b{font-size:calc(16px * var(--fz))}
+  .ov-tools{display:none}
+  .ov-body,.mv-body{padding:12px 12px calc(20px + var(--safe-b))}
   .ov-grid{grid-template-columns:1fr}
   .mv-bar select{flex:1;max-width:none}
   .mv-it .mv-acts{opacity:1}
@@ -171,4 +208,4 @@
   .al-bar .al-t{flex:1 1 calc(100% - 52px)}
   .al-bar .al-act{width:100%;justify-content:flex-end}
 }
-@media (prefers-reduced-motion:reduce){.al-bar{animation:none}.ov-track i{transition:none}}
+@media (prefers-reduced-motion:reduce){.al-bar{animation:none}.ov-track i{transition:none}.ov-card::after,.ov-card.flash,.ov-f.need.on::before{animation:none}}

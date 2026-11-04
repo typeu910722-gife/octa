@@ -3,11 +3,12 @@
 let CFG={};                      // GET /api/config: {local, pair, …}
 // 4.4: opened from the phone's stable entry (the OCTA site's /go page): keep the token it passed, remember where /go is
 // (to look for the computer again when this address stops working), and take it all out of the address bar
-(()=>{const f=octaFrag(location.hash);if(!f.t&&!f.web)return;
+(()=>{const f=octaFrag(location.hash);if(!f.t&&!f.web&&!f.view)return;
   if(f.t)store.set('ebot_token',f.t);
   if(f.go)store.set('octa_go',f.go);
   if(f.web)try{sessionStorage.setItem('octa_goweb',f.web)}catch(e){}
   if(f.retry)try{sessionStorage.setItem('octa_goretry',f.retry);sessionStorage.setItem('octa_goretryb',f.web)}catch(e){}   // 4.7 overview.js
+  if(f.view)try{sessionStorage.setItem('octa_goview','1')}catch(e){}   // 4.9.2 overview.js
   history.replaceState(null,'',location.pathname+location.search)})();
 // this address stopped answering (the computer restarted: its address changed): back to /go, which finds the new one
 // (at most once a minute, only when the phone itself is online)
