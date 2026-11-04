@@ -256,7 +256,7 @@ export function buildPrompt(job, here) {
   });
   lines.push('', ...dayInfo(job), '', ...workNotes(job));
   if (!job.side) lines.push('', ...records(job), '', ...tabsNow(job), '', ...seeNow(job), '', ...workLoop(job));   // 旁聊 is a quick answer: no pages, no records
-  lines.push('', turnGuide(job), '', ...routineLines(job), ...mustMarkLines(job), whoAmI(job), BRIEF_REPLY, '現在請處理這則指示：', job.prompt);
+  lines.push('', turnGuide(job), '', ...routineLines(job), ...mustMarkLines(job), whoAmI(job), BRIEF_REPLY, ...(job.side ? [] : [STEP_RULE]), '現在請處理這則指示：', job.prompt);
   return lines.filter(l => l !== '').join('\n');
 }
 // 4.7: how the main turn works a web page, by mode
@@ -267,7 +267,7 @@ export function browseRules(job) {
     '- 讀頁順序：browser_navigate 到完整網址（或停在目前頁面）→ browser_snapshot 看頁面上現在有什麼 → 點或輸入只用這一份快照裡的引用（ref，例如 e5）→ 頁面變了就重新 browser_snapshot，引用失效（Ref not found）就重讀，不沿用舊引用。',
     '- 要確認版面、顏色、被擋住的對話框時才 browser_take_screenshot；遊戲、畫布這類文字讀不到的畫面，先截圖再用這一幀的座標 browser_mouse_click_xy。大頁只看需要的部分，不要把原始 HTML 或整頁頁面樹貼進回覆。找不到要點的東西：等 1–2 秒（browser_wait_for）→ 捲動 → 看有沒有彈出框 → 鍵盤（Tab、Enter）→ 從網址直接進入，至少換 3 種方法才能說做不到。',
     '- 使用者按「接手」時 OCTA 會讓你先停下，你不用自己判斷；使用者說好了、叫你繼續時，先 browser_snapshot 重新讀頁面再做，不沿用接手前的引用。一次性驗證碼、卡片號碼不要自己輸入。',
-    '- 開工時的畫面存在「畫面.jpg」，可以用 Read 讀；之後以瀏覽器工具讀到的為準。',
+    '- 開工時的畫面存在「畫面.jpg」，可以用 Read 讀；之後以瀏覽器工具讀到的為準。分頁標題前面的「【你的名字】」是 OCTA 加的標記，不是網頁的標題，回覆時不要算進去也不要提。',
     '- Gmail、Google 雲端硬碟、日曆這類要 Google 帳號的網站，OCTA 會讓你在這個機器人自己的 Chrome 視窗裡用（Google 不讓內建瀏覽器登入）。停在 Google 登入頁就寫「需要使用者在電腦上登入（Google）」，使用者按「接手」登入一次之後會一直保留；瀏覽器工具中途斷線（改到 Chrome 視窗）也這樣寫。'
   ];
   if (m === 'none') return ['- 這次沒有可以操作的瀏覽器（沒有打開，或這個 AI 不在這台電腦的瀏覽器上工作）：已登入的網頁讀不到。公開網頁用 WebFetch；需要已登入的頁面就直接說瀏覽器沒有打開，請使用者打開機器人的瀏覽器後再叫你。不要寫【派瀏覽】。'];
@@ -279,6 +279,8 @@ export function browseRules(job) {
 }
 // the last thing before the instruction: AIs drift back to long, chatty answers otherwise
 export const BRIEF_REPLY = '回覆格式提醒：只寫使用者要的答案或結果，越短越好。被問什麼答什麼，不加沒問的延伸資訊、背景、其他版本或選項、建議、資料來源；不寒暄、不重述問題、不描述過程。';
+// 4.7 步驟進度: said right before the instruction (models skip it when it is only in the long middle)
+export const STEP_RULE = '進度：這則要做 3 個動作以上（例如打開網頁、填表、送出）時，第一個動作之前先單獨輸出一行「🧭步驟：步驟1｜步驟2｜步驟3」（2 到 7 步，每步幾個字），每開始做第 N 步時單獨輸出一行「🧭第N步」。只是回答問題就不用。';
 // A local model often has a 4096 context. Keep the rules and this instruction, and drop the long essay.
 export function fitLocal(text, max = 4000) {
   const s = String(text || '');

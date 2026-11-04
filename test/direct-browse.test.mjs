@@ -291,3 +291,19 @@ test('migrations: messages.meta and jobs.paused in both lists and schema.sql', (
   assert.match(schema, /paused INTEGER/);
   assert.ok(existsSync(join(import.meta.dirname, '..', 'desktop', 'api', 'progress.mjs')));
 });
+
+test('Google: the in-app browser hands any Google sign-in page to the Chrome window; Google cookies are never copied', async () => {
+  const { googleSignInPage } = await import('../desktop/browser-catalog.mjs');
+  const { isGoogleCookie, wantsGoogle } = await import('../desktop/runner/google.mjs');
+  assert.equal(googleSignInPage('https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fmail.google.com'), true);
+  assert.equal(googleSignInPage('https://accounts.google.com/ServiceLogin'), true);
+  assert.equal(googleSignInPage('https://www.google.com/search?q=x'), false);
+  assert.equal(googleSignInPage('https://mail.google.com/mail/u/0/'), false);
+  for (const d of ['.google.com', 'mail.google.com', 'accounts.google.com', '.youtube.com', '.google.com.tw']) assert.equal(isGoogleCookie({ domain: d }), true, d);
+  for (const d of ['.instagram.com', 'line.me', 'notgoogle.com']) assert.equal(isGoogleCookie({ domain: d }), false, d);
+  assert.equal(wantsGoogle({ prompt: '整理 Gmail' }), true);
+  const main = readFileSync(join(import.meta.dirname, '..', 'desktop', 'main.mjs'), 'utf8');
+  assert.match(main, /if \(!googleRefused\(url, text\) && !googleSignInPage\(url\)\) return;/);
+  assert.match(main, /autoBack: \(\) => false/);
+  assert.match(main, /useChrome, useEmbedded/);
+});

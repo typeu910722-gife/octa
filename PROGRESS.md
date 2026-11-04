@@ -265,3 +265,15 @@
 - [x] 測試 test/mail-connector.test.mjs 8 項（test/mail-fake.mjs 假 IMAP/SMTP 在 127.0.0.1）：MIME、設定驗證、指令解析、登入成功／失敗、列表／搜尋／讀信／存附件／整理、沒加密就拒絕、寄信要核准（沒核准連 SMTP 都不連、核准別人不行、一律允許可以、回信串接、附件、不能跑出資料夾）、經 startServer 的完整 API（密碼遮蔽、執行器拿到的工作沒有密碼、存附件到機器人資料夾、核准後寄出）、設定畫面。全套 268 項，失敗只剩原本 4 項
 - [x] 實測：Chrome 開設定畫面（zh-TW、en）新增、測試連線、已接上列；i18n 0 missing
 - 未實測：真的 Gmail（imap.gmail.com／smtp.gmail.com 的 TLS、X-GM-RAW 與中文標籤、寄出後「寄件備份」由 Gmail 自動存）、Yahoo／iCloud／自訂主機、超大信件與奇怪 MIME、Windows 實機。非 Gmail 寄出的信不會另存到寄件備份
+
+## 4.7 A：瀏覽器同一輪直接操作、步驟進度、暫停、內部標記收起來（執行器與 API）
+- [x] #4 直接操作：Claude Code、Codex、Antigravity（agy）、Qwen、Copilot、Cursor、Grok CLI 的主回合直接拿到機器人自己的瀏覽器（Playwright MCP 經 CDP 連到它的內建瀏覽器或 Chrome 視窗），同一輪打開、點、輸入、讀，不再【派瀏覽】。Claude 的工具：`DIRECT_ALLOWED`（原本的＋mcp__browser）、`mcp-browser.json`；AI 待機的 session 也一樣。Ollama／OpenCode 仍走【派瀏覽】（browser-use 或 OpenCode MCP 那一輪）；Grok Bot 不用這台電腦的瀏覽器。直接型 AI 還是寫了【派瀏覽】時，交回給它自己做；接手照舊（使用者接手就停手）
+- [x] 提示：直接型不再有「你不能自己點」，改成快照引用、接手後重讀、登入先自己試再請使用者接手、送出前 ✅待確認（附對象／內容／時間）、API 優先；結果第一行、細節空一行後再寫
+- [x] #1 步驟：AI 先寫「🧭步驟：a｜b｜c」、每步「🧭第N步」（指示前再提醒一次）；執行器從 Claude stream-json 與其他 CLI 印出的文字讀，加上目前工具，送 runner/progress {text,step,total,steps,kind,pmode,held}；API 存 JSON，state/busy 給解析後的 progress 與 paused（舊純文字相容）
+- [x] 暫停：POST /api/job/<id>/pause {on}。Claude（一般與 AI 待機）在「上一個動作的結果回來、下一個還沒開始」時停下，繼續時用同一個 session `--resume` 接著做（提示先重讀頁面）；其他引擎在這一輪 AI 結束後、下一輪（連接器、派瀏覽、補看頁面）之前停（pmode 'turn'）。暫停中不算單件工作逾時（仍要有心跳）
+- [x] #3 meta：runner/done 把 📝📌📇📘🧩🗺️⏰📍、🧭、【派瀏覽】【開／關瀏覽器】、✅ 完成／⚠ 沒做成 從文字拿掉，存 messages.meta {notes,result,approval}；GET messages 帶 meta；附在回覆上的「已記住…」等系統行改放工作面板（kind note）；回覆保留結果後的一個空行
+- [x] #2 核准卡：✅待確認 下面的 對象／內容（可多行）／時間 解析到 meta.approval（文字照留，給 AI 的對話紀錄用）
+- [x] #8：⚠ 沒做成 依內容分成 logout（例行任務遇到登入頁）／api／missing 等寫進 err_kind、例行任務記為失敗並送失敗通知（C 的推播讀這些）
+- [x] Gmail／Google：要 Google 帳號的工作（Gmail、雲端硬碟、日曆…）先把機器人移到它自己的 Chrome 視窗並固定在那裡；內建瀏覽器一到 Google 登入頁就改用 Chrome；不再自動改回內建；Google 的 cookie 不進共用登入、手動改回內建也不帶過去（複製過去的 Google 登入會被登出）
+- [x] 實測（沙箱，server.mjs＋執行器＋真 Claude Code＋Chromium Chrome 模式）：example.com 標題一輪 18 秒；本機 3 步下單頁有步驟 1/3→3/3、meta.result；暫停在兩個動作之間停住（held）、繼續後同一 session 做完、只有一件工作（AI 待機與一般兩種都測）；Chrome 設定檔的 Google cookie 重開後仍在、共用登入沒有 Google cookie
+- 未實測：Codex／agy／Qwen／Copilot／Cursor／Grok CLI 的直接操作（沙箱沒有這些 CLI）、Electron 內建瀏覽器實際遇到 Google 登入頁時改用 Chrome（只有單元測試）、真的 Google 登入、Windows

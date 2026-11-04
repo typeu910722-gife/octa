@@ -164,12 +164,14 @@ export function describeTool(name, input = {}) {
   const n = String(name).replace(/^mcp__browser__/, '');
   const host = u => { try { return new URL(u).host; } catch { return String(u || '').slice(0, 40); } };
   const short = s => String(s || '').replace(/\s+/g, ' ').slice(0, 40);
+  // what was clicked, in words (a bare snapshot ref like e12 / f1e8 says nothing to a person)
+  const what = i => { const w = String(i.element || i.target || '').trim(); return /^[a-z]{0,2}\d+(e\d+)?$/i.test(w) ? '' : short(w); };
   return ({
-    browser_navigate: `打開 ${host(input.url)}`, browser_click: `點擊「${short(input.element)}」`, browser_type: `在「${short(input.element)}」輸入`,
+    browser_navigate: `打開 ${host(input.url)}`, browser_click: what(input) ? `點擊「${what(input)}」` : '點擊', browser_type: what(input) ? `在「${what(input)}」輸入` : '輸入文字',
     browser_fill_form: '填寫表單', browser_snapshot: '讀取網頁內容', browser_take_screenshot: '截圖', browser_select_option: '選擇選項',
     browser_tabs: '切換分頁', browser_wait_for: '等待網頁載入', browser_press_key: '按鍵盤', browser_navigate_back: '回上一頁', browser_evaluate: '讀取網頁資料',
     Read: `讀取檔案 ${basename(String(input.file_path || ''))}`, Write: `寫入檔案 ${basename(String(input.file_path || ''))}`, Edit: `修改檔案 ${basename(String(input.file_path || ''))}`,
-    Glob: '找檔案', Grep: '搜尋檔案內容', WebSearch: `上網搜尋「${short(input.query)}」`, WebFetch: `讀取網頁 ${host(input.url)}`
+    Glob: '找檔案', Grep: '搜尋檔案內容', ToolSearch: '準備工具', Bash: '執行指令', WebSearch: `上網搜尋「${short(input.query)}」`, WebFetch: `讀取網頁 ${host(input.url)}`
   })[n] || (n.startsWith('browser_') ? '操作瀏覽器' : `使用 ${n}`);
 }
 // one Claude Code stream-json event → progress (tool in words, 🧭 steps from its text), what tools returned, and 暫停:

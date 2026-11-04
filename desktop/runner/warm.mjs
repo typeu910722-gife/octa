@@ -10,7 +10,7 @@ import {
 import { botDir, storeDir } from './files.mjs';
 import { GROKBOT_WIN_TEXT, grokBotUnsupported, grokBots } from './grokbot.mjs';
 import {
-  buildPrompt, dayInfo, keepBrowserTask, manualLines, mustMarkLines, records, routineLines, seeNow, studioAim,
+  STEP_RULE, buildPrompt, dayInfo, keepBrowserTask, manualLines, mustMarkLines, records, routineLines, seeNow, studioAim,
   tabsNow, turnGuide, whoAmI, workLoop, workNotes
 } from './prompts.mjs';
 import { resetReports } from './reports.mjs';
@@ -134,7 +134,7 @@ export async function warmClaude(job, b, here, live) {
     text = [fresh.length ? '（上次之後的新對話）\n' + fresh.map(h => `【${h.who}】${h.text}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : '')).join('\n') : '',
       dayInfo(job).join('\n'), workNotes(job).join('\n'), records(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'),
       workLoop(job).join('\n'), studioAim(job).join('\n'), turnGuide(job), routineLines(job).join('\n'), mustMarkLines(job).join('\n'),
-      whoAmI(job), manualLines(job).join('\n').trim(), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
+      whoAmI(job), manualLines(job).join('\n').trim(), STEP_RULE, '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
     log(`⚡ ${job.bot.name}：AI 待機中，直接接續`);
   } else {
     if (s) closeSession(job.bot.id);
