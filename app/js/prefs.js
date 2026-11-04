@@ -67,7 +67,8 @@ SEC.look=()=>{
     <button type="button" role="radio" class="sw0${acc?'':' on'}" data-accent="" aria-checked="${!acc}" title="${esc(I18N.t('預設（金色）'))}"><span style="background:#b8862e"></span></button>
     ${PALETTE.map(([h,n])=>`<button type="button" role="radio" class="sw0${acc.toLowerCase()===h.toLowerCase()?' on':''}" data-accent="${h}" aria-checked="${acc.toLowerCase()===h.toLowerCase()}" title="${esc(I18N.t(n))}" aria-label="${esc(I18N.t(n))}"><span style="background:${h}"></span></button>`).join('')}</div>`;
   // 4.9: the deep-sea look's moving light, and 省電模式 (still pictures in 深海基地, no moving background)
-  block('sMotion','動態效果').innerHTML=`<label class="prow chk"><input type="checkbox" id="pSeaFx" ${store.get('octa_seafx')!=='0'?'checked':''}><span><b>深海背景光影</b><small>深海配色時，側邊欄後面有緩慢流動的光和漂浮的微粒。</small></span></label>
+  block('sMotion','動態效果').innerHTML=`<label class="prow chk"><input type="checkbox" id="pStage" ${seaEnabled()?'checked':''}><span><b>主畫面 3D 基地</b><small>電腦上的主畫面是即時的深海基地，對話浮在上面。關掉就是一般的對話畫面，也比較省電。</small></span></label>
+    <label class="prow chk"><input type="checkbox" id="pSeaFx" ${store.get('octa_seafx')!=='0'?'checked':''}><span><b>深海背景光影</b><small>深海配色時，側邊欄後面有緩慢流動的光和漂浮的微粒。</small></span></label>
     <label class="prow chk"><input type="checkbox" id="pLow" ${store.get('octa_lowpower')==='1'?'checked':''}><span><b>省電模式</b><small>深海基地改成靜態畫面（有變化或你拖動時才重畫），也關掉背景光影。筆電用電池時建議打開。</small></span></label>`;
   block('sSize','字體大小').innerHTML=`<div class="fslide"><span class="a1">A</span><input id="fsRange" type="range" min="70" max="200" step="5" value="${fs}" aria-label="字體大小" list="fsMarks"><datalist id="fsMarks"><option value="75"></option><option value="100"></option><option value="150"></option></datalist><span class="a2">A</span></div>
     <div class="fsrow"><div class="fslab" id="fsLab">${fsName(fs)} · ${fs}%</div><div class="fsq">${[75,90,100,115].map(v=>`<button type="button" class="ghost sm" data-fs="${v}">${v}%</button>`).join('')}</div></div>
@@ -87,6 +88,7 @@ SEC.look=()=>{
   $('sSize').querySelectorAll('[data-fs]').forEach(b=>b.onclick=()=>{$('fsRange').value=b.dataset.fs;applyFs(b.dataset.fs)});
   const pick=(box,fn)=>box.onclick=e=>{const b=e.target.closest('[role=radio]');if(!b)return;box.querySelectorAll('[role=radio]').forEach(r=>{const on=r===b;r.classList.toggle('on',on);r.setAttribute('aria-checked',String(on))});fn(b.dataset.v??b.dataset.accent)};
   pick($('sAccent').querySelector('.swatches'),applyAccent);
+  $('pStage').onchange=e=>seaSet(e.target.checked);
   $('pSeaFx').onchange=e=>{store.set('octa_seafx',e.target.checked?null:'0');seaFx()};
   $('pLow').onchange=e=>{store.set('octa_lowpower',e.target.checked?'1':null);seaFx();if(typeof seaPrefs==='function')seaPrefs()};
   pick($('sDensity').querySelector('#pDensity'),applyDensity);
@@ -101,7 +103,7 @@ SEC.look=()=>{
 
 /* ---------- keyboard shortcuts (？ or Settings → 外觀與語言) ---------- */
 const MODK=/Mac|iPhone|iPad/.test(navigator.platform)?'⌘':'Ctrl';
-const SHORTCUTS=[[MODK+' K','搜尋機器人'],[MODK+' I','打開或收起工作面板'],[MODK+' ,','設定'],['Alt N','新增機器人'],['Enter','送出（Shift Enter 換行）'],['Esc','關閉對話框或面板'],['Alt ↑ / Alt ↓','上一個／下一個對話'],['?','這張快捷鍵表']];
+const SHORTCUTS=[[MODK+' K','搜尋機器人'],[MODK+' I','打開或收起工作面板'],['Alt O','總覽'],['Alt M','收起或展開對話'],[MODK+' ,','設定'],['Alt N','新增機器人'],['Enter','送出（Shift Enter 換行）'],['Esc','關閉對話框或面板'],['Alt ↑ / Alt ↓','上一個／下一個對話'],['?','這張快捷鍵表']];
 function shortcutSheet(){openSheet(`${sheetHead('鍵盤快捷鍵')}<dl class="keys">${SHORTCUTS.map(([k,t])=>`<div><dt>${k.split(' ').map(x=>x==='/'?'<span>/</span>':`<kbd>${esc(x)}</kbd>`).join(' ')}</dt><dd>${esc(I18N.t(t))}</dd></div>`).join('')}</dl><div class="acts"><button type="button" class="btn" id="sx">好</button></div>`,'sm');$('sx').onclick=closeSheet}
 // Alt+↑／↓: the conversation above / below in the sidebar
 function stepConv(d){const ids=[...$('list').querySelectorAll('.item[data-id]')].map(x=>x.dataset.id);if(!ids.length)return;

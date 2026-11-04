@@ -65,10 +65,17 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
     <div class="side-search">
       <label class="sbox" id="qbox"><span class="si" data-i="search" aria-hidden="true"></span><input id="q" type="search" placeholder="搜尋機器人" autocomplete="off" aria-label="搜尋機器人"><kbd class="kbd" id="qKbd" data-u>Ctrl K</kbd></label>
     </div>
-    <!-- 4.7 任務總覽, 4.9.2 together with 深海基地: every bot at work, in 3D and as cards, on one page -->
-    <button type="button" class="ovbtn" id="ovBtn" title="每個機器人在做什麼、今天做了什麼"><span data-i="sea" aria-hidden="true"></span><span>任務總覽</span><i class="ovbadge" id="ovBadge" hidden></i></button>
+    <!-- 4.10 總覽: the right panel's 總覽 tab (every bot's card) with the whole deep-sea base in view; the base is the main screen -->
+    <button type="button" class="ovbtn" id="ovBtn" title="每個機器人在做什麼、今天做了什麼"><span data-i="sea" aria-hidden="true"></span><span>總覽</span><i class="ovbadge" id="ovBadge" hidden></i></button>
+    <!-- the phone: the base as a foldable header above the list, and 聊天 | 總覽 -->
+    <section class="sea-head" id="seaHead" hidden>
+      <button type="button" class="sh-bar" id="seaHeadBar" aria-controls="seaHostP" aria-expanded="true"><span data-i="sea" aria-hidden="true"></span><b>深海基地</b><small id="seaHeadSum"></small><span class="sh-chev" data-i="up" aria-hidden="true"></span></button>
+      <div class="sea-host" id="seaHostP"></div>
+    </section>
+    <div class="lseg" role="tablist" aria-label="清單"><button type="button" role="tab" data-lseg="chat" aria-selected="true">聊天</button><button type="button" role="tab" data-lseg="ov" aria-selected="false"><span>總覽</span><i class="lsbadge" id="lsegBadge" hidden></i></button></div>
     <div class="upd" id="upd" hidden></div>
     <nav class="list" id="list"></nav>
+    <div class="lov" id="lov"></div>
     <div class="side-ft">
       <button type="button" class="sfbtn" id="settings"><span data-i="settings" aria-hidden="true"></span><span>設定</span></button>
       <button type="button" class="quota" id="quota" hidden title="AI 剩餘流量"></button>
@@ -77,6 +84,12 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
   </aside>
 
   <section class="pane" id="pane" aria-label="對話內容">
+    <!-- 4.10 a computer: the deep-sea base is the stage; the chat floats over it (folds to a bar) -->
+    <div class="sea-host" id="seaHostD"></div>
+    <p class="stage-hint" id="stageHint" hidden><span data-i="sea" aria-hidden="true"></span><span>點一隻章魚，或從左邊選一個機器人開始對話</span></p>
+    <div class="chatmin" id="chatMin" hidden><button type="button" class="cm-go" id="chatMinGo" title="展開對話（Alt+M）"><span class="av" id="cmAv"></span><span class="t"><b id="cmName" data-u></b><small id="cmSub"></small></span><i class="ub" id="cmNew" hidden></i><span class="cm-open"><span data-i="up" aria-hidden="true"></span><span>展開對話</span></span></button></div>
+    <div class="chatp" id="chatp">
+    <div class="chat-grip" id="chatGrip" role="separator" aria-orientation="vertical" aria-label="調整對話寬度" title="拖曳調整對話寬度（點兩下恢復）" tabindex="0"></div>
     <div class="blank" id="blank"></div>
     <header class="ph" id="ph" hidden>
       <button type="button" class="ib back" id="back" aria-label="返回" data-i="back"></button>
@@ -87,6 +100,7 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
         <button type="button" class="ib" id="browser" aria-label="瀏覽器" title="瀏覽器" data-i="globe"></button>
         <button type="button" class="ib wpbtn" id="panelBtn" aria-label="工作面板" title="工作面板（Ctrl+I）" aria-controls="wp" aria-expanded="false" data-i="panel"><i class="wbadge" id="wpBadge" hidden></i></button>
         <button type="button" class="ib" id="more2" aria-label="更多" title="更多" data-i="more"></button>
+        <button type="button" class="ib cmin" id="chatMinBtn" aria-label="收起對話" title="收起對話，看整個基地（Alt+M）" data-i="down"></button>
       </div>
     </header>
     <div class="gmem" id="gmem" hidden aria-label="成員現在在做什麼"></div>
@@ -113,20 +127,29 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
         <input type="file" id="fileIn" multiple accept="image/*,.pdf,.txt,.csv,.md,.json,.xlsx,.docx" hidden>
       </form>
     </div>
+    </div>
   </section>
 
-  <!-- the work panel on the right (like Claude's side panel): 工作 · 瀏覽器 · 詳細資料. A full page on a phone. -->
+  <!-- the panel on the right (like Claude's side panel): 總覽 · 工作 · 瀏覽器 · 詳細資料. A full page on a phone (no 總覽 there). -->
   <aside class="wp" id="wp" hidden aria-label="工作面板">
     <div class="wp-grip" id="wpGrip" role="separator" aria-orientation="vertical" aria-label="調整工作面板寬度" tabindex="0"></div>
     <header class="wp-hd">
       <button type="button" class="ib back2" data-wclose aria-label="返回" data-i="back"></button>
       <div class="wp-tabs" role="tablist" aria-label="工作面板">
+        <button type="button" role="tab" id="wtOv" data-wt="ov" aria-controls="wpOv"><span>總覽</span></button>
         <button type="button" role="tab" id="wtWork" data-wt="work" aria-controls="wpWork"><span>工作</span><i class="tdot" hidden></i></button>
         <button type="button" role="tab" id="wtWeb" data-wt="web" aria-controls="wpWeb"><span>瀏覽器</span><i class="tdot" hidden></i></button>
         <button type="button" role="tab" id="wtInfo" data-wt="info" aria-controls="detail"><span>詳細資料</span></button>
       </div>
       <button type="button" class="ib x" data-wclose aria-label="收起工作面板" title="收起工作面板" data-i="x"></button>
     </header>
+    <section class="wp-pane ovp" id="wpOv" role="tabpanel" aria-labelledby="wtOv" hidden>
+      <div class="ovwrap" id="ovWrap">
+        <div class="ov-bar"><div class="ov-cnt" id="ovSeg" role="tablist" aria-label="篩選"></div>
+          <div class="ov-tools"><button type="button" class="ib" id="ovRe" aria-label="重新整理" title="重新整理" data-i="refresh"></button></div></div>
+        <div class="ov-body" id="ovBody"><div class="empty fade">載入中…</div></div>
+      </div>
+    </section>
     <section class="wp-pane wk" id="wpWork" role="tabpanel" aria-labelledby="wtWork" tabindex="-1"></section>
     <section class="wp-pane web" id="wpWeb" role="tabpanel" aria-labelledby="wtWeb" hidden>
       <div class="web-hd" id="webHd"></div>

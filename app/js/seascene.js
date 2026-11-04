@@ -1,5 +1,5 @@
 /* OCTA 4.9 深海基地 — the 3D pieces (three.js, passed in as T): shaders, the sea itself, the domes, tubes, desks and octopuses.
-   seabase.js opens the view, runs the loop and handles input; seamodel.js says what to show. Everything made here is
+   seabase.js puts the stage on the main screen, runs the loop and handles input; seamodel.js says what to show. Everything made here is
    reachable from the scene or listed in G.tex / G.extra, so seaFree (seaDispose) frees it all on close. */
 'use strict';
 /* ---------- the 3D scene ---------- */
@@ -34,10 +34,12 @@ function seaGlass(T,U,rim,base,lines){return seaMat(T,U,{uniforms:{uRim:{value:n
 /* the sea itself: floor with moving caustics, rocks, kelp, glowing coral, light shafts from above, drifting snow, bubbles, fish */
 function seaEnv(G){const T=G.T,U=G.U,grp=new T.Group();G.extra=[];
   // a dome of water: brighter where the light comes from
-  const sky=new T.Mesh(new T.SphereGeometry(240,32,16),new T.ShaderMaterial({side:T.BackSide,depthWrite:false,fog:false,uniforms:{},
+  // 4.10 its colours are uniforms: a lighter sea in the light look (seaThemeSync)
+  const sky=new T.Mesh(new T.SphereGeometry(240,32,16),new T.ShaderMaterial({side:T.BackSide,depthWrite:false,fog:false,
+    uniforms:{uLo:{value:new T.Vector3(.008,.05,.08)},uHi:{value:new T.Vector3(.03,.24,.32)},uGl:{value:new T.Vector3(.05,.22,.25)}},
     vertexShader:'varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader:'varying vec3 vP;void main(){float h=normalize(vP).y;vec3 c=mix(vec3(.008,.05,.08),vec3(.03,.24,.32),smoothstep(-.1,.9,h));c+=vec3(.05,.22,.25)*pow(max(h,0.),6.);gl_FragColor=vec4(c,1.);}'}));
-  sky.renderOrder=-1;grp.add(sky);
+    fragmentShader:'uniform vec3 uLo;uniform vec3 uHi;uniform vec3 uGl;varying vec3 vP;void main(){float h=normalize(vP).y;vec3 c=mix(uLo,uHi,smoothstep(-.1,.9,h));c+=uGl*pow(max(h,0.),6.);gl_FragColor=vec4(c,1.);}'}));
+  sky.renderOrder=-1;grp.add(sky);G.sky=sky;
   // the floor: flat where the base stands, dunes and ridges further out
   const fg=new T.PlaneGeometry(320,320,96,96);fg.rotateX(-Math.PI/2);const pos=fg.attributes.position;
   const span=(SEA.L?.span||26)+6;

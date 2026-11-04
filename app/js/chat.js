@@ -100,7 +100,7 @@ const bgKeysFor=id=>BS[id]?.keys||null;
 const chatMsgs=id=>convMsgs(id).filter(m=>msgPlace(m,bgKeysFor(id))==='chat');
 
 /* ---------- render ---------- */
-function render(scroll){queueMicrotask(renderAsks);renderList();renderChat(scroll);if(typeof renderPanel==='function')renderPanel()}
+function render(scroll){queueMicrotask(renderAsks);renderList();renderChat(scroll);if(typeof renderPanel==='function')renderPanel();if(typeof stageSync==='function')stageSync()}
 /* a group: who is doing what right now — working with its progress line, queued, waiting on you, free */
 const GM_LABEL={run:'工作中',queue:'排隊中',ask:'等你核准',idle:'待命'};
 function groupAsks(id){const ms=chatMsgs(id).filter(m=>m.by!=='sys');const out=[];
@@ -222,6 +222,7 @@ function openConv(id,opt){
   if(cur&&cur!==id&&pending.length){PEND[cur]=pending;pending=[]}
   const changed=cur!==id;
   cur=id;store.set('ebot_cur',cur);
+  if(typeof STAGE!=='undefined')STAGE.min=false;   // 4.10: picking a chat unfolds the chat panel over the base
   hideFollow();
   if(!$('app').classList.contains('chat'))navPush('chat');
   if(PEND[id]){pending=PEND[id];delete PEND[id]}

@@ -1,17 +1,31 @@
-/* OCTA web app — 4.7: 任務總覽 (every bot and group on one page; 4.9.2 together with 深海基地), 異常主動推播 on this device (一鍵重試),
-   and the quota indicator in the sidebar footer (Claude 本週剩 62%). */
+/* OCTA web app — 4.7: 任務總覽 (every bot and group; 4.10: the 總覽 tab of the right panel beside the deep-sea base on the
+   main screen, or 聊天 | 總覽 on the phone's list), 異常主動推播 on this device (一鍵重試), and the quota indicator in the
+   sidebar footer (Claude 本週剩 62%). */
 'use strict';
-/* ---------- 任務總覽 (4.9.2: one page with 深海基地 — seabase.js opens it; this paints the counters and the list) ---------- */
+/* ---------- 總覽 (4.10: no page of its own — the cards live in the right panel's 總覽 tab, on a phone under 聊天 | 總覽;
+   seabase.js keeps the scene model they share with the base) ---------- */
 // the counters are the filters: 全部 · 工作中 · 需要你 · 今天完成 · 沒做成 (older choices 有問題的 / 今天 map onto them)
 const OV_F=['all','run','need','done','fail'];
 const OV={data:null,filter:(f=>OV_F.includes(f)?f:f==='bad'?'fail':f==='today'?'done':'all')(store.get('octa_ovf')),sig:'',t:0,busy:false};
-const ovOpen=()=>!!$('ovBody');
-function openOverview(){openSea()}
-async function loadOverview(force){if(!ovOpen()||OV.busy)return;OV.busy=true;OV.t=Date.now();
+// the phone's list screen: 聊天 | 總覽 (remembered)
+const LSEG={k:store.get('octa_lseg')==='ov'?'ov':'chat'};
+// are the cards on screen? (the 總覽 tab of the right panel; on a phone, 總覽 on the list screen)
+const ovShown=()=>!$('app').hidden&&(phoneUI()?LSEG.k==='ov'&&!$('app').classList.contains('chat'):panelOn()&&WP.tab==='ov');
+async function loadOverview(force){if(!ovShown()||OV.busy)return;OV.busy=true;OV.t=Date.now();
   try{const d=await api('overview');OV.data=d;OV.t=Date.now();
-    if(ovOpen()){SEA.done=Object.fromEntries((d.bots||[]).map(x=>[x.id,+x.doneN||0]));if(force)OV.sig='';seaRefresh(true)}}
-  catch(e){if(ovOpen()&&!OV.data)setHTML($('ovBody'),`<div class="empty">${esc(e.message)}</div>`)}
+    SEA.done=Object.fromEntries((d.bots||[]).map(x=>[x.id,+x.doneN||0]));if(force)OV.sig='';seaRefresh(true);if(ovShown())paintOverview()}
+  catch(e){if(ovShown()&&!OV.data)setHTML($('ovBody'),`<div class="empty">${esc(e.message)}</div>`)}
   finally{OV.busy=false}}
+// the cards came on screen (or the screen was redrawn): paint them, and ask the API when what we have is old
+function ovSync(){if(!ovShown())return;if(!OV.data||Date.now()-OV.t>30000)loadOverview(true);if(!SEA.m)seaRefresh(true);else paintOverview()}
+/* 總覽 (the sidebar button, Alt+O, #view=overview links, the 一鍵重試 bar): on a computer the right panel shows 總覽 and the
+   chat folds to its bar so the whole base is in view; on a phone the list screen shows 總覽 */
+function goOverview(){if($('app').hidden)return;
+  if(phoneUI()){if($('app').classList.contains('chat'))$('back').click();if(WP.sheet)closePanel();listSeg('ov');return}
+  openPanel('ov',{user:true});if(stageMode()&&cur){STAGE.min=true}
+  stageSync();if(stageMode())seaFocus(null);ovSync()}
+function listSeg(k){LSEG.k=k==='ov'?'ov':'chat';store.set('octa_lseg',LSEG.k==='ov'?'ov':null);stageSync();if(LSEG.k==='ov'){OV.sig='';ovSync()}}
+document.querySelector('.lseg')?.addEventListener('click',e=>{const b=e.target.closest('[data-lseg]');if(b)listSeg(b.dataset.lseg)});
 const ovWhen=t=>{if(!t)return '';const d=new Date(t),n=new Date(),tm=new Date(n);tm.setDate(n.getDate()+1);
   if(d.toDateString()===n.toDateString())return `<span data-u>${esc(hm(t))}</span>`;
   if(d.toDateString()===tm.toDateString())return `<span>明天</span> <span data-u>${esc(hm(t))}</span>`;
@@ -50,7 +64,7 @@ function ovCard(x,g,i){
   h+=`<footer class="ov-ft"><button type="button" class="ghost sm" data-open="${esc(x.id)}">${ic('reply')}<span>打開對話</span></button>${!g&&i.job?`<button type="button" class="ghost sm" data-work="${esc(x.id)}">${ic('panel')}<span>工作</span></button>`:''}${g?'':`<button type="button" class="ghost sm" data-mem="${esc(x.id)}">${ic('brain')}<span>它記得什麼</span></button>`}${!g&&i.job?`<button type="button" class="ghost sm" data-pz="${i.job}" data-on="${held?0:1}">${ic(held?'play':'pause')}<span>${held?'繼續':'暫停'}</span></button>`:''}${ap?`<button type="button" class="btn sm" data-ask="${esc(x.id)}">${ic('check')}<span>去核准</span></button>`:''}</footer></article>`;
   return h}
 // the counters (also the filters), then the cards: one section per 分區, in the base's order (problems first inside each)
-function paintOverview(){const d=OV.data,m=SEA.m;if(!ovOpen()||!m)return;
+function paintOverview(){const d=OV.data,m=SEA.m;if(!ovShown()||!m)return;
   const all=d?[...d.groups.map(x=>[x,true]),...d.bots.map(x=>[x,false])].map(([x,g])=>[x,g,ovInfo(x,g)]):[];
   const done=d?d.bots.reduce((a,x)=>a+x.doneN,0):m.counters.done,fail=d?d.bots.reduce((a,x)=>a+x.failed.length,0)+all.filter(([x,g,i])=>!x.failed.length&&i.bad).length:m.counters.fail;
   const cnt=[['all',all.length,'全部'],['run',m.counters.working,'工作中'],['need',m.counters.need,'需要你'],['done',done,'今天完成'],['fail',fail,'沒做成']];
@@ -74,9 +88,9 @@ function ovMark(){const b=$('ovBody');if(!b)return;
   b.querySelectorAll('[data-oc]').forEach(c=>{const id=c.dataset.oc;c.classList.toggle('hov',SEA.hover===id);c.classList.toggle('sel',SEA.sel===id)});
   b.querySelectorAll('[data-pgo]').forEach(h=>{const on=SEA.focus===h.dataset.pgo;h.classList.toggle('on',on);h.setAttribute('aria-pressed',String(on))})}
 // a click in the picture: show that card (switch to 全部 if the filter hides it), scroll to it, flash it
-function ovReveal(id){let c=$('ovBody')?.querySelector(`[data-oc="${CSS.escape(id)}"]`);
+function ovReveal(id){if(!ovShown())return;let c=$('ovBody')?.querySelector(`[data-oc="${CSS.escape(id)}"]`);
   if(!c&&OV.filter!=='all'){OV.filter='all';store.set('octa_ovf','all');OV.sig='';paintOverview();c=$('ovBody')?.querySelector(`[data-oc="${CSS.escape(id)}"]`)}
-  if(!c)return;if(SEA.el?.classList.contains('pclosed')&&!phoneUI())seaPanel(true);
+  if(!c)return;
   c.scrollIntoView({block:'nearest',behavior:seaReduced()?'auto':'smooth'});c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');setTimeout(()=>c.classList.remove('flash'),1500)}
 function ovRevealPod(id){const s=$('ovBody')?.querySelector(`[data-pod="${CSS.escape(id)}"]`);if(s)s.scrollIntoView({block:'start',behavior:seaReduced()?'auto':'smooth'})}
 function ovFilter(e){const b=e.target.closest('[data-f]');if(!b)return;const f=b.dataset.f;OV.filter=OV.filter===f&&f!=='all'?'all':f;store.set('octa_ovf',OV.filter);
@@ -84,18 +98,23 @@ function ovFilter(e){const b=e.target.closest('[data-f]');if(!b)return;const f=b
 async function ovClick(e){
   const k=e.target.closest('[data-rok]');if(k){k.disabled=true;try{await api('overview/routine-ok','POST',{id:k.dataset.rok});toast(I18N.t('已標記為處理好'))}catch(err){toast(err.message)}loadOverview(true);return}
   const r=e.target.closest('[data-retry]');if(r){r.disabled=true;await oneRetry(+r.dataset.retry);loadOverview(true);return}
-  const o=e.target.closest('[data-open]');if(o){closeSea();openConv(o.dataset.open);return}
-  const w=e.target.closest('[data-work]');if(w){const id=w.dataset.work;closeSea();openConv(id);setTimeout(()=>openPanel('work',{user:true}),0);return}
+  const o=e.target.closest('[data-open]');if(o){seaOpenConv(o.dataset.open);return}
+  const w=e.target.closest('[data-work]');if(w){const id=w.dataset.work;seaOpenConv(id);setTimeout(()=>openPanel('work',{user:true}),0);return}
   const m=e.target.closest('[data-mem]');if(m){openMemory(m.dataset.mem);return}
   const p=e.target.closest('[data-pz]');if(p){jobPause(+p.dataset.pz,p.dataset.on==='1',p).then(()=>{OV.sig='';paintOverview()});return}
-  const a=e.target.closest('[data-ask]');if(a){closeSea();goAsk(a.dataset.ask);return}
-  const g=e.target.closest('[data-pgo]');if(g){const id=g.dataset.pgo;seaSelect(null);seaFocus(SEA.focus===id?null:id);return}
-  // anywhere else on a card: find it in the base
+  const a=e.target.closest('[data-ask]');if(a){STAGE.min=false;goAsk(a.dataset.ask);return}
+  const g=e.target.closest('[data-pgo]');if(g){const id=g.dataset.pgo;seaFocus(SEA.focus===id?null:id);return}
+  // anywhere else on a card: open its chat (the camera swims to its octopus)
   if(e.target.closest('button,a,summary,details ul,input'))return;
-  const c=e.target.closest('[data-oc]');if(c)seaSelect(SEA.sel===c.dataset.oc?null:c.dataset.oc)}
+  const c=e.target.closest('[data-oc]');if(c)seaOpenConv(c.dataset.oc)}
 async function oneRetry(job){try{await api('alerts/retry','POST',{job});toast(I18N.t('已重新開始'));refresh();return true}catch(err){toast(err.message);return false}}
-// the one way in: the sidebar button (with its 「N 件有問題」 badge); also #view=overview links
-$('ovBtn').onclick=()=>{if(typeof leaveOk==='function')leaveOk(openSea);else openSea()};
+// the sidebar button 總覽 (with its 「N 件有問題」 badge); also #view=overview links. The cards and the base point at each other
+$('ovBtn').onclick=()=>goOverview();
+$('ovSeg').addEventListener('click',ovFilter);
+$('ovRe').addEventListener('click',()=>loadOverview(true));
+$('ovBody').addEventListener('click',ovClick);
+$('ovBody').addEventListener('pointerover',e=>{if(e.pointerType!=='mouse')return;const c=e.target.closest('[data-oc]');seaHi(c?c.dataset.oc:null)});
+$('ovBody').addEventListener('pointerleave',()=>seaHi(null));
 
 /* ---------- 異常主動推播 on this device: a notification, and a 一鍵重試 bar ---------- */
 const AL={top:null,timer:0,rev:-2};
@@ -112,6 +131,7 @@ async function pollAlerts(){if(!ready())return;
 // 4.8: the badge says what it counts — 「2 件有問題」 (failed or logged-out work nobody retried yet), with a tooltip
 function ovBadge(n){const b=$('ovBadge');b.dataset.n=String(n);b.hidden=!n;
   b.innerHTML=n?`<b>${n>9?'9+':n}</b> <span>${esc(I18N.t('件有問題'))}</span>`:'';
+  const b2=$('lsegBadge');if(b2){b2.hidden=!n;b2.textContent=n>9?'9+':String(n||'')}   // the phone's 總覽 tab
   const tip=n?n+' '+I18N.t('件工作沒做成或被登出，還沒重試。點開看是哪些'):'';b.title=tip;$('ovBtn').title=tip||I18N.t('每個機器人在做什麼、今天做了什麼');b.setAttribute('aria-label',tip)}
 function showAlert(a){const b=bot(a.bot);if(!b)return;
   if(notiOn()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||cur!==a.conv)){
@@ -129,15 +149,15 @@ function retryBar(a){const b=bot(a.bot);if(!b)return;$('alBar')?.remove();
   document.body.appendChild(el);
   el.onclick=async e=>{const k=e.target.closest('[data-al]')?.dataset.al;if(!k)return;
     if(k==='x'){el.remove();return}
-    if(k==='ov'){el.remove();openSea();return}
+    if(k==='ov'){el.remove();goOverview();return}
     if(k==='web'){if(cur!==a.bot)openConv(a.bot);if(typeof goWeb==='function')goWeb(a.bot,a.bot);return}
     e.target.closest('button').disabled=true;if(await oneRetry(a.job))el.remove();else e.target.closest('button').disabled=false}}
 // …#web=<bot>&retry=<job>: the 一鍵重試 link in a Telegram / LINE alert (through the phone's /go page) — shows the bar
 function retryDeepLink(){let job='',web='';try{job=sessionStorage.getItem('octa_goretry')||'';web=sessionStorage.getItem('octa_goretryb')||'';sessionStorage.removeItem('octa_goretry');sessionStorage.removeItem('octa_goretryb')}catch(e){}
   if(!job||!bot(web))return;if(cur!==web)openConv(web);retryBar({bot:web,job:+job,kind:'',label:'沒有完成工作'});
   api('alerts').then(d=>{const a=(d.alerts||[]).find(x=>x.job===+job&&x.bot===web);if(a&&$('alBar'))retryBar(a)}).catch(()=>{})}   // what happened, when the alert is still there
-// …#view=overview (also the older 深海基地 links): straight to 任務總覽
-function viewDeepLink(){let v='';try{v=sessionStorage.getItem('octa_goview')||'';sessionStorage.removeItem('octa_goview')}catch(e){}if(v&&!SEA.el)openSea()}
+// …#view=overview (also the older 深海基地 / #sea links): the 總覽 state of the main screen
+function viewDeepLink(){let v='';try{v=sessionStorage.getItem('octa_goview')||'';sessionStorage.removeItem('octa_goview')}catch(e){}if(v)goOverview()}
 setInterval(()=>{if(!ready())return;if(AL.rev===-2){retryDeepLink();viewDeepLink()}if(S.rev!==AL.rev){AL.rev=S.rev;pollAlerts()}},1500);
 
 /* ---------- 額度看得到 (4.8): each AI in use, its 5-hour and weekly windows as two small bars; a tap shows the details ---------- */

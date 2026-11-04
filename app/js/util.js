@@ -99,14 +99,14 @@ function currentTheme(){const t=document.documentElement.dataset.theme;if(t==='l
 function applyTheme(t,persist){
   const h=document.documentElement,was=h.dataset.theme||currentTheme();
   if(t==='light'||t==='dark'||t==='sea')h.dataset.theme=t;else delete h.dataset.theme;
-  seaFx();
+  seaFx();if(typeof seaThemeSync==='function')seaThemeSync();   // 4.10 the base's water follows the look
   // colours fade over to the other look instead of snapping
   if(persist!==false&&was!==(h.dataset.theme||currentTheme())){h.classList.add('theming');clearTimeout(applyTheme.t);applyTheme.t=setTimeout(()=>h.classList.remove('theming'),420)}
   if(persist!==false)store.set('octa_theme',t==='light'||t==='dark'||t==='sea'?t:null);
   document.querySelectorAll('[data-set-theme]').forEach(x=>x.classList.toggle('on',x.dataset.setTheme===themeChoice()))}
 document.addEventListener('click',e=>{const set=e.target.closest('[data-set-theme]');if(set)applyTheme(set.dataset.setTheme)});
 // the 深海 look's moving light behind the sidebar: on unless turned off, 省電模式, or reduced motion (CSS stops it then)
-function seaFx(){const h=document.documentElement;h.classList.toggle('seafx',h.dataset.theme==='sea'&&store.get('octa_seafx')!=='0'&&store.get('octa_lowpower')!=='1')}
+function seaFx(){const h=document.documentElement;h.classList.toggle('seafx',h.dataset.theme==='sea'&&store.get('octa_seafx')!=='0'&&store.get('octa_lowpower')!=='1');h.classList.toggle('lowpower',store.get('octa_lowpower')==='1')}
 seaFx();
 
 /* text size for the whole interface (kept on this device). 80–200, and 200 is twice the standard size. */

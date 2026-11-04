@@ -1,162 +1,217 @@
 /* OCTA 4.9 深海基地 — every bot at work in an underwater research base (seamodel.js works out what it shows).
-   4.9.2: one page with 任務總覽 — the base fills the left (the top on a phone), the list of cards per 分區 sits beside it
-   (overview.js paints it); a click on an octopus finds its card, a card moves the camera to its octopus.
-   three.js (app/vendor, loaded only when the view opens) draws the sea floor, glass domes and tubes; each bot is its
-   own octopus (the avatar drawing, as a sprite); names, speech bubbles and the HUD are plain HTML on top.
-   Smooth on an ordinary laptop: at most 30 frames a second, pixel ratio ≤ 1.5, nothing drawn while hidden or minimised,
-   省電模式 / reduced motion: still pictures redrawn only when something changes. Closing frees every GPU resource. */
+   4.10 「深海基地就是主畫面」: no separate page any more. On a computer the base is the stage in the middle of the main
+   window (sidebar | base | right panel with 總覽 · 工作 · 瀏覽器 · 詳細資料); the open chat floats over it as a glass panel
+   that can be folded to a slim bar. Picking a bot (sidebar, card or its octopus) opens its chat and swims the camera to it,
+   aimed beside the chat panel. On a phone the base is a foldable header above the chat list.
+   three.js (app/vendor) is loaded after the first paint, once; switching chats only moves the camera, nothing is rebuilt.
+   How often it draws: seaRate (30 / 10 / 0 frames a second: watching, covered or typing or in the background, hidden or
+   省電模式). Turning 主畫面 3D 基地 off frees every GPU resource. */
 'use strict';
 const SEA_LIB='/vendor/three-0.170.0.module.min.js';
-const SEA={el:null,st:null,g:null,m:null,L:null,done:{},sig:'',ssig:'',focus:null,sel:null,ac:null,iv:0,hover:null,ovSeen:''};
-const seaOpen=()=>!!SEA.el;
+const SEA={st:null,g:null,m:null,L:null,done:{},sig:'',ssig:'',focus:null,sel:null,ac:null,iv:0,hover:null,ovSeen:'',booted:false,gl:null,loading:false,blurAt:0,coverPx:0,rightPx:0,cover:0};
+// the chat panel over the stage: folded to a bar (收起對話) or not
+const STAGE={min:false};
+const seaOpen=()=>!!SEA.g;
 const seaPodName=p=>p.kind==='hub'?I18N.t(p.name):p.name;
 const seaLow=()=>store.get('octa_lowpower')==='1';
 const seaReduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
 const seaStill=()=>seaLow()||seaReduced();
+// 設定 → 外觀與語言 → 主畫面 3D 基地 (on unless turned off)
+const seaEnabled=()=>store.get('octa_stage3d')!=='0';
+// a computer (1024 px and wider): the base is the main screen; narrower windows keep the list ↔ chat layout
+const stageMode=()=>!phoneUI()&&innerWidth>=1024&&seaEnabled();
+// the phone's header can be folded to a strip (remembered): nothing is drawn then
+const seaFolded=()=>store.get('octa_seafold')==='1';
 let SEA_MOD=null;
 const seaLib=()=>SEA_MOD||(SEA_MOD=import(SEA_LIB).catch(e=>{SEA_MOD=null;throw e}));
-function seaHasGL(){try{const c=document.createElement('canvas');return !!(c.getContext('webgl2')||c.getContext('webgl'))}catch(e){return false}}
+// can this device draw 3D? (the test context is let go at once)
+function seaHasGL(){try{const c=document.createElement('canvas'),x=c.getContext('webgl2')||c.getContext('webgl');if(!x)return false;x.getExtension('WEBGL_lose_context')?.loseContext();return true}catch(e){return false}}
 const seaInput=()=>({bots:ordered(S.bots),groups:S.groups,folders:S.folders,busy:S.busy,last:S.last,lastJob:S.lastJob,gask:S.gask,done:SEA.done,now:Date.now()});
-
-/* ---------- open / close: 任務總覽 = the base (3D) and the list (cards per 分區) on one page ---------- */
 const seaW=()=>SEA.st?.clientWidth||1,seaH=()=>SEA.st?.clientHeight||1;
-// a phone can fold the 3D picture to a strip: nothing is drawn then
-const seaFolded=()=>!!SEA.el&&SEA.el.classList.contains('folded')&&phoneUI();
-function openSea(){if(SEA.el)return;if(typeof closeMenu==='function')closeMenu();
-  const el=document.createElement('div');el.className='seaview';el.id='sea';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',I18N.t('任務總覽'));
-  if(store.get('octa_ovc')==='1')el.classList.add('pclosed');if(store.get('octa_ovfold')==='1')el.classList.add('folded');
-  const w=+store.get('octa_ovw');if(w>=300)el.style.setProperty('--ovw',w+'px');
-  const fold=el.classList.contains('folded');
-  el.innerHTML=`<section class="sea-stage" id="seaStage"><div class="sea-bg" aria-hidden="true"></div><div class="sea-tags" id="seaTags" aria-hidden="true"></div>
-    <header class="sea-hud">
-      <div class="sea-ttl"><button type="button" class="sea-x" id="seaX" aria-label="關閉任務總覽" title="關閉（Esc）">${ic('back')}</button>
-        <span class="sea-logo" aria-hidden="true">${octSvg('working','#3EE6E0',false)}</span><h2><span>任務總覽</span><small>深海基地</small></h2></div>
-      <div class="sea-depth" id="seaDepth" aria-hidden="true"></div>
-      <button type="button" class="sea-fold" id="seaFold" aria-expanded="${!fold}" aria-controls="seaStage" title="${fold?'展開 3D 畫面':'收起 3D 畫面'}">${ic('up')}</button>
-    </header>
-    <button type="button" class="sea-all" id="seaAll" hidden>${ic('back')}<span>回到全景</span></button>
-    <p class="sea-hint" id="seaHint"><span>拖曳轉動</span> · <span>滾輪或雙指縮放</span> · <span>點章魚看它的卡片</span></p>
-    <button type="button" class="sea-show" id="seaShow">${ic('list')}<span>打開清單</span></button>
-    <div class="sea-tip" id="seaTip" hidden></div>
-    <div class="sea-msg" id="seaMsg" hidden></div></section>
-    <aside class="sea-panel" id="seaPanel" aria-label="每個機器人">
-      <div class="sea-split" id="seaSplit" role="separator" aria-orientation="vertical" aria-label="拖曳調整清單寬度" title="拖曳調整清單寬度（點兩下恢復）" tabindex="0"></div>
-      <div class="ov-bar"><div class="ov-cnt" id="ovSeg" role="tablist" aria-label="篩選"></div>
-        <div class="ov-tools"><button type="button" class="ib" id="seaHide" aria-label="收起清單" title="收起清單">${ic('panel')}</button><button type="button" class="ib" id="ovRe" aria-label="重新整理" title="重新整理">${ic('refresh')}</button></div></div>
-      <div class="ov-body" id="ovBody"><div class="empty fade">載入中…</div></div></aside>`;
-  document.body.appendChild(el);SEA.el=el;SEA.st=$('seaStage');SEA.ac=new AbortController();SEA.focus=null;SEA.sel=null;SEA.sig='';SEA.ssig='';
-  el.classList.toggle('still',seaStill());
-  const sig={signal:SEA.ac.signal};
-  $('seaX').addEventListener('click',()=>closeSea(),sig);
-  $('seaAll').addEventListener('click',()=>seaFocus(null),sig);
-  $('seaFold').addEventListener('click',()=>seaFold(),sig);
-  $('seaHide').addEventListener('click',()=>seaPanel(false),sig);
-  $('seaShow').addEventListener('click',()=>seaPanel(true),sig);
-  $('ovSeg').addEventListener('click',ovFilter,sig);
-  $('ovRe').addEventListener('click',()=>loadOverview(true),sig);
-  $('ovBody').addEventListener('click',ovClick,sig);
-  // the list and the base point at each other: hover a card, its octopus lights up (and the other way round)
-  $('ovBody').addEventListener('pointerover',e=>{if(e.pointerType!=='mouse')return;const c=e.target.closest('[data-oc]');seaHi(c?c.dataset.oc:null)},sig);
-  $('ovBody').addEventListener('pointerleave',()=>seaHi(null),sig);
-  seaSplit(sig);
-  document.addEventListener('keydown',seaKey,sig);
-  document.addEventListener('visibilitychange',()=>{if(SEA.g){if(document.hidden)SEA.g.loop.stop();else{SEA.g.loop.start()}}},sig);
-  addEventListener('resize',()=>seaResize(),sig);
-  matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>seaPrefs(),sig);
-  navPush('sea');if(typeof dockSync==='function')dockSync();
-  OV.sig='';seaRefresh(true);loadOverview(true);
-  SEA.iv=setInterval(seaTick,1000);
-  paintIcons(el);$('seaX').focus({preventScroll:true});
-  if(!seaHasGL()){seaFallback();return}
-  seaLib().then(T=>{if(SEA.el===el)seaInit(T)}).catch(()=>{if(SEA.el===el)seaFallback()})}
-// once a second: the picture follows the polled state; the list asks the API again when work moved (at most every 1.5 s, or every 30 s)
-function seaTick(){if(!SEA.el)return;seaRefresh();const k=S.rev+':'+S.prog;
-  if((k!==SEA.ovSeen&&Date.now()-OV.t>1500)||Date.now()-OV.t>30000){SEA.ovSeen=k;loadOverview()}}
-function closeSea(fromHistory){const el=SEA.el;if(!el)return;
-  clearInterval(SEA.iv);SEA.iv=0;SEA.ac?.abort();SEA.ac=null;
-  if(SEA.g){seaFree(SEA.g);SEA.g=null}
-  el.remove();SEA.el=null;SEA.st=null;SEA.m=null;SEA.L=null;SEA.hover=null;SEA.sel=null;
-  if(!fromHistory)navPop('sea');if(typeof dockSync==='function')dockSync();$('ovBtn')?.focus({preventScroll:true})}
-function seaKey(e){if(e.key!=='Escape'||!$('veil').hidden)return;e.preventDefault();
-  if(SEA.sel){seaSelect(null);return}if(SEA.focus){seaFocus(null);return}closeSea()}
-// no WebGL: the page is the list, under a plain header
-function seaFallback(){const m=$('seaMsg');if(!m)return;m.hidden=false;
-  m.innerHTML=`<b>這台裝置沒辦法顯示 3D 畫面</b><span>清單一樣可以看每個機器人在做什麼。</span>`;SEA.el.classList.add('flat');SEA.el.classList.remove('pclosed','folded')}
-// 省電模式 or reduced motion changed while open
-function seaPrefs(){if(!SEA.el)return;SEA.el.classList.toggle('still',seaStill());if(SEA.g){SEA.g.pr=seaPR();SEA.g.q=null;SEA.g.r.setPixelRatio(SEA.g.pr);seaResize();SEA.g.loop.kick(2)}}
-const seaPR=()=>Math.min(devicePixelRatio||1,seaLow()?1:1.5);
-// the list beside the base: collapse it (remembered), or drag its edge (remembered; double-click for the default)
-function seaPanel(on){if(!SEA.el)return;SEA.el.classList.toggle('pclosed',!on);store.set('octa_ovc',on?null:'1');seaResize();
-  (on?$('seaHide'):$('seaShow'))?.focus({preventScroll:true})}
-function seaSplit(sig){const sp=$('seaSplit'),el=SEA.el;let raf=0,drag=false;
-  const set=w=>{const max=Math.max(340,Math.min(820,el.clientWidth*.62));w=Math.round(Math.max(340,Math.min(max,w)));el.style.setProperty('--ovw',w+'px');
-    if(!raf)raf=requestAnimationFrame(()=>{raf=0;seaResize()});return w};
-  sp.addEventListener('pointerdown',e=>{drag=true;sp.setPointerCapture(e.pointerId);el.classList.add('sizing')},sig);
-  sp.addEventListener('pointermove',e=>{if(drag)set(el.getBoundingClientRect().right-e.clientX)},sig);
-  const end=()=>{if(!drag)return;drag=false;el.classList.remove('sizing');store.set('octa_ovw',String($('seaPanel').offsetWidth))};
-  sp.addEventListener('pointerup',end,sig);sp.addEventListener('pointercancel',end,sig);
-  sp.addEventListener('dblclick',()=>{el.style.removeProperty('--ovw');store.set('octa_ovw',null);seaResize()},sig);
-  sp.addEventListener('keydown',e=>{const d={ArrowLeft:32,ArrowRight:-32}[e.key];if(!d)return;e.preventDefault();store.set('octa_ovw',String(set($('seaPanel').offsetWidth+d)))},sig)}
-// a phone: the 3D picture folds to a strip (and stops drawing) so the list has the room
-function seaFold(){const el=SEA.el;if(!el)return;const f=!el.classList.contains('folded');el.classList.toggle('folded',f);store.set('octa_ovfold',f?'1':null);
-  const b=$('seaFold');b.setAttribute('aria-expanded',String(!f));b.title=I18N.t(f?'展開 3D 畫面':'收起 3D 畫面');
-  requestAnimationFrame(()=>{seaResize();if(SEA.g&&!f)SEA.g.loop.kick(3)})}
+const seaTyping=()=>{const a=document.activeElement;return !!a&&(a.tagName==='TEXTAREA'||a.isContentEditable||(a.tagName==='INPUT'&&!/^(checkbox|radio|range|button|submit)$/.test(a.type)))};
+// is the base on screen right now? (the computer's stage, or the phone's unfolded header on the list screen)
+function seaShown(){if(!SEA.st||$('app').hidden||!seaEnabled()||!SEA.st.isConnected)return false;
+  if(phoneUI()){const a=$('app');return !seaFolded()&&!a.classList.contains('chat')&&!a.classList.contains('wp-on')&&!$('seaHead').hidden}
+  return stageMode()}
+// what seaRate is told, now
+function seaRateNow(){const G=SEA.g;
+  return seaRate({on:seaEnabled(),gl:!!G,hidden:document.hidden||!seaShown(),blurMs:SEA.blurAt?Date.now()-SEA.blurAt:0,still:seaStill(),
+    moving:!!G&&seaMoving(G),covered:SEA.cover,typing:seaTyping(),focused:document.hasFocus()})}
 
-/* ---------- the picture follows the state; the counters and the list are painted by overview.js ---------- */
-function seaRefresh(force){if(!SEA.el)return;
+/* ---------- the stage: made once, after the first paint; moved between the computer's main screen and the phone's header ---------- */
+function seaMount(){if(SEA.st)return SEA.st;
+  const st=document.createElement('section');st.className='sea-stage';st.id='seaStage';st.setAttribute('aria-label',I18N.t('深海基地'));
+  st.innerHTML=`<div class="sea-bg" aria-hidden="true"></div><div class="sea-tags" id="seaTags" aria-hidden="true"></div>
+    <div class="sea-hud"><button type="button" class="sea-all" id="seaAll" hidden>${ic('back')}<span>回到全景</span></button><div class="sea-depth" id="seaDepth" aria-hidden="true"></div></div>
+    <p class="sea-hint" id="seaHint"><span>拖曳轉動</span> · <span>滾輪或雙指縮放</span> · <span>點章魚打開對話</span></p>
+    <div class="sea-tip" id="seaTip" hidden></div><div class="sea-msg" id="seaMsg" hidden></div>`;
+  SEA.st=st;paintIcons(st);
+  st.querySelector('#seaAll').onclick=()=>seaFocus(null);
+  return st}
+function seaBoot(){if(SEA.booted||$('app').hidden)return;SEA.booted=true;seaMount();stageSync();seaRefresh(true);SEA.iv=setInterval(seaTick,1000);
+  addEventListener('resize',stageSync);
+  // the phone's header: fold / unfold (remembered)
+  $('seaHeadBar').onclick=()=>{store.set('octa_seafold',seaFolded()?null:'1');stageSync();if(SEA.g&&!seaFolded())requestAnimationFrame(()=>{seaResize();SEA.g.loop.kick(3)})};
+  seaEnsure()}
+// load three.js and build the scene, when the base is to be shown and can be (once; later calls do nothing)
+function seaEnsure(){if(!SEA.booted||SEA.g||SEA.loading||!seaEnabled()||!seaShown())return;
+  if(SEA.gl==null)SEA.gl=seaHasGL();
+  if(!SEA.gl){seaFallback();return}
+  SEA.loading=true;
+  seaLib().then(T=>{SEA.loading=false;if(seaEnabled()&&!SEA.g&&SEA.st)seaInit(T)}).catch(()=>{SEA.loading=false;seaFallback()})}
+// once a second: the picture follows the polled state; the cards ask the API again when work moved (at most every 1.5 s, or every 30 s)
+function seaTick(){if($('app').hidden)return;seaRefresh();
+  if(!ovShown())return;const k=S.rev+':'+S.prog;
+  if((k!==SEA.ovSeen&&Date.now()-OV.t>1500)||Date.now()-OV.t>30000){SEA.ovSeen=k;loadOverview()}}
+// no WebGL: a still deep-sea gradient behind the chat (the app works the same); the phone shows no header
+function seaFallback(){SEA.gl=false;if(!SEA.st)return;SEA.st.classList.add('flat');const m=$('seaMsg');m.hidden=false;
+  setHTML(m,`<b>這台裝置沒辦法顯示 3D 畫面</b><span>對話和總覽一樣可以用。</span>`);stageSync()}
+// 主畫面 3D 基地 on or off (Settings). Off: the scene and its GL context are freed, the chat fills the middle again
+function seaSet(on){store.set('octa_stage3d',on?null:'0');if(!on&&SEA.g)seaFree(SEA.g);stageSync();if(on)seaEnsure()}
+// 省電模式 or reduced motion changed
+function seaPrefs(){const G=SEA.g;$('ovWrap')?.classList.toggle('still',seaStill());if(G){G.pr=seaPR();G.q=null;G.r.setPixelRatio(G.pr);seaResize();G.loop.kick(2)}}
+const seaPR=()=>Math.min(devicePixelRatio||1,seaLow()?1:1.5);
+
+/* ---------- the main screen's layout: which state the chat panel is in, where the stage and the cards live ---------- */
+// chat: a chat is open over the base · min: folded to the bar · none: no chat (the base fills the stage, with a hint) ·
+// blank: nothing to show yet (no bots, or the tour) — the welcome sits in the glass panel
+function stageState(o){if(!o.stage)return 'classic';if(o.conv)return o.min?'min':'chat';return o.bots&&!o.tour?'none':'blank'}
+function stageSync(){const app=$('app');if(!app)return;
+  const on=stageMode(),c=cur&&conv(cur),bots=!!(S.bots.length||S.groups.length),st=stageState({stage:on,conv:!!c,min:STAGE.min,bots,tour:typeof tourOn==='function'&&tourOn()});
+  app.classList.toggle('stage',on);app.classList.toggle('chat-min',st==='min');app.classList.toggle('stage-none',st==='none');
+  app.dataset.stage=st;
+  $('chatMin').hidden=st!=='min';$('stageHint').hidden=st!=='none';
+  if(st==='min')paintChatMin(c);
+  // the phone: the base as a header above the list (not without WebGL or when turned off), and 聊天 | 總覽
+  const ph=phoneUI(),head=$('seaHead');head.hidden=!seaEnabled()||SEA.gl===false;head.classList.toggle('folded',seaFolded());
+  $('seaHeadBar').setAttribute('aria-expanded',String(!seaFolded()));$('seaHeadBar').title=I18N.t(seaFolded()?'展開 3D 畫面':'收起 3D 畫面');
+  $('side').classList.toggle('seg-ov',ph&&LSEG.k==='ov');
+  document.querySelectorAll('[data-lseg]').forEach(b=>{const s=b.dataset.lseg===LSEG.k;b.setAttribute('aria-selected',String(s));b.classList.toggle('on',s)});
+  if(SEA.st){SEA.st.classList.toggle('light',currentTheme()==='light');seaPlace()}
+  $('ovWrap').classList.toggle('still',seaStill());
+  // the chat that is open is the one picked in the base (after the cover is known: the camera aims beside the panel)
+  seaCover();if(SEA.sel!==((c&&cur)||null))seaPick((c&&cur)||null);
+  seaEnsure();if(SEA.g){seaThemeSync();SEA.g.loop.kick()}}
+function seaPlace(){const st=SEA.st,host=phoneUI()?$('seaHostP'):$('seaHostD');if(st.parentNode!==host){host.appendChild(st);if(SEA.g)requestAnimationFrame(seaResize)}
+  const ov=$('ovWrap'),oh=phoneUI()?$('lov'):$('wpOv');if(ov.parentNode!==oh)oh.appendChild(ov)}
+// the slim bar of a folded chat: who, what it is doing, 展開對話
+function paintChatMin(c){if(!c)return;const g=isG(c.id),b=SEA.m?.bots.find(x=>x.id===c.id);
+  const av=$('cmAv');av.className='av'+(g?' grp':'');setHTML(av,g?gStack(c,true):avOf(c.id,'always'));
+  setHTML($('cmName'),esc(c.name));setHTML($('cmSub'),b?`<span>${esc(I18N.t(b.word))}</span>${b.bubble?.txt&&!b.act?` · <span data-u>${esc(b.bubble.txt)}</span>`:''}`:'');
+  const n=unread(c.id);$('cmNew').hidden=!n;$('cmNew').textContent=n>9?'9+':String(n||'')}
+// 收起對話 / 展開對話
+function chatMinimise(on){if(!stageMode()||!cur)return;STAGE.min=!!on;stageSync();
+  if(on){seaFocus(SEA.focus);$('chatMinGo').focus({preventScroll:true})}else{if(SEA.sel)seaLook(SEA.sel);$('msg').focus({preventScroll:true})}}
+// how much of the stage the chat panel (left) and a floating right panel (761–1180 px) cover: the camera aims at the rest
+function seaCover(){let l=0,r=0,b=phoneUI()?6:38;const st=SEA.st,a=$('app');
+  if(stageMode()&&st){const p=$('chatp');if(p.offsetParent&&!a.classList.contains('chat-min'))l=p.offsetLeft+p.offsetWidth+8;
+    const wp=$('wp');if(!wp.hidden&&getComputedStyle(wp).position==='fixed')r=wp.offsetWidth;
+    // the folded chat's bar and the hint sit at the bottom: the whole base stays above them
+    if(a.classList.contains('chat-min'))b=$('chatMin').offsetHeight+28;else if(a.classList.contains('stage-none'))b=104}
+  const w=st?.clientWidth||0;SEA.coverPx=l;SEA.rightPx=r;SEA.cover=w?Math.min(1,(l+r)/w):0;
+  const G=SEA.g;if(G&&(G.l!==l||G.rr!==r||G.bb!==b)){const fresh=G.l==null;G.l=l;G.rr=r;G.bb=b;if(G.h)G.bot=G.h-b;seaAim(G);if(!fresh&&!SEA.focus&&!SEA.sel)seaFocus(null);G.loop.kick(2)}}
+// the chat panel's width: drag its edge (remembered; double-click for the default; arrow keys too)
+(()=>{const g=$('chatGrip'),pane=$('pane');if(!g)return;let on=false,x0=0,w0=0;
+  const set=(w,save)=>{const max=Math.max(360,pane.clientWidth-180);w=Math.round(Math.max(340,Math.min(max,w)));pane.style.setProperty('--chatw',w+'px');if(save)store.set('octa_chatw',String(w));seaCover();return w};
+  const n=+store.get('octa_chatw');if(n>=340)pane.style.setProperty('--chatw',n+'px');
+  g.addEventListener('pointerdown',e=>{if(e.button!==0)return;on=true;x0=e.clientX;w0=$('chatp').offsetWidth;g.setPointerCapture(e.pointerId);pane.classList.add('sizing');e.preventDefault()});
+  g.addEventListener('pointermove',e=>{if(on)set(w0+(e.clientX-x0)/(parseFloat(document.documentElement.style.zoom)||1),false)});
+  const end=()=>{if(!on)return;on=false;pane.classList.remove('sizing');set($('chatp').offsetWidth,true)};
+  g.addEventListener('pointerup',end);g.addEventListener('pointercancel',end);
+  g.addEventListener('dblclick',()=>{pane.style.removeProperty('--chatw');store.set('octa_chatw',null);seaCover()});
+  g.addEventListener('keydown',e=>{const d={ArrowLeft:-32,ArrowRight:32}[e.key];if(!d)return;e.preventDefault();set($('chatp').offsetWidth+d,true)});
+  if(window.ResizeObserver)new ResizeObserver(()=>seaCover()).observe($('chatp'));
+  $('chatMinBtn').onclick=()=>chatMinimise(true);
+  $('chatMinGo').onclick=()=>chatMinimise(false)})();
+
+/* ---------- the picture follows the state; the counters and the cards are painted by overview.js ---------- */
+function seaRefresh(force){
   const m=seaModel(seaInput()),sig=JSON.stringify(m);if(!force&&sig===SEA.sig)return;SEA.sig=sig;
   SEA.m=m;SEA.L=seaLayout(m);
-  seaDepth();if(SEA.g)seaSync();paintOverview()}
-function seaDepth(){const m=SEA.m;if(!m)return;const p=m.pods.find(x=>x.id===SEA.focus)||m.pods[0];
-  setHTML($('seaDepth'),`<small>深度</small><b data-u>${p.depth}</b><small data-u>m</small><i class="sea-gauge"><i style="height:${Math.min(100,Math.round((p.depth-100)/Math.max(1,(m.pods.length)*20+20)*100))}%"></i></i>`)}
+  seaDepth();if(SEA.g)seaSync();if(ovShown())paintOverview();
+  const c=m.counters;setHTML($('seaHeadSum'),[c.working?`<span data-u>${c.working}</span> <span>工作中</span>`:'',c.need?`<b><span data-u>${c.need}</span> <span>需要你</span></b>`:''].filter(Boolean).join(' · '));
+  if($('app').classList.contains('chat-min'))paintChatMin(cur&&conv(cur))}
+function seaDepth(){const m=SEA.m,el=$('seaDepth');if(!m||!el)return;const p=m.pods.find(x=>x.id===SEA.focus)||m.pods[0];
+  setHTML(el,`<small>深度</small><b data-u>${p.depth}</b><small data-u>m</small><i class="sea-gauge"><i style="height:${Math.min(100,Math.round((p.depth-100)/Math.max(1,(m.pods.length)*20+20)*100))}%"></i></i>`)}
 const SEA_OCT=2.2;   // an octopus is this tall (metres)
 // light up one bot (or meeting room) in both places: its octopus (name, bubble, halo) and its card
 function seaHi(id){if(SEA.hover===id)return;SEA.hover=id;ovMark();if(SEA.g)SEA.g.loop.kick()}
-/* pick one: its card is selected (and, when the pick came from the picture, scrolled into view and flashed); the camera
-   swims to it. null: nothing picked */
-function seaSelect(id,from3d){SEA.sel=id||null;ovMark();if(!id){if(SEA.g)SEA.g.loop.kick();return}
-  if(from3d)ovReveal(id);seaLook(id)}
-function seaLook(id){const G=SEA.g,L=SEA.L,m=SEA.m;if(!G||!L||!m||seaFolded())return;
+/* the open chat is the picked one: its card is marked, its octopus gets the ring, and the camera swims there
+   (on a phone the small header keeps the whole base). null: nothing picked */
+function seaPick(id){SEA.sel=id||null;ovMark();if(id&&!phoneUI())seaLook(id);else if(SEA.g)SEA.g.loop.kick()}
+// an octopus, a meeting room or a card was picked: open that chat (unfolding the chat panel) and look at it
+function seaOpenConv(id){if(!conv(id))return;STAGE.min=false;
+  if(cur===id){stageSync();seaLook(id);if(!phoneUI())$('msg').focus({preventScroll:true})}else openConv(id);
+  ovReveal(id)}
+function seaLook(id){const G=SEA.g,L=SEA.L,m=SEA.m;if(!G||!L||!m||!seaShown())return;
   const b=m.bots.find(x=>x.id===id),r=L.rooms[id],e=G.bots[id];let x,z,d;
   if(b&&e){const p=e.goal||e.pos;x=p.x;z=p.z;d=19}else if(r){x=r.x;z=r.z;d=17}else return;
   SEA.focus=b?b.pod:m.rooms.find(q=>q.id===id)?.pod||null;$('seaAll').hidden=false;seaDepth();ovMark();
-  const g=G.goal,asp=G.cam.aspect||1;g.tx=x;g.tz=z;g.d=d/Math.min(1,asp*1.05);g.ph=.92;
+  // as close as the part of the stage beside the chat panel allows
+  const g=G.goal,asp=Math.max(.3,((G.w||1)-(G.l||0)-(G.rr||0))/(G.h||1));g.tx=x;g.tz=z;g.d=d/Math.min(1,asp*1.05);g.ph=.92;
   const tw=Math.PI*2;g.th=G.view.th+((((g.th-G.view.th+Math.PI)%tw)+tw)%tw)-Math.PI;
   if(seaReduced())Object.assign(G.view,g);G.loop.kick(3)}
 
-function seaInit(T){const el=SEA.el;
-  const cv=document.createElement('canvas');cv.className='sea-cv';cv.setAttribute('aria-hidden','true');SEA.st.insertBefore(cv,SEA.st.firstChild.nextSibling);
+/* ---------- the 3D scene: built once; freed only when 主畫面 3D 基地 is turned off ---------- */
+// the water: deep (深海, dark) or a lighter sea (light)
+const SEA_PAL={deep:{bg:0x021019,fog:0x042132,fd:.0135,lo:[.008,.05,.08],hi:[.03,.24,.32],gl:[.05,.22,.25],hemi:1.15,sun:1.7,amb:.45,exp:1.05},
+  light:{bg:0x2b7e9c,fog:0x3a8cab,fd:.0095,lo:[.09,.32,.42],hi:[.36,.70,.82],gl:[.22,.40,.40],hemi:1.55,sun:2.1,amb:.75,exp:1.12}};
+function seaThemeSync(){const G=SEA.g;if(!G)return;const k=currentTheme()==='light'?'light':'deep';if(G.pal===k)return;G.pal=k;const P=SEA_PAL[k];
+  G.scene.background.setHex(P.bg);G.scene.fog.color.setHex(P.fog);G.fd=P.fd;G.r.toneMappingExposure=P.exp;
+  G.hemi.intensity=P.hemi;G.sun.intensity=P.sun;G.amb.intensity=P.amb;
+  if(G.sky){const u=G.sky.material.uniforms;u.uLo.value.fromArray(P.lo);u.uHi.value.fromArray(P.hi);u.uGl.value.fromArray(P.gl)}
+  SEA.st?.classList.toggle('light',k==='light');G.loop.kick(2)}
+function seaInit(T){const st=SEA.st;
+  const cv=document.createElement('canvas');cv.className='sea-cv';cv.setAttribute('aria-hidden','true');st.insertBefore(cv,st.firstChild.nextSibling);
   let r;try{r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'default',stencil:false})}catch(e){cv.remove();seaFallback();return}
+  SEA.ac=new AbortController();const sig={signal:SEA.ac.signal};
   r.setPixelRatio(seaPR());r.toneMapping=T.ACESFilmicToneMapping;r.toneMappingExposure=1.05;
   const scene=new T.Scene();scene.background=new T.Color(0x021019);scene.fog=new T.FogExp2(0x042132,.0135);
   const cam=new T.PerspectiveCamera(40,1,.1,500);
   const U={uTime:{value:0}};
-  const G={T,r,scene,cam,U,cv,pr:seaPR(),tex:{},alive:true,bots:{},labels:{},base:null,env:null,t:0,
+  const G={T,r,scene,cam,U,cv,pr:seaPR(),tex:{},alive:true,bots:{},labels:{},base:null,env:null,t:0,fd:.0135,
     view:{th:.55,ph:.98,d:60,tx:0,tz:0},goal:{th:.55,ph:.98,d:60,tx:0,tz:0},ptr:new Map(),moved:0,ray:new T.Raycaster(),
-    glow:seaGlowTex(T),pick:[],pp:[null,null]};
+    glow:seaGlowTex(T),pick:[],pp:[null,null],off:null,l:null,rr:null};
   G.loop=seaLoop({raf:f=>requestAnimationFrame(f),caf:id=>cancelAnimationFrame(id),now:()=>performance.now(),frame:(dt)=>seaFrame(G,dt),
-    hidden:()=>document.hidden||!SEA.el||seaFolded(),animate:()=>!seaStill()||seaMoving(G)});
+    hidden:()=>document.hidden||!seaShown(),rate:seaRateNow});
   SEA.g=G;
-  scene.add(new T.HemisphereLight(0x7fdcf0,0x081820,1.15));
-  const sun=new T.DirectionalLight(0xc6f4ff,1.7);sun.position.set(12,40,6);scene.add(sun);
+  G.hemi=new T.HemisphereLight(0x7fdcf0,0x081820,1.15);scene.add(G.hemi);
+  G.sun=new T.DirectionalLight(0xc6f4ff,1.7);G.sun.position.set(12,40,6);scene.add(G.sun);
   const fill=new T.DirectionalLight(0x6a7dff,.35);fill.position.set(-20,8,-14);scene.add(fill);
-  scene.add(new T.AmbientLight(0x1d5a6e,.45));
+  G.amb=new T.AmbientLight(0x1d5a6e,.45);scene.add(G.amb);
   G.env=seaEnv(G);scene.add(G.env);
-  seaSync();seaResize();seaFocus(null,true);
+  // the picked octopus (the open chat) stands in a soft ring
+  G.ring=new T.Mesh(new T.RingGeometry(1.05,1.32,48).rotateX(-Math.PI/2),new T.MeshBasicMaterial({color:0x8ff8f4,transparent:true,opacity:.7,depthWrite:false,blending:T.AdditiveBlending,toneMapped:false}));
+  G.ring.visible=false;G.ring.renderOrder=3;scene.add(G.ring);
+  seaThemeSync();
+  seaSync();seaResize();seaFocus(null,true);if(SEA.sel&&!phoneUI())seaLook(SEA.sel);
   seaControls(G);
-  el.classList.add('ready');G.loop.start()}
-function seaFree(G){G.alive=false;G.loop.stop();
+  // when it draws: the window shown or hidden, in front or behind (30 s behind: it stops), typing, the stage resized
+  document.addEventListener('visibilitychange',()=>G.loop.kick(),sig);
+  addEventListener('blur',()=>{SEA.blurAt=Date.now();G.loop.kick()},sig);
+  addEventListener('focus',()=>{SEA.blurAt=0;G.loop.kick()},sig);
+  document.addEventListener('focusin',()=>G.loop.kick(),sig);document.addEventListener('focusout',()=>G.loop.kick(),sig);
+  matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change',()=>seaPrefs(),sig);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>seaThemeSync(),sig);
+  document.addEventListener('keydown',seaKey,sig);
+  if(window.ResizeObserver){G.ro=new ResizeObserver(()=>seaResize());G.ro.observe(st)}
+  st.classList.add('ready');G.loop.start()}
+function seaFree(G){G.alive=false;G.loop.stop();SEA.ac?.abort();SEA.ac=null;G.ro?.disconnect();
   for(const id in G.labels)G.labels[id].el.remove();
   const n=seaDispose(G.scene,[...Object.values(G.tex),G.glow,...(G.extra||[])]);
   G.r.renderLists?.dispose();G.r.dispose();try{G.r.forceContextLoss()}catch(e){}G.cv.remove();G.scene.clear();G.tex={};G.bots={};G.labels={};
+  SEA.g=null;SEA.ssig='';SEA.hover=null;SEA.st?.classList.remove('ready');$('seaTip').hidden=true;
   SEA.freed=n}
-function seaResize(){const G=SEA.g;if(!G||!SEA.el)return;const w=SEA.st.clientWidth,h=SEA.st.clientHeight;if(!w||!h||seaFolded())return;
-  G.r.setSize(w,h,false);G.cam.aspect=w/h;
-  // the HUD on top: the picture's centre moves to the middle of what is left
-  const hud=SEA.st.querySelector('.sea-hud'),top=hud?hud.offsetTop+hud.offsetHeight:80,off=Math.round(-top/2);
-  G.cam.setViewOffset(w,h,0,off,w,h);G.cam.updateProjectionMatrix();G.top=top;G.bot=h;if(!SEA.focus)seaFocus(null,true);G.loop.kick(2)}
+function seaResize(){const G=SEA.g;if(!G||!SEA.st)return;const w=SEA.st.clientWidth,h=SEA.st.clientHeight;if(!w||!h)return;
+  if(w!==G.w||h!==G.h){G.w=w;G.h=h;G.r.setSize(w,h,false);G.cam.aspect=w/h;G.off=null}
+  G.top=34;G.bot=h-(G.bb??38);seaCover();seaAim(G);if(!SEA.focus&&!SEA.sel)seaFocus(null,true);G.loop.kick(2)}
+// aim the view at the part of the stage the chat panel leaves free (eased in seaFrame)
+function seaAim(G){if(!G.w)return;G.fr=seaFrameOf({w:G.w,h:G.h,left:G.l||0,right:G.rr||0,top:0});G.loop.kick(2)}
+function seaKey(e){if(e.key!=='Escape'||!$('veil').hidden||!seaShown()||document.querySelector('.menu'))return;
+  const a=document.activeElement;if(a&&a!==document.body&&a!==SEA.g?.cv&&!SEA.st.contains(a))return;
+  if(SEA.focus){e.preventDefault();seaFocus(null)}}
 
-function seaMoving(G){const v=G.view,g=G.goal;if(Math.abs(v.th-g.th)+Math.abs(v.ph-g.ph)+Math.abs(v.d-g.d)/10+Math.abs(v.tx-g.tx)/10+Math.abs(v.tz-g.tz)/10>.002)return true;
+function seaMoving(G){const v=G.view,g=G.goal,o=G.off,f=G.fr;if(o&&f&&Math.abs(o.x-f.ox)+Math.abs(o.y-f.oy)>.5)return true;if(Math.abs(v.th-g.th)+Math.abs(v.ph-g.ph)+Math.abs(v.d-g.d)/10+Math.abs(v.tx-g.tx)/10+Math.abs(v.tz-g.tz)/10>.002)return true;
   for(const id in G.bots)if(G.bots[id].route)return true;return false}
 
 /* one frame: time, camera, octopuses, pulses, labels, then draw */
@@ -167,7 +222,10 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
   const t=G.t;G.U.uTime.value=t;
   // the camera eases toward where you dragged or clicked
   const v=G.view,g=G.goal,k=seaReduced()?1:1-Math.exp(-dt*7);for(const x of ['th','ph','d','tx','tz'])v[x]+=(g[x]-v[x])*k;
-  G.scene.fog.density=.0135*Math.max(.4,Math.min(1,48/v.d));   // far out, less murk: the base stays readable
+  // 4.10 the view slides over when the chat panel opens, folds or changes width (what it looks at stays beside the panel)
+  const f=G.fr;if(f&&G.w){const o=G.off||(G.off={x:f.ox,y:f.oy,s:''});o.x+=(f.ox-o.x)*k;o.y+=(f.oy-o.y)*k;if(Math.abs(f.ox-o.x)<.5){o.x=f.ox;o.y=f.oy}
+    const s=G.w+'|'+G.h+'|'+o.x.toFixed(1)+'|'+o.y.toFixed(1);if(s!==o.s){o.s=s;G.cam.setViewOffset(G.w,G.h,o.x,o.y,G.w,G.h);G.cam.updateProjectionMatrix()}}
+  G.scene.fog.density=(G.fd||.0135)*Math.max(.4,Math.min(1,48/v.d));   // far out, less murk: the base stays readable
   const c=G.cam,sp=Math.sin(v.ph);c.position.set(v.tx+v.d*sp*Math.sin(v.th),v.d*Math.cos(v.ph)+.5,v.tz+v.d*sp*Math.cos(v.th));c.lookAt(v.tx,1.2,v.tz);
   // toward the camera and to its right, on the floor (props sit in front of their octopus)
   {const fx=c.position.x-v.tx,fz=c.position.z-v.tz,fl=Math.hypot(fx,fz)||1;G.fx=fx/fl;G.fz=fz/fl}
@@ -200,6 +258,10 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
       else scrC.set(0x0f3346);
       G.scr.setColorAt(i,scrC);scrDirty=true}}
   if(scrDirty)G.scr.instanceColor.needsUpdate=true;
+  // 4.10 the open chat's octopus (or meeting room) stands in a soft ring
+  {const se=SEA.sel&&G.bots[SEA.sel],rm=!se&&SEA.sel&&SEA.L?.rooms[SEA.sel],R=G.ring;
+    if(R&&(se||rm)){const x=se?se.sp.position.x:rm.x,z=se?se.sp.position.z:rm.z,p=still?0:Math.sin(t*2.4),s=(se?1:Math.max(1.6,(rm.r||2)*.8))*(1+p*.05);
+      R.visible=true;R.position.set(x,.56,z);R.scale.set(s,1,s);R.material.opacity=.55+p*.15}else if(R)R.visible=false}
   seaLoungeFrame(G,t,still);
   // light pulses along the tubes (brighter where work is being handed over)
   const hot=new Set();for(const k of SEA.m?.links||[]){const a=SEA.m.bots.find(x=>x.id===k.from),b=SEA.m.bots.find(x=>x.id===k.to);if(a&&b){hot.add('hub>'+a.pod);hot.add('hub>'+b.pod)}}
@@ -217,7 +279,7 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
 // names and bubbles follow their octopus on the screen; bubbles that would cover each other step up
 function seaScreen(id){const G=SEA.g,e=G?.bots[id];if(!e)return null;const v=new G.T.Vector3(e.sp.position.x,e.sp.position.y+SEA_OCT*.95,e.sp.position.z).project(G.cam);
   if(v.z>1)return null;return {x:(v.x+1)/2*seaW(),y:(1-v.y)/2*seaH()}}
-function seaTags(G){const W=seaW(),H=seaH(),V=new G.T.Vector3(),cam=G.cam,placed=[],far=G.view.d>48,fp=SEA.focus,top=(G.top||100)+6,bottom=G.bot||H;
+function seaTags(G){const W=seaW(),H=seaH(),V=new G.T.Vector3(),cam=G.cam,placed=[],far=G.view.d>48,fp=SEA.focus,top=(G.top||100)+6,bottom=G.bot||H,lf=G.l||0,rt=W-(G.rr||0);
   const list=[];
   for(const key in G.labels){const lb=G.labels[key];let at=lb.at,b=null,bp=null;   // bp: where it is now (遊戲角 while it plays)
     if(key[0]==='b'){const e=G.bots[key.slice(2)];if(!e)continue;b=e.b;at={x:e.sp.position.x,y:e.sp.position.y+SEA_OCT*.92,z:e.sp.position.z};bp=e.node&&e.node.startsWith('pod:')?e.node.slice(4):b?.pod}
@@ -247,27 +309,32 @@ function seaTags(G){const W=seaW(),H=seaH(),V=new G.T.Vector3(),cam=G.cam,placed
         if(placed.some(p=>Math.abs(p.x-it.x)<(p.w+w)/2&&Math.abs((p.y-p.h/2)-(y-h/2))<(p.h+h)/2))show=false}
       if(it.b&&lb.small!==small){lb.small=small;el.classList.toggle('nob',!!small)}
       if(!it.pod&&(y-h<top-12||y>bottom+4))show=false;
+      // 4.10 nothing under the chat panel: a label just past its edge moves out beside it, one further in is not shown
+      if(it.pod&&(it.x-w/2<lf+4||it.x+w/2>rt-4))show=false;
+      if(!it.pod&&(it.x<lf-36||it.x>rt+36))show=false;
       if(show&&it.pod){const x=Math.round(it.x),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,6px)`}}
       else if(show){placed.push({x:it.x,y,w,h});
         lb.el.classList.toggle('dim',!!(it.b&&fp&&it.bp!==fp));
-        const x=Math.round(Math.max(w/2+4,Math.min(W-w/2-4,it.x))),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,-100%)`}}}
+        const x=Math.round(Math.max(lf+w/2+4,Math.min(rt-w/2-4,it.x))),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,-100%)`}}}
     if(lb.vis!==show){lb.vis=show;lb.el.style.visibility=show?'':'hidden'}}}
 
 /* ---------- moving around: drag to turn, right-drag / two fingers / Shift to pan, wheel or pinch to zoom, click a dome ---------- */
-function seaFocus(id,now){const G=SEA.g;SEA.focus=id;$('seaAll').hidden=!id;seaDepth();ovMark();
-  if(!G)return;const L=SEA.L,g=G.goal,asp=G.cam.aspect||1;
-  if(id&&L.pods[id]){const p=L.pods[id];g.tx=p.x;g.tz=p.z;g.d=(p.r*2.6+9)/Math.min(1,asp*1.05);g.ph=.9;g.th=id==='hub'?g.th:Math.atan2(p.x,p.z)||g.th}
+function seaFocus(id,now){const G=SEA.g;SEA.focus=id;if($('seaAll'))$('seaAll').hidden=!id;seaDepth();ovMark();
+  if(!G||!SEA.L)return;const L=SEA.L,g=G.goal;
+  if(id&&L.pods[id]){const p=L.pods[id],va=Math.max(.3,((G.w||1)-(G.l||0)-(G.rr||0))/(G.h||1));g.tx=p.x;g.tz=p.z;g.d=(p.r*2.6+9)/Math.min(1,va*1.05);g.ph=.9;g.th=id==='hub'?g.th:Math.atan2(p.x,p.z)||g.th}
   else{g.ph=.86;seaFit(G,g,!G.fitted||!now);G.fitted=true}
   const tw=Math.PI*2;g.th=G.view.th+((((g.th-G.view.th+Math.PI)%tw)+tw)%tw)-Math.PI;   // the short way round
   if(now||seaReduced())Object.assign(G.view,g);G.loop.kick(3)}
-// the whole base in view, between the HUD and the cards: centre on its middle, then the nearest distance that fits
+// the whole base in view, in the part of the stage beside the chat panel: centre on its middle, then the nearest distance that fits
 function seaFit(G,g,turn){const L=SEA.L,T=G.T,pts=[];let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
   for(const o of [...Object.values(L.pods),...Object.values(L.rooms)]){x0=Math.min(x0,o.x-o.r);x1=Math.max(x1,o.x+o.r);z0=Math.min(z0,o.z-o.r);z1=Math.max(z1,o.z+o.r);
     for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]])pts.push(new T.Vector3(o.x+dx*(o.r+.6),0,o.z+dz*(o.r+.6)));pts.push(new T.Vector3(o.x,o.r+2.4,o.z))}
   g.tx=(x0+x1)/2;g.tz=(z0+z1)/2;
-  const c=G.cam.clone(),H=seaH()||800,yTop=1-2*((G.top||100)+52)/H,yBot=1-2*(G.bot||H)/H,V=new T.Vector3();
+  const c=G.cam.clone(),H=seaH()||800,W=seaW()||1,yTop=1-2*((G.top||100)+52)/H,yBot=1-2*(G.bot||H)/H,V=new T.Vector3(),fr=G.fr||seaFrameOf({w:W,h:H});
+  // the camera as it will be: shifted beside the chat panel
+  c.setViewOffset(W,H,fr.ox,fr.oy,W,H);c.updateProjectionMatrix();const xl=fr.xl+.06,xr=(fr.xr??1)-.06;
   const fits=d=>{const sp=Math.sin(g.ph);c.position.set(g.tx+d*sp*Math.sin(g.th),d*Math.cos(g.ph)+.5,g.tz+d*sp*Math.cos(g.th));c.lookAt(g.tx,1.2,g.tz);c.updateMatrixWorld();
-    return pts.every(p=>{V.copy(p).project(c);return V.z<1&&Math.abs(V.x)<.94&&V.y<yTop&&V.y>yBot})};
+    return pts.every(p=>{V.copy(p).project(c);return V.z<1&&V.x>xl&&V.x<xr&&V.y<yTop&&V.y>yBot})};
   const best=()=>{let lo=8,hi=180;for(let i=0;i<13;i++){const m=(lo+hi)/2;if(fits(m))hi=m;else lo=m}return hi};
   // the first time (and 回到全景): turn to the side that shows the base biggest
   // (and no module hidden behind another: domes that cover each other on the screen count against a side)
@@ -296,19 +363,19 @@ function seaControls(G){const cv=G.cv,sig={signal:SEA.ac.signal},P=G.ptr;let pin
 function seaHit(e){const G=SEA.g;if(!G)return null;const r=G.cv.getBoundingClientRect(),z=typeof pageZoom==='function'?pageZoom():1;
   const nx=((e.clientX/z-r.left)/r.width)*2-1,ny=-((e.clientY/z-r.top)/r.height)*2+1;G.ray.setFromCamera({x:nx,y:ny},G.cam);
   const hits=G.ray.intersectObjects(G.pick,false);const bh=hits.find(h=>h.object.userData.bot);return (bh||hits[0])?.object.userData||null}
-function seaHover(e){const G=SEA.g;if(!G||G.hv)return;G.hv=requestAnimationFrame(()=>{G.hv=0;if(!SEA.el)return;const u=seaHit(e),tip=$('seaTip');
+function seaHover(e){const G=SEA.g;if(!G||G.hv)return;G.hv=requestAnimationFrame(()=>{G.hv=0;if(!SEA.g)return;const u=seaHit(e),tip=$('seaTip');
   const hb=u?.bot||u?.room||null;if(hb!==SEA.hover){SEA.hover=hb;ovMark();G.loop.kick()}
   G.cv.style.cursor=u?'pointer':'';if(!u){tip.hidden=true;return}
   const m=SEA.m;let h='';
-  if(u.bot){const b=m.bots.find(x=>x.id===u.bot);if(b)h=`<b data-u>${esc(b.name)}</b><span>${esc(I18N.t(b.word))}</span>${b.bubble?.txt&&!b.act?`<small data-u>${esc(b.bubble.txt)}</small>`:''}<small>點一下看它的卡片</small>`}
+  if(u.bot){const b=m.bots.find(x=>x.id===u.bot);if(b)h=`<b data-u>${esc(b.name)}</b><span>${esc(I18N.t(b.word))}</span>${b.bubble?.txt&&!b.act?`<small data-u>${esc(b.bubble.txt)}</small>`:''}<small>點一下打開對話</small>`}
   else if(u.pod==='play')h=`<b>遊戲角</b><span>沒有工作的機器人在這裡玩</span>`;
   else if(u.pod){const p=m.pods.find(x=>x.id===u.pod);if(p){const bs=p.bots.map(id=>m.bots.find(b=>b.id===id));h=`<b data-u>${esc(seaPodName(p))}</b><span><span data-u>${bs.length}</span> <span>個機器人</span> · <span data-u>${bs.filter(b=>b.job).length}</span> <span>工作中</span></span><small>點一下進入</small>`}}
-  else if(u.room){const r=m.rooms.find(x=>x.id===u.room);if(r)h=`<b data-u>${esc(r.name)}</b><span>會議室</span><small>點一下看群組</small>`}
+  else if(u.room){const r=m.rooms.find(x=>x.id===u.room);if(r)h=`<b data-u>${esc(r.name)}</b><span>會議室</span><small>點一下打開群組</small>`}
   if(!h){tip.hidden=true;return}if(tip.dataset.k!==h){tip.dataset.k=h;setHTML(tip,h)}tip.hidden=false;
   const R=SEA.st.getBoundingClientRect(),W=seaW();tip.style.transform=`translate(${Math.min(W-tip.offsetWidth-10,e.clientX-R.left+16)}px,${e.clientY-R.top+14}px)`})}
-// a click in the picture: an octopus or a meeting room → its card; a dome → go in, and its 分區 in the list
-function seaClick(e){const u=seaHit(e);if(!u){if(SEA.sel)seaSelect(null);return}
-  if(u.bot){seaSelect(u.bot,true);return}
-  if(u.room){seaSelect(u.room,true);return}
-  if(u.pod){seaSelect(null);seaFocus(u.pod);if(u.pod!=='play')ovRevealPod(u.pod)}}
+// a click in the picture: an octopus or a meeting room → its chat opens (and its card is shown); a dome → go in, and its 分區 in the cards
+function seaClick(e){const u=seaHit(e);if(!u)return;
+  if(u.bot){seaOpenConv(u.bot);return}
+  if(u.room){seaOpenConv(u.room);return}
+  if(u.pod){seaFocus(u.pod);if(u.pod!=='play')ovRevealPod(u.pod)}}
 

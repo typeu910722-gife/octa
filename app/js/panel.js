@@ -1,22 +1,27 @@
-/* OCTA web app — the work panel on the right, like Claude's side panel: 工作 · 瀏覽器 · 詳細資料.
+/* OCTA web app — the work panel on the right, like Claude's side panel: 總覽 · 工作 · 瀏覽器 · 詳細資料
+   (4.10: 總覽 — every bot's card — is there with or without an open chat; not on a phone, where it is on the list screen).
    The chat only holds the conversation; what a bot is doing (progress, steps, 停止, the queue), what it did in the
    background (asking or handing work to other bots, routine runs, failures, retries, system notes) and its browser live here.
    Folded or open is remembered on this device; on a phone it is a full page opened from the header. */
 'use strict';
-const WP_TABS=['work','web','info'];
+const WP_TABS=['ov','work','web','info'];
 const WP={tab:WP_TABS.includes(store.get('octa_wpt'))?store.get('octa_wpt'):'work',open:store.get('octa_wp')!=='0',sheet:false,
   steps:{},logs:{},logKey:{},logBusy:{},seen:{},webBot:{},ran:{},keep:new Set(),dock:null};
 try{WP.seen=JSON.parse(store.get('octa_wseen')||'{}')}catch(e){}
 const wpWide=()=>innerWidth>1180;
 if(!wpWide()&&!phoneUI())WP.open=false;   // a medium window starts with it folded: it would cover the chat
-const panelOn=()=>!!(cur&&conv(cur))&&!$('app').hidden&&(phoneUI()?WP.sheet:WP.open);
+const hasConv=()=>!!(cur&&conv(cur));
+// the tab shown: 總覽 needs no chat (the others do); a phone has no 總覽 tab
+const wpTab=()=>phoneUI()&&WP.tab==='ov'?'work':WP.tab;
+const panelOn=()=>!$('app').hidden&&(phoneUI()?WP.sheet&&hasConv():WP.open&&(WP.tab==='ov'||hasConv()));
 const detailOpen=()=>panelOn()&&WP.tab==='info';
 
 /* ---------- open, fold, tabs ---------- */
 // leaving 詳細資料 with unsaved changes asks first
 function leaveInfo(then){if(WP.tab==='info'&&isDirty()&&$('detail').contains(DIRTY.el)){leaveOk(then);return false}
   if(DIRTY.el&&$('detail').contains(DIRTY.el))DIRTY.el=null;return true}
-function openPanel(tab,o={}){if(!cur||!conv(cur))return;
+function openPanel(tab,o={}){if(phoneUI()&&(tab==='ov'||!tab&&WP.tab==='ov'))tab='work';
+  if((tab||WP.tab)!=='ov'&&!hasConv())return;
   if(tab&&tab!==WP.tab){if(!leaveInfo(()=>openPanel(tab,o)))return;if(WP.tab==='info'){$('detail').innerHTML='';DP.id=null}WP.tab=tab;store.set('octa_wpt',tab)}
   if(phoneUI()){if(!WP.sheet){WP.sheet=true;navPush('detail')}}
   else{WP.open=true;store.set('octa_wp','1')}
@@ -40,7 +45,7 @@ $('wp').addEventListener('click',e=>{
   const t=e.target.closest('[data-wt]');if(t){setTab(t.dataset.wt);return}
   if(e.target.closest('[data-wclose]')){closePanel();return}});
 $('wp').querySelector('.wp-tabs').addEventListener('keydown',e=>{const k={ArrowRight:1,ArrowLeft:-1}[e.key];if(!k)return;e.preventDefault();
-  const i=WP_TABS.indexOf(WP.tab),n=WP_TABS[(i+k+WP_TABS.length)%WP_TABS.length];setTab(n);$('wp').querySelector(`[data-wt="${n}"]`)?.focus()});
+  const tabs=WP_TABS.filter(t=>(t==='ov'?!phoneUI():hasConv())),i=tabs.indexOf(WP.tab),n=tabs[(i+k+tabs.length)%tabs.length];setTab(n);$('wp').querySelector(`[data-wt="${n}"]`)?.focus()});
 
 /* ---------- drawing ---------- */
 function renderPanel(force){
@@ -52,9 +57,10 @@ function renderPanel(force){
   $('browser').setAttribute('aria-pressed',String(on&&WP.tab==='web'));
   trackJobs();
   if(on){
-    $('wp').querySelectorAll('[role=tab]').forEach(b=>{const s=b.dataset.wt===WP.tab;b.setAttribute('aria-selected',String(s));b.tabIndex=s?0:-1;b.classList.toggle('on',s)});
-    $('wpWork').hidden=WP.tab!=='work';$('wpWeb').hidden=WP.tab!=='web';$('detail').hidden=WP.tab!=='info';
-    if(WP.tab==='work')paintWork();else if(WP.tab==='web')paintWeb(force);else infoSync()}
+    const t=wpTab(),hc=hasConv();
+    $('wp').querySelectorAll('[role=tab]').forEach(b=>{const s=b.dataset.wt===t;b.setAttribute('aria-selected',String(s));b.tabIndex=s?0:-1;b.classList.toggle('on',s);b.disabled=b.dataset.wt!=='ov'&&!hc});
+    $('wpOv').hidden=t!=='ov';$('wpWork').hidden=t!=='work';$('wpWeb').hidden=t!=='web';$('detail').hidden=t!=='info';
+    if(t==='ov'){if(typeof ovSync==='function')ovSync()}else if(t==='work')paintWork();else if(t==='web')paintWeb(force);else infoSync()}
   paintBadge();dockSync()}
 function infoSync(){const box=$('detail');
   if(DP.id!==cur||!box.firstChild){if(DP.id&&DP.id!==cur&&isDirty()&&box.contains(DIRTY.el)){leaveOk(()=>{DP.id=null;infoSync()});return}paintDetail(true);return}
@@ -248,7 +254,7 @@ $('wpWeb').addEventListener('submit',e=>{if(e.target.id!=='wurlf')return;e.preve
 let dockSent='',dockRaf=0;
 function dockSync(){if(!embedHere())return;if(dockRaf)return;dockRaf=requestAnimationFrame(()=>{dockRaf=0;
   let rect=null,id='';
-  if(panelOn()&&WP.tab==='web'&&!phoneUI()&&$('veil').hidden&&!$('sea')){id=webBot();const b=bot(id);
+  if(panelOn()&&WP.tab==='web'&&!phoneUI()&&$('veil').hidden&&hasConv()){id=webBot();const b=bot(id);
     if(b&&b.browser!=='mine'){const r=$('webStage').getBoundingClientRect();if(r.width>=120&&r.height>=120)rect={x:Math.round(r.left),y:Math.round(r.top),width:Math.round(r.width),height:Math.round(r.height)}}}
   WP.dock=rect;const k=JSON.stringify([rect,rect?id:'',currentTheme()]);if(k===dockSent)return;dockSent=k;
   window.octaDesktop.dock(rect?{...rect,bot:id,theme:currentTheme()}:null)?.catch?.(()=>{})})}

@@ -2,7 +2,8 @@
    Uses pure.js (botState, progView, needTag, firstSent). test/seabase.test.mjs loads the two files on their own.
    seaModel: modules (分區 → pods, the hub for bots without one, groups → meeting rooms), each bot's state, its speech
    bubble and the counters at the top · seaLayout: where everything sits on the sea floor · seaRoute: the way a bot swims
-   through the tubes · seaLoop: the render loop (30 fps cap, stops while hidden) · seaDispose: frees GPU memory on close. */
+   through the tubes · seaLoop: the render loop (rate decided each frame, stops while hidden) · seaRate: 30 / 10 / 0 frames a
+   second (4.10, the base is the main screen) · seaFrameOf: aim the camera beside the chat panel · seaDispose: frees GPU memory. */
 'use strict';
 // each module's light (the hub is always teal); bots keep their own colour
 const SEA_POD_COLS=['#3EE6E0','#B59CFF','#FFB86B','#FF86BE','#7CEFA0','#78B8FF','#F4DF6E','#FF9A7A'];
@@ -148,13 +149,41 @@ function seaRoute(L,fromNode,toNode,a,b){if(fromNode===toNode)return [a,b];
 /* the render loop: at most fps frames a second, nothing while hidden or stopped, and only while something moves
    (animate()) or after kick(n) asked for n more frames (a change, a drag, the camera settling).
    o: {raf, caf, now, frame(dt, t), hidden(), animate(), fps} */
-function seaLoop(o){const fps=o.fps||30,gap=1000/fps-2;let id=0,last=0,on=false,dirty=0,frames=0;
-  const tick=()=>{id=0;if(!on||o.hidden())return;const t=o.now();
-    if(!last||t-last>=gap){const dt=last?Math.min(.1,(t-last)/1000):1/fps;last=t;frames++;o.frame(dt,t);if(dirty>0)dirty--}
-    if(on&&!o.hidden()&&(o.animate()||dirty>0))id=o.raf(tick)};
-  const kick=n=>{dirty=Math.max(dirty,n||1);if(on&&!id&&!o.hidden())id=o.raf(tick)};
-  return {start(){on=true;last=0;kick(2)},stop(){on=false;if(id)o.caf(id);id=0},kick,
-    get running(){return !!id},get on(){return on},get frames(){return frames}}}
+/* the render loop. 4.10: the base is the main screen, so how often it draws is decided every frame by o.rate()
+   (frames a second: 30, 10, or 0 = only the frames asked for with kick, e.g. a still picture after a change).
+   30 and up waits for the display (requestAnimationFrame), slower rates sleep in between (no wake-ups at 60 Hz).
+   Without o.rate: 30 a second while o.animate() says something moves (4.9). Nothing at all while o.hidden(). */
+function seaLoop(o){let id=0,tm=0,last=0,on=false,dirty=0,frames=0;
+  const later=o.later||((f,ms)=>setTimeout(f,ms)),clear=o.clear||(x=>clearTimeout(x));
+  const rate=()=>o.rate?o.rate():o.animate()?(o.fps||30):0;
+  const tick=()=>{id=0;if(!on||o.hidden())return;const t=o.now(),r=rate(),gap=r?1000/r-(r<20?25:2):0;
+    if(!last||t-last>=gap||(dirty>0&&!r)){const dt=last?Math.min(.1,(t-last)/1000):1/30;last=t;frames++;o.frame(dt,t);if(dirty>0)dirty--}
+    sched()};
+  const sched=()=>{if(id||tm||!on||o.hidden())return;const r=rate();
+    if(r>=20||dirty>0)id=o.raf(tick);
+    else if(r>0)tm=later(()=>{tm=0;if(on&&!o.hidden()&&!id)id=o.raf(tick)},Math.max(0,1000/r-20))};
+  const kick=n=>{dirty=Math.max(dirty,n||1);if(tm){clear(tm);tm=0}sched()};
+  return {start(){on=true;last=0;kick(2)},stop(){on=false;if(id)o.caf(id);if(tm)clear(tm);id=tm=0},kick,
+    get running(){return !!(id||tm)},get on(){return on},get frames(){return frames}}}
+/* 4.10 how fast the main screen's base draws (frames a second). o: {on (主畫面 3D 基地), gl, hidden (window hidden or
+   minimised, or the base not on screen: a narrow window, the phone's chat screen, its folded header), blurMs (how long the
+   window has been in the background), still (省電模式 or reduced motion), moving (the camera is still gliding),
+   covered (share of the stage under the chat panel), typing (the message box has the focus), focused}.
+   30 while you watch it; 10 when the chat covers most of it, you type, or the window is in the background; nothing after
+   30 s in the background, while hidden, or as a still picture (省電模式 / reduced motion: redrawn when something changes). */
+const SEA_BLUR_MS=30000;
+function seaRate(o){o=o||{};
+  if(!o.on||!o.gl||o.hidden)return 0;
+  if(!o.focused&&(o.blurMs||0)>SEA_BLUR_MS)return 0;
+  if(o.still)return o.moving?30:0;
+  if(!o.focused||o.typing||(o.covered||0)>.6)return 10;
+  return 30}
+/* 4.10 where the picture is aimed. w×h: the stage; left: how far the chat panel covers it from the left (0 when the chat
+   is minimised or not open); right: a right panel floating over it (761–1180 px wide windows); top: the HUD. The camera's view is shifted so whatever it looks at sits in the middle
+   of the part you can see: ox/oy go to camera.setViewOffset; cx/cy is that middle on the stage; xl is the visible part's
+   left / right edges in clip space (-1…1), cover how much of the stage is covered. */
+function seaFrameOf(v){const w=Math.max(1,v.w||1),h=Math.max(1,v.h||1),left=Math.max(0,Math.min(w*.85,v.left||0)),right=Math.max(0,Math.min(w*.85-left,v.right||0)),top=Math.max(0,v.top||0);
+  return {ox:-(left-right)/2,oy:-top/2,cx:(left+w-right)/2,cy:(top+h)/2,xl:-1+2*left/w,xr:1-2*right/w,cover:(left+right)/w}}
 // free everything a scene holds on the GPU: geometries, materials, their textures (also in shader uniforms)
 function seaDispose(root,extra){const seen=new Set(),n={geo:0,mat:0,tex:0};
   const tex=t=>{if(t&&t.isTexture&&!seen.has(t)){seen.add(t);t.dispose();n.tex++}};

@@ -234,3 +234,6 @@ button.wsh:hover{color:var(--ink2);background:var(--hover)}
   .web-stage>.stage .stact button{flex:1;min-height:42px;font-size:calc(15px * var(--fz))}
   .app.wp-on~.askp,.app.wp-on.wp-web~.askp{right:8px}
 }
+/* 4.10: the phone has 總覽 on its list screen, not in this panel; a tab that needs a chat is off without one */
+@media (max-width:760px){.wp-tabs [data-wt=ov]{display:none}}
+.wp-tabs [role=tab]:disabled{opacity:.4;cursor:default}
