@@ -88,6 +88,23 @@
   --ring:0 0 0 3px rgba(226,174,77,.38);
 }
 
+:root[data-theme="sea"]{
+  /* 4.9 深海: deep navy and ink, teal / cyan light like living things in the deep (app/css/sea.css adds the glass, glows and moving light).
+     After both dark blocks on purpose: the system-dark rule matches this look too, and the later one wins. */
+  color-scheme:dark;
+  --bg:#051522; --side:#071c2b; --panel:#0a2233; --raised:#0f2c40; --sunk:#08192a;
+  --hover:rgba(120,230,255,.065); --press:rgba(120,230,255,.11); --sel:rgba(79,221,227,.15); --scrim:rgba(1,9,16,.66);
+  --ink:#e4f5f9; --ink2:#b9d6de; --mute:#8aacb8; --faint:#6d8e9e;
+  --line:#143648; --line2:#1f4b63;
+  --brand:#3ee6e0; --accent:#4fdde3; --accent-h:#7ae9ee; --on-accent:#03232b; --accent-soft:rgba(79,221,227,.15); --accent-ink:#72e6ec;
+  --me:#0e3a4b; --me-ink:#e8fbff;
+  --ok:#5fd8a0; --ok-soft:rgba(95,216,160,.14); --warn:#f5b860; --warn-soft:rgba(245,184,96,.15);
+  --err:#ff8080; --err-soft:rgba(255,128,128,.14); --info:#82c8ff; --info-soft:rgba(130,200,255,.13);
+  --sh-1:0 1px 2px rgba(0,6,12,.5); --sh-2:0 6px 20px rgba(0,6,12,.5),0 0 0 1px rgba(120,230,255,.04); --sh-3:0 24px 60px rgba(0,6,12,.62),0 0 0 1px rgba(120,230,255,.06),0 0 40px rgba(62,230,224,.06);
+  --ring:0 0 0 2px rgba(79,221,227,.55),0 0 14px rgba(79,221,227,.38);
+  --glow:0 0 18px rgba(79,221,227,.28);
+}
+
 /* text size for the whole interface (Settings → 外觀與語言), applied before first paint */
 html[data-fs="s"]{--fz:.93}html[data-fs="l"]{--fz:1.12}html[data-fs="xl"]{--fz:2}
 

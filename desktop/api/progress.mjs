@@ -56,7 +56,12 @@ export async function queueInfo(db, U) {
   const st = await getSettings(db, U);
   return { avg: r?.n ? Math.round(r.a) : null, slots: +st._slots || 3 };
 }
-export const busyRows = rows => rows.map(r => ({ ...r, progress: parseProgress(r.progress), paused: !!r.paused }));
+// 4.9: from — the colleague that asked or handed this job over (jobs.via f, or an older 〔背景:<id>:…〕 prompt), for 深海基地
+const fromOf = r => {
+  try { const v = r.via ? JSON.parse(r.via) : null; if (v?.f) return String(v.f); } catch { }
+  return (String(r.p0 || '').match(/^〔背景:([^:〕]+):/) || [])[1] || null;
+};
+export const busyRows = rows => rows.map(({ via, p0, ...r }) => ({ ...r, progress: parseProgress(r.progress), paused: !!r.paused, from: fromOf({ via, p0 }) }));
 
 export async function jobRoutes(c) {
   const { db, path, m, body, U, ok } = c;

@@ -1,0 +1,60 @@
+/* OCTA 4.9 the 深海 look (Settings → 外觀與語言 → 配色): the colours are in tokens.css; this adds the deep-sea feel —
+   depth gradients, glass panels, thin luminous dividers, soft cyan glows on focus and active things, and (html.seafx)
+   slow caustic light and drifting specks behind the sidebar. Cheap on purpose: two blurred layers and transforms only;
+   off with 省電模式, with the setting, or with reduced motion. Your 主題色 still applies on top. */
+.theme-pick:has(.swatch.sea){grid-template-columns:repeat(4,minmax(0,1fr))}
+.swatch.sea{background:radial-gradient(70% 90% at 70% 0%,rgba(79,221,227,.35),transparent 60%),linear-gradient(90deg,#071c2b 0 32%,#0a2233 32%);border-color:rgba(79,221,227,.3)}
+.swatch.sea::after{background:#4fdde3;box-shadow:0 0 10px #4fdde3}
+@media (max-width:760px){.theme-pick:has(.swatch.sea){grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+:root[data-theme="sea"] body{background:var(--bg)}
+:root[data-theme="sea"] .app{background:radial-gradient(130% 70% at 60% -20%,#0c3448 0%,rgba(12,52,72,0) 60%),linear-gradient(180deg,#061a29,#04111c 85%)}
+/* panels: glass over the deep */
+:root[data-theme="sea"] .side{background:linear-gradient(180deg,rgba(9,36,54,.94),rgba(5,22,35,.96));border-right:1px solid transparent;position:relative;z-index:1;
+  box-shadow:inset -1px 0 0 rgba(95,240,236,.10),1px 0 0 rgba(0,0,0,.35)}
+:root[data-theme="sea"].seafx .side{background:linear-gradient(180deg,rgba(9,36,54,.72),rgba(5,22,35,.82));backdrop-filter:blur(10px) saturate(1.15);-webkit-backdrop-filter:blur(10px) saturate(1.15)}
+:root[data-theme="sea"] .side::after{content:"";position:absolute;top:0;bottom:0;right:-1px;width:1px;pointer-events:none;
+  background:linear-gradient(180deg,rgba(95,240,236,0),rgba(95,240,236,.35) 30%,rgba(95,240,236,.12) 70%,rgba(95,240,236,0))}
+:root[data-theme="sea"] .pane{background:linear-gradient(180deg,rgba(10,36,52,.55),rgba(7,25,38,.35) 40%,transparent)}
+:root[data-theme="sea"] .ph,:root[data-theme="sea"] .wp-hd{border-bottom-color:transparent;box-shadow:inset 0 -1px 0 rgba(95,240,236,.12)}
+:root[data-theme="sea"] .wp{background:linear-gradient(180deg,rgba(11,38,56,.97),rgba(8,28,42,.98));border-left-color:transparent;box-shadow:inset 1px 0 0 rgba(95,240,236,.12)}
+:root[data-theme="sea"] .composer{background:linear-gradient(transparent,rgba(6,22,34,.92) 14px)}
+:root[data-theme="sea"] .in{background:rgba(10,34,51,.86);border-color:rgba(95,240,236,.18);box-shadow:0 8px 28px rgba(0,6,12,.5)}
+:root[data-theme="sea"] .in:focus-within{border-color:rgba(95,240,236,.5);box-shadow:0 8px 28px rgba(0,6,12,.5),0 0 0 3px rgba(79,221,227,.14),0 0 22px rgba(79,221,227,.16)}
+:root[data-theme="sea"] .sheet,:root[data-theme="sea"] .menu{background:linear-gradient(180deg,#0f2d42,#0a2233 120px);border:1px solid rgba(95,240,236,.14)}
+:root[data-theme="sea"] .veil{background:radial-gradient(80% 60% at 50% 30%,rgba(6,40,56,.55),rgba(1,9,16,.72))}
+/* light from the living things: active rows, buttons, badges */
+:root[data-theme="sea"] .item.on{background:linear-gradient(90deg,rgba(79,221,227,.16),rgba(79,221,227,.04));box-shadow:inset 2px 0 0 var(--accent),0 0 18px rgba(79,221,227,.08)}
+:root[data-theme="sea"] .item:hover:not(.on){background:rgba(120,230,255,.05)}
+:root[data-theme="sea"] .btn{box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 0 16px color-mix(in srgb,var(--accent) 35%,transparent)}
+:root[data-theme="sea"] .btn:hover:not(:disabled){box-shadow:0 0 0 1px rgba(255,255,255,.1) inset,0 0 22px color-mix(in srgb,var(--accent) 50%,transparent)}
+:root[data-theme="sea"] .ghost{background:rgba(12,40,58,.6);border-color:rgba(95,240,236,.16)}
+:root[data-theme="sea"] .ghost:hover:not(:disabled){border-color:rgba(95,240,236,.34);background:rgba(18,56,78,.7)}
+:root[data-theme="sea"] .send{box-shadow:0 0 18px color-mix(in srgb,var(--accent) 45%,transparent)}
+:root[data-theme="sea"] .ovbtn{background:rgba(12,40,58,.62);border-color:rgba(95,240,236,.16)}
+:root[data-theme="sea"] .ovbtn:hover{background:rgba(18,56,78,.7)}
+:root[data-theme="sea"] .seabtn{background:linear-gradient(135deg,rgba(18,70,90,.9),rgba(10,44,62,.9));border-color:rgba(95,240,236,.35);box-shadow:0 0 16px rgba(79,221,227,.18)}
+:root[data-theme="sea"] .m.me .bub{background:linear-gradient(160deg,#124558,#0d3646);box-shadow:inset 0 0 0 1px rgba(95,240,236,.14),0 4px 16px rgba(0,8,16,.3)}
+:root[data-theme="sea"] .sbox{background:rgba(5,22,35,.7);border-color:rgba(95,240,236,.14)}
+:root[data-theme="sea"] .sdot{box-shadow:0 0 8px currentColor}
+:root[data-theme="sea"] ::selection{background:rgba(79,221,227,.3)}
+:root[data-theme="sea"] *{scrollbar-color:#1f4b63 transparent}
+
+/* the moving light behind the sidebar (html.seafx): caustic blobs drifting, and specks of marine snow */
+.seafx-layer{display:none}
+:root.seafx .seafx-layer{display:block;position:fixed;left:0;top:0;bottom:0;width:var(--side-w);overflow:hidden;pointer-events:none;z-index:0;contain:strict}
+.seafx-layer i{position:absolute;inset:-40%;opacity:.55;will-change:transform;
+  background:radial-gradient(closest-side,rgba(79,221,227,.22),transparent) 10% 20%/38% 26% no-repeat,radial-gradient(closest-side,rgba(120,180,255,.16),transparent) 70% 35%/44% 30% no-repeat,
+    radial-gradient(closest-side,rgba(79,221,227,.18),transparent) 30% 70%/40% 28% no-repeat,radial-gradient(closest-side,rgba(150,120,255,.12),transparent) 80% 85%/36% 24% no-repeat;
+  filter:blur(18px);animation:seafxA 26s ease-in-out infinite alternate}
+.seafx-layer i:nth-child(2){animation:seafxB 34s ease-in-out infinite alternate;opacity:.4;transform:rotate(30deg)}
+.seafx-layer i:nth-child(3){inset:-100% 0 0 0;filter:none;opacity:.7;animation:seafxSnow 40s linear infinite;
+  background-image:radial-gradient(1.2px 1.2px at 12% 18%,rgba(200,245,255,.7),transparent),radial-gradient(1px 1px at 38% 62%,rgba(200,245,255,.55),transparent),radial-gradient(1.4px 1.4px at 70% 30%,rgba(200,245,255,.6),transparent),
+    radial-gradient(1px 1px at 84% 74%,rgba(200,245,255,.5),transparent),radial-gradient(1.2px 1.2px at 22% 88%,rgba(200,245,255,.55),transparent),radial-gradient(1px 1px at 56% 8%,rgba(200,245,255,.5),transparent),
+    radial-gradient(1.3px 1.3px at 92% 46%,rgba(200,245,255,.5),transparent),radial-gradient(1px 1px at 5% 52%,rgba(200,245,255,.45),transparent);
+  background-size:100% 50%;background-repeat:repeat}
+@keyframes seafxA{0%{transform:translate(-6%,-4%) rotate(0deg)}100%{transform:translate(8%,6%) rotate(14deg)}}
+@keyframes seafxB{0%{transform:rotate(30deg) translate(5%,4%)}100%{transform:rotate(12deg) translate(-7%,-6%)}}
+@keyframes seafxSnow{from{transform:translateY(0)}to{transform:translateY(50%)}}
+@media (prefers-reduced-motion:reduce){:root.seafx .seafx-layer{display:none}}
+@media (max-width:760px){:root.seafx .seafx-layer{width:100%}}

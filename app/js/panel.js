@@ -248,7 +248,7 @@ $('wpWeb').addEventListener('submit',e=>{if(e.target.id!=='wurlf')return;e.preve
 let dockSent='',dockRaf=0;
 function dockSync(){if(!embedHere())return;if(dockRaf)return;dockRaf=requestAnimationFrame(()=>{dockRaf=0;
   let rect=null,id='';
-  if(panelOn()&&WP.tab==='web'&&!phoneUI()&&$('veil').hidden){id=webBot();const b=bot(id);
+  if(panelOn()&&WP.tab==='web'&&!phoneUI()&&$('veil').hidden&&!$('sea')){id=webBot();const b=bot(id);
     if(b&&b.browser!=='mine'){const r=$('webStage').getBoundingClientRect();if(r.width>=120&&r.height>=120)rect={x:Math.round(r.left),y:Math.round(r.top),width:Math.round(r.width),height:Math.round(r.height)}}}
   WP.dock=rect;const k=JSON.stringify([rect,rect?id:'',currentTheme()]);if(k===dockSent)return;dockSent=k;
   window.octaDesktop.dock(rect?{...rect,bot:id,theme:currentTheme()}:null)?.catch?.(()=>{})})}

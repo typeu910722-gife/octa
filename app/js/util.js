@@ -42,6 +42,7 @@ const ICONS={
   bell:'<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15L6 16.5ZM10 20.5a2 2 0 0 0 4 0"/>',
   belloff:'<path d="M6 16.5V11c0-1 .2-1.9.7-2.7M9 5.6A6 6 0 0 1 18 11v4M4 4l16 16M10 20.5a2 2 0 0 0 4 0M4.5 18h12"/>',
   folder:'<path d="M3.5 7.5A2 2 0 0 1 5.5 5.5H10l2 2h6.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z"/>',
+  sea:'<path d="M2.5 18c1.6 1.2 3.2 1.2 4.8 0s3.2-1.2 4.8 0 3.2 1.2 4.8 0 3.1-1.2 4.6 0"/><path d="M5.5 15a6.5 6.5 0 0 1 13 0z"/><path d="M12 8.5V5.2"/><circle cx="12" cy="4.2" r="1"/>',
   users:'<circle cx="9" cy="8.5" r="3.3"/><path d="M3 19.5a6 6 0 0 1 12 0"/><path d="M15.5 5.6a3.3 3.3 0 0 1 0 6M17.5 14.2a6 6 0 0 1 3.5 5.3"/>',
   bot:'<rect x="4.5" y="8" width="15" height="11" rx="3"/><path d="M12 4.5V8M9 13h.01M15 13h.01M9.5 16.5h5"/>',
   sparkle:'<path d="M12 3.5c.6 3.9 2.6 5.9 6.5 6.5-3.9.6-5.9 2.6-6.5 6.5-.6-3.9-2.6-5.9-6.5-6.5 3.9-.6 5.9-2.6 6.5-6.5Z"/><path d="M18.5 15.5c.2 1.6 1 2.4 2.5 2.5-1.5.2-2.3 1-2.5 2.5-.2-1.5-1-2.3-2.5-2.5 1.5-.1 2.3-.9 2.5-2.5Z"/>',
@@ -92,16 +93,20 @@ function toast(t){let el=$('toast');if(!el){el=document.createElement('div');el.
 const errText=e=>String(e?.message||e||'').replace(/^Error invoking remote method '[^']+': (Error: )?/,'');
 
 /* ---------- look: system / light / dark (kept on this device) ---------- */
-function themeChoice(){const s=store.get('octa_theme');return s==='light'||s==='dark'?s:'system'}
-function currentTheme(){const t=document.documentElement.dataset.theme;if(t==='light'||t==='dark')return t;return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}
+// 4.9: 深海 (data-theme="sea") is a dark look of its own; anything that only knows light/dark treats it as dark
+function themeChoice(){const s=store.get('octa_theme');return s==='light'||s==='dark'||s==='sea'?s:'system'}
+function currentTheme(){const t=document.documentElement.dataset.theme;if(t==='light'||t==='dark')return t;if(t==='sea')return 'dark';return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}
 function applyTheme(t,persist){
-  const h=document.documentElement,was=currentTheme();
-  if(t==='light'||t==='dark')h.dataset.theme=t;else delete h.dataset.theme;
+  const h=document.documentElement,was=h.dataset.theme||currentTheme();
+  if(t==='light'||t==='dark'||t==='sea')h.dataset.theme=t;else delete h.dataset.theme;
+  seaFx();
   // colours fade over to the other look instead of snapping
-  if(persist!==false&&was!==currentTheme()){h.classList.add('theming');clearTimeout(applyTheme.t);applyTheme.t=setTimeout(()=>h.classList.remove('theming'),420)}
-  if(persist!==false)store.set('octa_theme',t==='light'||t==='dark'?t:null);
+  if(persist!==false&&was!==(h.dataset.theme||currentTheme())){h.classList.add('theming');clearTimeout(applyTheme.t);applyTheme.t=setTimeout(()=>h.classList.remove('theming'),420)}
+  if(persist!==false)store.set('octa_theme',t==='light'||t==='dark'||t==='sea'?t:null);
   document.querySelectorAll('[data-set-theme]').forEach(x=>x.classList.toggle('on',x.dataset.setTheme===themeChoice()))}
 document.addEventListener('click',e=>{const set=e.target.closest('[data-set-theme]');if(set)applyTheme(set.dataset.setTheme)});
+// the 深海 look's moving light behind the sidebar: on unless turned off, 省電模式, or reduced motion (CSS stops it then)
+function seaFx(){const h=document.documentElement;h.classList.toggle('seafx',h.dataset.theme==='sea'&&store.get('octa_seafx')!=='0'&&store.get('octa_lowpower')!=='1')}
 
 /* text size for the whole interface (kept on this device). 80–200, and 200 is twice the standard size. */
 // 4.8: smaller sizes too (down to 70%: 極小／很小). Below 100% the whole interface is zoomed as one (text, icons,

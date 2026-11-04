@@ -74,6 +74,7 @@ window.addEventListener('popstate',()=>{if(navSkip>0){navSkip--;if(!navSkip)whil
   if(k==='menu')closeMenu(true);
   else if(k==='sheet'){if(!$('veil').hidden){const bk=sheetBack();if(bk){bk();if(!$('veil').hidden)navPush('sheet')}else closeSheet()}}
   else if(k==='detail'){closeDetail(true)}
+  else if(k==='sea'){if(typeof closeSea==='function')closeSea(true)}
   else if(k==='chat'){saveDraft();$('app').classList.remove('chat');focusBrowser()}});
 new MutationObserver(()=>{if(!$('veil').hidden){if(NAV[NAV.length-1]!=='sheet')navPush('sheet')}else navPop('sheet')}).observe($('veil'),{attributes:true,attributeFilter:['hidden']});
 // swipe in from the left edge to go back

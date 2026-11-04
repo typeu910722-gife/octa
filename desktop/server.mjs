@@ -110,13 +110,14 @@ const MIGRATIONS = ["ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'c
   'ALTER TABLE messages ADD COLUMN upd INTEGER', 'ALTER TABLE jobs ADD COLUMN prio INTEGER', 'ALTER TABLE jobs ADD COLUMN quse TEXT'];
 
 // ---------- helpers ----------
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8' };
 function serveStatic(req, res) {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (p === '/') p = '/index.html';
   const f = normalize(join(WEB, p));
   if (!f.startsWith(WEB) || !existsSync(f)) { res.writeHead(404); return res.end('Not found'); }
-  res.writeHead(200, { 'content-type': MIME[extname(f)] || 'application/octet-stream', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+  // 4.9: app/vendor/ files carry their version in the name (three-0.170.0…): the phone keeps them instead of fetching 700 KB again
+  res.writeHead(200, { 'content-type': MIME[extname(f)] || 'application/octet-stream', 'cache-control': p.startsWith('/vendor/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'x-content-type-options': 'nosniff' });
   res.end(readFileSync(f));
 }
 async function toRequest(req, base) {

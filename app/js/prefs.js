@@ -16,11 +16,17 @@ function accentCss(hex){const c=hexRgb(hex);if(!c)return '';
   const da=readable(c,[28,27,25],5.5,W),dh=mixRgb(da,W,.12),di=readable(c,[28,27,25],6,W);
   const light=`--brand:${rgbHex(c)};--accent:${rgbHex(la)};--accent-h:${rgbHex(lh)};--on-accent:#fff;--accent-soft:${rgba(c,.16)};--accent-ink:${rgbHex(li)};--me:${rgbHex(mixRgb(c,W,.8))};--sel:${rgba(c,.14)};--ring:0 0 0 3px ${rgba(c,.34)}`;
   const dark=`--brand:${rgbHex(c)};--accent:${rgbHex(da)};--accent-h:${rgbHex(dh)};--on-accent:${lum(da)>.35?'#15120c':'#fff'};--accent-soft:${rgba(da,.16)};--accent-ink:${rgbHex(di)};--me:${rgbHex(mixRgb(c,[28,27,25],.78))};--sel:${rgba(da,.16)};--ring:0 0 0 3px ${rgba(da,.4)}`;
-  return `:root{${light}}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){${dark}}}:root[data-theme="dark"]{${dark}}`}
+  // 4.9 深海: read on the deep navy panels; the glow follows the colour (after the dark rules: the system-dark one matches it too)
+  const SP=[10,34,51],sa=readable(c,SP,6,W),sh=mixRgb(sa,W,.14),si=readable(c,SP,6.5,W);
+  const sea=`--brand:${rgbHex(c)};--accent:${rgbHex(sa)};--accent-h:${rgbHex(sh)};--on-accent:${lum(sa)>.3?'#04161e':'#fff'};--accent-soft:${rgba(sa,.16)};--accent-ink:${rgbHex(si)};--me:${rgbHex(mixRgb(c,SP,.8))};--sel:${rgba(sa,.17)};--ring:0 0 0 2px ${rgba(sa,.55)},0 0 14px ${rgba(sa,.38)}`;
+  return `:root{${light}}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){${dark}}}:root[data-theme="dark"]{${dark}}:root[data-theme="sea"]{${sea}}`}
 function applyAccent(hex){const css=hex?accentCss(hex):'';let el=$('accentCss');
   if(!el){el=document.createElement('style');el.id='accentCss';document.head.appendChild(el)}
   el.textContent=css;store.set('octa_accent',css?hex:null);store.set('octa_accent_css',css||null);
   if(typeof dockSync==='function')dockSync()}
+// the colour stored before 4.9 has no 深海 part, and the copy put in <head> before first paint must come after the
+// stylesheets (same selectors: the later one wins) — redo it once and move it last
+(()=>{const a=store.get('octa_accent'),css=store.get('octa_accent_css')||'';if(a&&!css.includes('data-theme="sea"'))applyAccent(a);const el=$('accentCss');if(el)document.head.appendChild(el)})();
 /* ---------- density, chat width ---------- */
 function applyDensity(v){const d=document.documentElement;if(v==='compact')d.dataset.density='compact';else delete d.dataset.density;store.set('octa_density',v==='compact'?'compact':null)}
 function applyChatWidth(v){const d=document.documentElement;if(v==='narrow'||v==='wide')d.dataset.cw=v;else delete d.dataset.cw;store.set('octa_cw',v==='narrow'||v==='wide'?v:null)}
@@ -55,11 +61,14 @@ SEC.look=()=>{
   // 4.8: everything here applies the moment you pick it (no 儲存); it is kept on this device
   const theme=themeChoice(),fs=currentFsPercent();
   block('sLook','配色').innerHTML=`<div class="theme-pick" role="radiogroup" aria-label="配色">
-    ${[['system','跟隨系統','monitor'],['light','淺色','sun'],['dark','深色','moon']].map(([k,t,i])=>`<button type="button" role="radio" data-set-theme="${k}" class="${theme===k?'on':''}" aria-checked="${theme===k}"><span class="swatch ${k}"></span><span class="tp">${ic(i)}<b>${t}</b></span></button>`).join('')}</div>`;
+    ${[['system','跟隨系統','monitor'],['light','淺色','sun'],['dark','深色','moon'],['sea','深海','sea']].map(([k,t,i])=>`<button type="button" role="radio" data-set-theme="${k}" class="${theme===k?'on':''}" aria-checked="${theme===k}"><span class="swatch ${k}"></span><span class="tp">${ic(i)}<b>${t}</b></span></button>`).join('')}</div>`;
   const acc=prefOf('accent');
   block('sAccent','主題色','按鈕、連結和你的對話泡泡用的顏色。').innerHTML=`<div class="swatches" role="radiogroup" aria-label="主題色">
     <button type="button" role="radio" class="sw0${acc?'':' on'}" data-accent="" aria-checked="${!acc}" title="${esc(I18N.t('預設（金色）'))}"><span style="background:#b8862e"></span></button>
     ${PALETTE.map(([h,n])=>`<button type="button" role="radio" class="sw0${acc.toLowerCase()===h.toLowerCase()?' on':''}" data-accent="${h}" aria-checked="${acc.toLowerCase()===h.toLowerCase()}" title="${esc(I18N.t(n))}" aria-label="${esc(I18N.t(n))}"><span style="background:${h}"></span></button>`).join('')}</div>`;
+  // 4.9: the deep-sea look's moving light, and 省電模式 (still pictures in 深海基地, no moving background)
+  block('sMotion','動態效果').innerHTML=`<label class="prow chk"><input type="checkbox" id="pSeaFx" ${store.get('octa_seafx')!=='0'?'checked':''}><span><b>深海背景光影</b><small>深海配色時，側邊欄後面有緩慢流動的光和漂浮的微粒。</small></span></label>
+    <label class="prow chk"><input type="checkbox" id="pLow" ${store.get('octa_lowpower')==='1'?'checked':''}><span><b>省電模式</b><small>深海基地改成靜態畫面（有變化或你拖動時才重畫），也關掉背景光影。筆電用電池時建議打開。</small></span></label>`;
   block('sSize','字體大小').innerHTML=`<div class="fslide"><span class="a1">A</span><input id="fsRange" type="range" min="70" max="200" step="5" value="${fs}" aria-label="字體大小" list="fsMarks"><datalist id="fsMarks"><option value="75"></option><option value="100"></option><option value="150"></option></datalist><span class="a2">A</span></div>
     <div class="fsrow"><div class="fslab" id="fsLab">${fsName(fs)} · ${fs}%</div><div class="fsq">${[75,90,100,115].map(v=>`<button type="button" class="ghost sm" data-fs="${v}">${v}%</button>`).join('')}</div></div>
     <div class="sample" aria-hidden="true"><div class="sb me2">幫我整理這週的進度</div><div class="sb">好，整理好了，重點有三項。</div></div>`;
@@ -78,6 +87,8 @@ SEC.look=()=>{
   $('sSize').querySelectorAll('[data-fs]').forEach(b=>b.onclick=()=>{$('fsRange').value=b.dataset.fs;applyFs(b.dataset.fs)});
   const pick=(box,fn)=>box.onclick=e=>{const b=e.target.closest('[role=radio]');if(!b)return;box.querySelectorAll('[role=radio]').forEach(r=>{const on=r===b;r.classList.toggle('on',on);r.setAttribute('aria-checked',String(on))});fn(b.dataset.v??b.dataset.accent)};
   pick($('sAccent').querySelector('.swatches'),applyAccent);
+  $('pSeaFx').onchange=e=>{store.set('octa_seafx',e.target.checked?null:'0');seaFx()};
+  $('pLow').onchange=e=>{store.set('octa_lowpower',e.target.checked?'1':null);seaFx();if(typeof seaPrefs==='function')seaPrefs()};
   pick($('sDensity').querySelector('#pDensity'),applyDensity);
   pick($('sDensity').querySelector('#pCw'),applyChatWidth);
   $('pReset').onclick=()=>{document.documentElement.style.removeProperty('--side-w');store.set('octa_sidew',null);$('app').style.removeProperty('--wpw');$('app').style.removeProperty('--wpw-web');store.set('octa_wpw',null);store.set('octa_wpw_web',null);resetOrder();toast(I18N.t('已恢復預設寬度與排序'))};

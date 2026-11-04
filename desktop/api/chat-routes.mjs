@@ -14,7 +14,8 @@ import { DAY, J, WAIT_MS, WARM, clean, err, now } from './util.mjs';
 // job: the id, for the work panel's timeline; created: when it was queued
 const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,paused,eng,prio,
   CASE WHEN prompt LIKE '〔背景:%' OR via LIKE '%"k":"ask"%' OR via LIKE '%"k":"give"%' OR prompt LIKE '同事「%'
-    OR instr(substr(prompt,1,80),' 問你：')>0 OR instr(substr(prompt,1,80),'把工作交接給你：')>0 THEN 1 ELSE 0 END AS bg
+    OR instr(substr(prompt,1,80),' 問你：')>0 OR instr(substr(prompt,1,80),'把工作交接給你：')>0 THEN 1 ELSE 0 END AS bg,
+  via, substr(prompt,1,48) AS p0
   FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')`;
 export async function chatRoutes(c) {
   const { env, db, path, m, url, body, me, U, ok } = c;

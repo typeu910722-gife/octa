@@ -69,3 +69,9 @@ dl.keys dd{margin:0;color:var(--ink)}
 .wi.fresh{animation:fadein .25s var(--ease) both}
 .need,.ub{transition:background-color var(--t),color var(--t)}
 .app.wp-drag *,.app.side-drag *{transition:none!important}
+/* 4.9 動態效果: two switches */
+.prow.chk{grid-template-columns:auto minmax(0,1fr);align-items:start;cursor:pointer}
+.prow.chk input{margin:3px 0 0;width:18px;height:18px;accent-color:var(--accent)}
+.prow.chk span{display:grid;gap:2px}
+.prow.chk small{color:var(--mute);font-size:calc(12.5px * var(--fz))}
+@media (max-width:760px){.prow.chk{grid-template-columns:auto minmax(0,1fr)}}

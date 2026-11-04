@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <!-- look, text size, density, chat width, sidebar width and accent before first paint (data-theme only when the person picked one) -->
 <script>
-(function(){try{var d=document.documentElement,L=localStorage,q=new URLSearchParams(location.search).get('theme'),s=localStorage.getItem('octa_theme');var t=q==='light'||q==='dark'?q:s;if(t==='light'||t==='dark')d.setAttribute('data-theme',t);if(window.octaDesktop)d.classList.add('desk');
+(function(){try{var d=document.documentElement,L=localStorage,q=new URLSearchParams(location.search).get('theme'),s=localStorage.getItem('octa_theme');var t=q==='light'||q==='dark'||q==='sea'?q:s;if(t==='light'||t==='dark')d.setAttribute('data-theme',t);if(t==='sea'){d.setAttribute('data-theme','sea');L.octa_seafx!=='0'&&L.octa_lowpower!=='1'&&d.classList.add('seafx')}if(window.octaDesktop)d.classList.add('desk');
 var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=70&&n<=200)z=n/100}if(z){d.style.setProperty('--fz',z<1?1:z);if(z<1)d.style.zoom=z;var a=z>=1.6?'xl':z>=1.08?'l':z<=.8?'xs':z<=.95?'s':'';a&&d.setAttribute('data-fs',a)}
 L.octa_density=='compact'&&d.setAttribute('data-density','compact');(a=L.octa_cw)&&d.setAttribute('data-cw',a);(a=+L.octa_sidew)>=220&&d.style.setProperty('--side-w',a+'px');
 if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e.textContent=a;document.head.appendChild(e)}}catch(e){}})();
@@ -29,6 +29,8 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
 <link rel="stylesheet" href="/css/workpanel.css">
 <link rel="stylesheet" href="/css/overview.css">
 <link rel="stylesheet" href="/css/prefs.css">
+<link rel="stylesheet" href="/css/sea.css">
+<link rel="stylesheet" href="/css/seabase.css">
 <script src="/i18n-dict.js"></script>
 <script src="/i18n-core.js"></script>
 </head>
@@ -54,6 +56,7 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
 </main>
 
 <div class="app" id="app" hidden>
+  <div class="seafx-layer" aria-hidden="true"><i></i><i></i><i></i></div>
   <aside class="side" id="side" aria-label="對話">
     <div class="side-hd">
       <div class="brand"><img src="/icon.png" alt="" class="logo"><span class="bname" data-u>OCTA</span><span class="bname2" data-u>奧克塔</span></div>
@@ -63,7 +66,9 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
       <label class="sbox" id="qbox"><span class="si" data-i="search" aria-hidden="true"></span><input id="q" type="search" placeholder="搜尋機器人" autocomplete="off" aria-label="搜尋機器人"><kbd class="kbd" id="qKbd" data-u>Ctrl K</kbd></label>
     </div>
     <!-- 4.7: every bot on one page (任務總覽) -->
-    <button type="button" class="ovbtn" id="ovBtn"><span data-i="list" aria-hidden="true"></span><span>任務總覽</span><i class="ovbadge" id="ovBadge" hidden></i></button>
+    <div class="ovrow"><button type="button" class="ovbtn" id="ovBtn"><span data-i="list" aria-hidden="true"></span><span>任務總覽</span><i class="ovbadge" id="ovBadge" hidden></i></button>
+    <!-- 4.9: the deep-sea base (every bot at work, in 3D) -->
+    <button type="button" class="ovbtn seabtn" id="seaBtn" title="深海基地：每個機器人在自己的艙室工作"><span data-i="sea" aria-hidden="true"></span><span>深海基地</span></button></div>
     <div class="upd" id="upd" hidden></div>
     <nav class="list" id="list"></nav>
     <div class="side-ft">
@@ -194,6 +199,8 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
 <script defer src="/js/ai.js"></script>
 <script defer src="/js/code.js"></script>
 <script defer src="/js/overview.js"></script>
+<script defer src="/js/seamodel.js"></script>
+<script defer src="/js/seabase.js"></script>
 <script defer src="/js/memory-view.js"></script>
 <script defer src="/js/onboarding.js"></script>
 <script defer src="/js/main.js"></script>
