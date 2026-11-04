@@ -1,7 +1,8 @@
 /* OCTA 4.9 深海基地 (app/js/seabase.js): the 3D base fills the window; the HUD, names, bubbles and module cards are HTML on top.
    The base is always under the sea (dark), whatever look the app has. */
 .ovrow{display:flex;gap:6px;margin:2px 10px 6px}
-.ovrow .ovbtn{margin:0;flex:1 1 0;min-width:0}
+.ovrow .ovbtn{margin:0;flex:1 1 0;min-width:0;padding:8px 7px;gap:6px;font-size:calc(13.5px * var(--fz))}
+.ovrow .ovbtn .icon{flex:none}
 .ovrow .ovbtn>span:not([data-i]){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .seabtn{background:linear-gradient(135deg,#0b2a3c,#0e3b4f);color:#dffbff;border-color:#1d5468}
 .seabtn:hover{background:linear-gradient(135deg,#0e3346,#12495f)}
