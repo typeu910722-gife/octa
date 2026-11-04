@@ -2,6 +2,7 @@
 import { STANDBY, mentionLine, mentionsIn } from './chat.mjs';
 import { addJob, addMsg, bump, getSettings, loadAll, putSettings } from './db.mjs';
 import { REVIEW_TAG } from './memory.mjs';
+import { noteSrc } from './memory-edit.mjs';
 import { sendNotify } from './notify.mjs';
 import {
   APPROVAL_TEXT,
@@ -366,6 +367,7 @@ export async function ownApproval(env, db, U, conv, text, bots, group) {
     st.memory = st.memory || {};
     st.memory[bot.id] = [...new Set([...(st.memory[bot.id] || []), rule])].slice(-40);
     await putSettings(db, U, st);
+    await noteSrc(db, U, 'rule', bot.id, [rule], 'fix'); // 4.7: a correction you approved
     await addMsg(db, U, conv, 'sys', `已記住：${rule.slice(0, 200)}（「${bot.name}」之後每次照做，跟指定任務衝突時以這條為準）`);
     return true;
   }

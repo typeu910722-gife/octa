@@ -95,6 +95,10 @@ export function decideRoute({ kind, tries = 0, chain = [], index = 0, resetsAt =
 // what the user sees, and whether OCTA should try the same job again on its own.
 export const FAIL_KINDS = {
   not_logged_in: { label: '需要登入', why: '網站把機器人登出了，或要先登入才能繼續。', next: '在電腦上打開機器人的瀏覽器登入，再按「繼續」。', retry: false },
+  // 4.7: pushed at once with 一鍵重試 (desktop/api/notify.mjs ALERT_KINDS)
+  logout: { label: '被登出', why: '網站把機器人登出了。', next: '在電腦上打開機器人的瀏覽器登入，再按「一鍵重試」。', retry: false },
+  api: { label: 'API 出錯', why: '用到的網站或服務的 API 沒有正常回應。', next: '稍後按「一鍵重試」；一直出錯就檢查那個服務的狀態或金鑰。', retry: false },
+  missing: { label: '資料沒出現', why: '應該出現的清單或資料這次沒有出現。', next: '看截圖確認畫面，再按「一鍵重試」。', retry: false },
   site_changed: { label: '網頁變了', why: '網頁上找不到要操作的地方，可能改版或跳出了別的畫面。', next: '看截圖確認畫面；網站改版了就告訴機器人新的位置。', retry: true },
   quota: { label: '額度用完', why: 'AI 的使用額度用完或被限流了。', next: '等額度重置，或在任務設定加一個備援 AI。', retry: false },
   interrupted: { label: '中斷', why: '主機電腦斷線、睡眠或重新啟動，工作做到一半停了。', next: '主機連上後會自動接著做；沒有接上就按重試。', retry: true },

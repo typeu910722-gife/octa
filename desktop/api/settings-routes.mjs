@@ -4,6 +4,7 @@ import { stripRetryNote } from '../lib/model-route.mjs';
 import { addMsg, bump, getSettings, loadAll, mask, putSettings } from './db.mjs';
 import { GROKBOT_WIN, engineOk, grokBotOff } from './engines.mjs';
 import { MANUAL_MAX, MEM_KEYS, boardData, weeklyReview } from './memory.mjs';
+import { noteListChange } from './memory-edit.mjs';
 import { sendNotify } from './notify.mjs';
 import { localNow } from './schedule.mjs';
 import { J, JOB_MAX, WARM, clean, err, jobMaxOk, now, uid } from './util.mjs';
@@ -142,9 +143,11 @@ export async function settingsRoutes(c) {
               .filter(Boolean)
               .slice(key === 'facts' ? -60 : -40);
       st[key] = st[key] || {};
+      const before = st[key][id];
       if (list.length) st[key][id] = list;
       else delete st[key][id];
       await putSettings(db, U, st);
+      await noteListChange(db, U, { memory: 'rule', facts: 'fact', manuals: 'manual' }[key], id, before, list); // 4.7: who set it
       await bump(db, U);
       return J({ ok: true });
     }
@@ -156,9 +159,11 @@ export async function settingsRoutes(c) {
         .map(x => ({ name: clean(x?.name, 40), steps: clean(x?.steps, 3000) }))
         .filter(x => x.name && x.steps)
         .slice(0, 20);
+      const before = st.skills[id];
       if (list.length) st.skills[id] = list;
       else delete st.skills[id];
       await putSettings(db, U, st);
+      await noteListChange(db, U, 'skill', id, before, list);
       await bump(db, U);
       return J({ ok: true });
     }
@@ -170,9 +175,11 @@ export async function settingsRoutes(c) {
           .filter(Boolean)
           .slice(0, 20);
       st.allow = st.allow || {};
+      const before = st.allow[bid];
       if (list.length) st.allow[bid] = list;
       else delete st.allow[bid];
       await putSettings(db, U, st);
+      await noteListChange(db, U, 'allow', bid, before, list);
       await bump(db, U);
       return J({ ok: true });
     }

@@ -25,6 +25,7 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
 <link rel="stylesheet" href="/css/panels.css">
 <link rel="stylesheet" href="/css/avatar.css">
 <link rel="stylesheet" href="/css/workpanel.css">
+<link rel="stylesheet" href="/css/overview.css">
 <script src="/i18n-dict.js"></script>
 <script src="/i18n-core.js"></script>
 </head>
@@ -58,10 +59,13 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
     <div class="side-search">
       <label class="sbox" id="qbox"><span class="si" data-i="search" aria-hidden="true"></span><input id="q" type="search" placeholder="搜尋機器人" autocomplete="off" aria-label="搜尋機器人"><kbd class="kbd" id="qKbd" data-u>Ctrl K</kbd></label>
     </div>
+    <!-- 4.7: every bot on one page (任務總覽) -->
+    <button type="button" class="ovbtn" id="ovBtn"><span data-i="list" aria-hidden="true"></span><span>任務總覽</span><i class="ovbadge" id="ovBadge" hidden></i></button>
     <div class="upd" id="upd" hidden></div>
     <nav class="list" id="list"></nav>
     <div class="side-ft">
       <button type="button" class="sfbtn" id="settings"><span data-i="settings" aria-hidden="true"></span><span>設定</span></button>
+      <button type="button" class="quota" id="quota" hidden title="AI 剩餘流量"></button>
       <span class="status" id="online" role="status"><i class="sdot"></i><span id="onlineT">電腦離線</span></span>
     </div>
   </aside>
@@ -184,6 +188,8 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
 <script defer src="/js/link.js"></script>
 <script defer src="/js/ai.js"></script>
 <script defer src="/js/code.js"></script>
+<script defer src="/js/overview.js"></script>
+<script defer src="/js/memory-view.js"></script>
 <script defer src="/js/onboarding.js"></script>
 <script defer src="/js/main.js"></script>
 </body>

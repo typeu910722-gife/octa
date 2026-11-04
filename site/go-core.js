@@ -60,12 +60,14 @@ export function hostUrlOk(u) {
 // from the host (QR / link):  #tp=<topic>&k=<phone key>&h=<host id>&n=<host name>&u=<address now>&c=<pairing code>
 // from the app on the phone:  … &t=<this phone's session token> instead of c
 // from a notification:        #web=<bot id>   (only which bot to open; the rest comes from storage)
+//   4.7 an alert adds &retry=<job id>: the app shows a 一鍵重試 button (the retry itself needs the phone's pairing)
 const B64U = /^[A-Za-z0-9_-]{8,200}$/;
 export function parseFragment(hash) {
   const p = new URLSearchParams(String(hash || '').replace(/^#/, ''));
   const g = k => (p.get(k) || '').trim();
   const out = {};
   const web = g('web'); if (/^[\w-]{1,64}$/.test(web)) out.web = web;
+  const retry = g('retry'); if (out.web && /^\d{1,12}$/.test(retry)) out.retry = retry;
   const tp = g('tp'), k = g('k'), h = g('h');
   if (/^[a-z2-7]{16,64}$/.test(tp) && B64U.test(k) && /^[A-Za-z0-9_-]{2,64}$/.test(h)) {
     const host = { tp, k, h, n: g('n').slice(0, 40) };
@@ -148,6 +150,6 @@ export async function pairWith(url, code, { fetch = globalThis.fetch } = {}) {
   return d.token;
 }
 // the app on the host's address, signed in with this phone's token (in the fragment, never sent to a server)
-export function appUrl(url, { t, web, go }) {
-  return url.replace(/\/+$/, '') + '/' + buildFragment({ t, web, go });
+export function appUrl(url, { t, web, go, retry }) {
+  return url.replace(/\/+$/, '') + '/' + buildFragment({ t, web, retry, go });
 }

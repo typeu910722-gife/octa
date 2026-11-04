@@ -121,9 +121,10 @@ function scrMap(pt,o){const box=o.box,img=o.img,v=o.view||{s:1,x:0,y:0},meta=o.m
 //   #t=<this phone's session token>&web=<bot>&go=<where /go is>
 // The token is kept and the fragment taken out of the address bar. go: only the OCTA site (or this computer, for tests).
 function octaFrag(hash){const p=new URLSearchParams(String(hash||'').replace(/^#/,'')),o={};
-  const t=p.get('t')||'',web=p.get('web')||'',go=p.get('go')||'';
+  const t=p.get('t')||'',web=p.get('web')||'',go=p.get('go')||'',retry=p.get('retry')||'';
   if(/^[A-Za-z0-9_-]{16,200}$/.test(t))o.t=t;
   if(/^[\w-]{1,64}$/.test(web))o.web=web;
+  if(o.web&&/^\d{1,12}$/.test(retry))o.retry=retry;   // 4.7: a 一鍵重試 link (only shows the button; retrying is an API call)
   if(/^(https:\/\/octa\.yzprojecttw\.com|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)\/go$/.test(go))o.go=go;
   return o}
 // the link that sets up /go on this phone (what it keeps: the relay key, which computer, this phone's token)

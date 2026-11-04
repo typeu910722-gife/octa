@@ -146,7 +146,7 @@ if (location.hash) history.replaceState(null, '', location.pathname + location.s
 let host = loadHost(S);
 let fresh = false;
 if (frag.host) { host = mergeHost(host, frag.host); saveHost(S, host); fresh = true; }
-const web = frag.web || '';
+const web = frag.web || '', retry = frag.retry || '';
 
 // ---------- the screens ----------
 const view = document.getElementById('view'), foot = document.getElementById('foot');
@@ -217,7 +217,7 @@ async function run() {
     }
     saveHost(S, host);
     if (!host.t) return none();
-    const url = appUrl(where.url, { t: host.t, web, go: goBack });
+    const url = appUrl(where.url, { t: host.t, web, retry, go: goBack });
     if (fresh) { fresh = false; return ready(url); }   // the first time: show how to keep this page on the home screen
     busy('open');
     location.replace(url);
