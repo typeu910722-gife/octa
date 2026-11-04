@@ -1,4 +1,6 @@
 // Services the account has connected. Secrets stay in settings. The model only sees names and results.
+// 4.7: a mailbox (Gmail app password, IMAP + SMTP) is one too — mail-connector.mjs.
+import { isMail, mailLines, runMail } from './mail-connector.mjs';
 
 const RESERVED = new Set(['Telegram', 'LINE']);
 
@@ -47,7 +49,8 @@ export function publicConnectors(st) {
   if (st?.tg?.token && st?.tg?.chat) out.push({ name: 'Telegram', kind: 'telegram', can: ['送出'] });
   if (st?.line?.token && st?.line?.to) out.push({ name: 'LINE', kind: 'line', can: ['送出'] });
   for (const c of st?.connectors || []) {
-    if (c?.name && c.base && c.secret) out.push({ name: c.name, kind: 'http', can: ['讀取', '送出'] });
+    if (isMail(c) && c.name) out.push({ name: c.name, kind: 'mail', user: c.user, can: ['讀取', '整理', '寄出'] });
+    else if (c?.name && c.base && c.secret) out.push({ name: c.name, kind: 'http', can: ['讀取', '送出'] });
   }
   return out;
 }
@@ -58,7 +61,8 @@ export function connectorLines(list) {
     lines.push('這個帳號還沒有接上任何連接器。Telegram、LINE 或自己的服務要先到設定的「連接器」接上。還沒接上時，公開網頁用 WebFetch，已登入的網頁用【派瀏覽】。');
     return lines;
   }
-  for (const c of list) lines.push(`- ${c.name}：可以${c.can.join('、')}${c.kind === 'http' ? '。路徑寫相對路徑，例如 /orders；送出的內容可以直接寫 JSON（例如 {"status":"clean"}）' : '。不用寫路徑'}`);
+  for (const c of list.filter(x => x.kind !== 'mail')) lines.push(`- ${c.name}：可以${c.can.join('、')}${c.kind === 'http' ? '。路徑寫相對路徑，例如 /orders；送出的內容可以直接寫 JSON（例如 {"status":"clean"}）' : '。不用寫路徑'}`);
+  lines.push(...mailLines(list));
   lines.push('能用連接器做的事不要開瀏覽器。需要時單獨寫下面這一段，不要同時寫【回覆】：\n【連接器】\n名稱：上面其中一個\n動作：讀取或送出\n路徑：/相對路徑（只有自己的服務要）\n內容：送出的文字\n【接完】');
   lines.push('讀取可以直接做。送出、寄信、付款、刪除要先寫 ✅待確認，使用者回「核准：」之後才寫送出。同意只涵蓋那一次。同一則最多呼叫兩次。');
   return lines;
@@ -71,9 +75,10 @@ export function toolForBrowse(task, connectors) {
     : /行事曆|日曆|calendar/i.test(text) ? 'cal'
     : /文件|試算表|雲端硬碟|\bdocs\b|\bdrive\b|sheet/i.test(text) ? 'doc' : '';
   if (!kind) return null;
-  return (connectors || []).find(c => {
+  const list = [...(connectors || [])].sort((a, b) => (b.kind === 'mail') - (a.kind === 'mail'));
+  return list.find(c => {
     const n = String(c.name || '');
-    if (kind === 'mail') return /信|mail|gmail/i.test(n);
+    if (kind === 'mail') return c.kind === 'mail' || /信|mail|gmail/i.test(n);
     if (kind === 'cal') return /曆|calendar/i.test(n);
     return /文件|drive|sheet|表/i.test(n);
   }) || null;
@@ -84,9 +89,14 @@ export function takeConnectorTask(text) {
   const body = m[1];
   const name = ((body.match(/名稱[:：]\s*(.+)/) || [])[1] || '').trim().slice(0, 40);
   const act = ((body.match(/動作[:：]\s*(\S+)/) || [])[1] || '');
-  const action = act.startsWith('送出') ? '送出' : act.startsWith('讀取') ? '讀取' : '';
+  const action = act.startsWith('送出') ? '送出' : act.startsWith('讀取') ? '讀取' : act.startsWith('寄') ? '寄出' : act.startsWith('整理') ? '整理' : '';
   const path = ((body.match(/路徑[:：]\s*(\S+)/) || [])[1] || '').slice(0, 200);
-  const content = ((body.match(/內容[:：]\s*([\s\S]*)$/) || [])[1] || '').trim().slice(0, 4000);
+  let content = ((body.match(/內容[:：]\s*([\s\S]*)$/) || [])[1] || '').trim().slice(0, 4000);
+  // mail fields written straight under 路徑 (no 內容： line): keep them as the content
+  if (!content) {
+    const rest = body.split('\n').filter(l => !/^\s*(名稱|動作|路徑)\s*[:：]/.test(l)).join('\n').trim();
+    if (/^\s*(收件人|收件者|主旨|本文|編號|寄件者|未讀|搜尋|存附件|標記|標籤|資料夾)\s*[:：]/m.test(rest)) content = rest.slice(0, 4000);
+  }
   if (!name || !action) return null;
   return { name, action, path, content };
 }
@@ -122,6 +132,12 @@ export async function runConnector(st, task, opt = {}) {
   const fetchImpl = opt.fetchImpl || globalThis.fetch;
   const known = publicConnectors(st).find(c => c.name === task?.name);
   if (!known) return { ok: false, text: `沒有接上「${task?.name || ''}」。` };
+  if (known.kind === 'mail') {
+    // the operation decides (reading, tidying or sending), whatever the 動作 word was; sending checks 核准 / 一律允許 itself
+    const box = (st.connectors || []).find(x => x.name === task.name && isMail(x));
+    const r = await runMail(box, task, { ...opt, connect: opt.mailConnect, upgrade: opt.mailUpgrade, insecure: opt.mailInsecure });
+    return { ...r, text: redact(r.text, [box.secret]) };   // the runner reads up to 4000 characters
+  }
   if (task.action !== '讀取' && task.action !== '送出') return { ok: false, text: '動作只能是讀取或送出。' };
   if (!known.can.includes(task.action)) return { ok: false, text: `「${known.name}」不能${task.action}。` };
   if (task.action === '送出' && !opt.approved) return { ok: false, text: `「${known.name}」這次沒有送出。對別人送出要先取得這一次的同意。` };

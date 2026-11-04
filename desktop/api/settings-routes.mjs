@@ -1,5 +1,6 @@
 // Settings, connectors, notifications, logs, the board, AI engines and usage.
 import { normalizeCustom } from '../lib/connectors.mjs';
+import { mailView } from '../lib/mail-connector.mjs';
 import { stripRetryNote } from '../lib/model-route.mjs';
 import { addMsg, bump, getSettings, loadAll, mask, putSettings } from './db.mjs';
 import { GROKBOT_WIN, engineOk, grokBotOff } from './engines.mjs';
@@ -52,7 +53,9 @@ export async function settingsRoutes(c) {
         { name: 'Telegram', on: !!(st.tg?.token && st.tg?.chat), can: ['送出'], where: '通知' },
         { name: 'LINE', on: !!(st.line?.token && st.line?.to), can: ['送出'], where: '通知' }
       ],
-      custom: (st.connectors || []).map(c => ({
+      // 4.7 信箱（應用程式密碼）: the password only ever comes back masked
+      mail: (st.connectors || []).filter(c => c.kind === 'mail').map(c => mailView(c, mask)),
+      custom: (st.connectors || []).filter(c => c.kind !== 'mail').map(c => ({
         id: c.id,
         name: c.name,
         base: c.base,
