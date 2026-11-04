@@ -310,6 +310,6 @@
 - [x] 技術：three.js r170（MIT，app/vendor/three-0.170.0.module.min.js，690 KB／gzip 170 KB，打開深海基地才 import，不走 CDN；/vendor/ 長快取，手機只下載一次），低多邊形＋自己寫的 shader（玻璃 fresnel、caustics、海帶擺動、微粒都在 GPU 算）；名字、泡泡、HUD 是 HTML（字清楚、可翻譯）。app/js/seamodel.js（純函式：場景模型、版面、路線、迴圈、釋放）、seascene.js（3D 物件）、seabase.js（畫面、輸入、標籤避讓）
 - [x] 順暢：最多 30 格/秒、像素比最多 1.5（省電模式 1），跟不上 20 格/秒自動降到 0.6；視窗隱藏/縮小就停；省電模式（設定 → 外觀與語言）與「減少動態」改成靜態畫面，只有變化或拖動時重畫，鏡頭不移動；資料跟著原本的長輪詢更新（每秒比對一次，今天完成數只在 rev 變時最多 5 秒查一次 overview）；關掉時釋放所有 geometry/material/texture、renderer.dispose＋forceContextLoss、移除所有監聽與計時器。沒有 WebGL 時只顯示艙室卡
 - [x] 「深海」配色（設定 → 外觀與語言，和 跟隨系統／淺色／深色 並列）：深藍墨色底與深度漸層、青綠生物光的重點色、按鈕與焦點的柔光、玻璃感面板、細細的發光分隔線；側邊欄後面有慢慢流動的光紋與微粒（可關，省電模式與減少動態時不動），只用 transform 動畫。所有文字對比 ≥ 4.5（測試檢查），主題色 15 色照樣套用（另算深海版本）；舊版存的主題色自動補上深海那一段，並把 <head> 裡那份移到樣式表後面
-- [x] 測試：test/seabase.test.mjs（場景模型：艙室、狀態、泡泡、計數、交接、會議室；版面與路線；30 fps 迴圈、隱藏停止、靜態模式；釋放一次且只一次、關閉時移除監聽；three.js 在本機、版本固定、MIT、動態載入；busy 的 from；深海色票 WCAG AA、主題色在深海也可讀；設定與首屏）。全套 337 項，失敗只剩原本 4 項
+- [x] 測試：test/seabase.test.mjs（場景模型：艙室、狀態、泡泡、計數、交接、會議室；版面與路線；30 fps 迴圈、隱藏停止、靜態模式；釋放一次且只一次、關閉時移除監聽；three.js 在本機、版本固定、MIT、動態載入；busy 的 from；深海色票 WCAG AA、主題色在深海也可讀；設定與首屏）。全套 336 項，失敗只剩原本 4 項
 - [x] 實測（Playwright＋swiftshader 軟體繪圖）：docs/screens/seabase-49-*、desktop-49-sea-*、phone-49-sea-*；JS 每格 0.1–0.3 ms（含標籤），約 190 次 draw call、5.7 萬個三角形；沒有 GPU 的軟體繪圖一格 136–245 ms（真的顯示卡會快很多，所以有自動降解析度）；隱藏時 0 格、省電與減少動態靜止時 0 格；連續開關 8 次 canvas／標籤歸零、JS heap 維持 9–10 MB；手機點擊、雙指縮放、返回手勢可用
 - 未實測：Windows 實機的 GPU 與 CPU 用量、Electron 視窗裡的效能、真的手機（觸控手感、iOS Safari 的 WebGL）、很多機器人（30 個以上）時的擁擠程度
