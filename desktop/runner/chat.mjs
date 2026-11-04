@@ -7,6 +7,7 @@ import { api, saveUpload } from './api-client.mjs';
 import { busyBots, cdp, ensureBrowser, pagesOf, setShareBrowser, shareBrowser, syncOut, touchBrowser } from './browser.mjs';
 import { browseKind, has, runEngine } from './engines.mjs';
 import { botDir, convDir, freeName, newFiles, newestImage, rel, safeName, storeDir } from './files.mjs';
+import { chromeForGoogle, wantsGoogle } from './google.mjs';
 import { runGrokBot } from './grokbot.mjs';
 import { browserSnapshot, captureEyes, finishBrowserWindow, pushLive, settleBrowserWindow } from './live.mjs';
 import { browserUseReady } from './ollama.mjs';
@@ -31,7 +32,10 @@ async function chatRun(job) {
   if (side) job.warm = 0;
   const own = job.bot.browser !== 'mine';
   let port = 0;
-  if (own && !side && job.bot.engine !== 'grokbot') { try { port = await ensureBrowser(job.bot); } catch (e) { log('瀏覽器：' + e.message); } }   // a Grok Bot works on xAI's cloud computer
+  if (own && !side && job.bot.engine !== 'grokbot') {
+    if (wantsGoogle(job)) await chromeForGoogle(job.bot).catch(e => log('改用 Chrome：' + e.message));   // 4.7: Gmail & co. only in its own Chrome
+    try { port = await ensureBrowser(job.bot); } catch (e) { log('瀏覽器：' + e.message); }
+  }   // a Grok Bot works on xAI's cloud computer
   const b = botDir(side ? job.bot.id + '-side' : job.bot.id, side ? 'own' : job.bot.browser, port), { dir } = b;
   const here = convDir(job.conv || job.bot);
   if (port) busyBots.add(job.bot.id);

@@ -4,7 +4,7 @@ import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, wr
 import { join } from 'node:path';
 import { chatNote } from './api-client.mjs';
 import { botDir, findChrome } from './files.mjs';
-import { backing, chromeCookies, googleSignedIn, returnToEmbed, switchToChrome } from './google.mjs';
+import { isGoogleCookie, switchToChrome } from './google.mjs';
 import { WIN, cfg, log, workDir } from './state.mjs';
 import { cookieParams, mergeOldProfiles } from './transfer.mjs';
 import { closeSession, sessions } from './warm.mjs';
@@ -19,9 +19,11 @@ export const sharedProfile = () => join(workDir, 'profile-shared');   // 2.4.0�
 const jarFile = () => join(workDir, 'shared-logins.json');
 const readJar = () => { try { return JSON.parse(readFileSync(jarFile(), 'utf8')); } catch { return []; } };
 const ckKey = c => `${c.name}|${c.domain}|${c.path || '/'}`;
+// 4.7: Google's sign-in is never shared or copied: Google ties it to the browser it was made in (copied, it logs out
+// again — the Gmail problem). Each bot signs in to Google once, in its own Chrome window, and keeps it there.
 export function addToJar(list) {   // newest values win; expired ones drop out
-  const now = Date.now() / 1000, m = new Map(readJar().map(c => [ckKey(c), c]));
-  for (const c of list) if (c.name && c.domain) m.set(ckKey(c), c);
+  const now = Date.now() / 1000, m = new Map(readJar().filter(c => !isGoogleCookie(c)).map(c => [ckKey(c), c]));
+  for (const c of list) if (c.name && c.domain && !isGoogleCookie(c)) m.set(ckKey(c), c);
   const out = [...m.values()].filter(c => !(c.expires > 0 && c.expires < now));
   mkdirSync(workDir, { recursive: true }); writeFileSync(jarFile(), JSON.stringify(out)); return out.length;
 }
@@ -30,7 +32,7 @@ async function syncIn(port) {   // also take sign-ins from other bots' browsers 
   let m = {}; try { m = JSON.parse(readFileSync(join(workDir, 'ports.json'), 'utf8')); } catch { }
   await Promise.all(Object.values(m).filter(p => p !== port).map(async p => { if (await cdpInfo(p)) await syncOut(p); }));
   await syncOut(port);   // its own newest sign-ins last, so an older copy in the shared store never logs it out
-  const jar = readJar(); if (jar.length) await cdp(port, send => send('Storage.setCookies', { cookies: cookieParams(jar) })).catch(e => log('帶入共用登入失敗：' + e.message)); }
+  const jar = readJar().filter(c => !isGoogleCookie(c)); if (jar.length) await cdp(port, send => send('Storage.setCookies', { cookies: cookieParams(jar) })).catch(e => log('帶入共用登入失敗：' + e.message)); }
 export async function syncOut(port) { try { const { cookies = [] } = await cdp(port, send => send('Storage.getCookies')); addToJar(cookies); } catch (e) { log('儲存共用登入失敗：' + e.message); } }
 export const busyBots = new Set();
 export const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -159,17 +161,8 @@ export const lookedBack = new Set();   // bots whose Chrome profile was already 
 export async function openBrowser(bot, opts = {}) {
   if (bot?.id && bot.name !== '監看') knownBots.set(bot.id, bot);
   if (cfg.embed && !cfg.embed.onGoogle) cfg.embed.onGoogle = switchToChrome;
-  // in a Chrome window because Google refused OCTA's browser: once that profile is signed in to Google, come back (once per start)
-  if (cfg.embed && bot.browser !== 'mine' && !opts.noBack && cfg.embed.external?.(bot.id) && cfg.embed.autoBack?.(bot.id) && !lookedBack.has(bot.id) && !backing.has(bot.id)) {
-    lookedBack.add(bot.id);
-    try {
-      const got = await chromeCookies(bot);
-      if (googleSignedIn(got.cookies)) {
-        const r = await returnToEmbed(bot, { cookies: got.cookies, show: opts.show, quiet: opts.show === false });
-        if (r.ok) { await chatNote(bot.id, `這個機器人的 Chrome 視窗已經登入 Google，瀏覽器已改回 OCTA 內建（帶入 ${r.cookies} 筆網站登入）。`); return r.port; }
-      }
-    } catch (e) { log('改回內建瀏覽器失敗：' + e.message); }
-  }
+  // 4.7: a bot in its Chrome window because of Google stays there (its Google sign-in lives in that profile);
+  // it goes back into OCTA's browser only when the person presses 「改回內建瀏覽器」 (returnToEmbed, manual)
   if (cfg.embed && bot.browser !== 'mine' && !cfg.embed.external?.(bot.id)) {
     const port = embedPortOf(bot.id);
     try {

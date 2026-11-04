@@ -1,4 +1,5 @@
-// The way back from the Chrome window, end to end in the runner: a fake Chrome (CDP on the bot's port),
+// 4.7: a bot that needs Google stays in its own Chrome window (Google's sign-in only works in the profile it was made in);
+// the way back into OCTA's browser is by hand only, and never carries Google's cookies. End to end in the runner: a fake Chrome (CDP on the bot's port),
 // a fake in-app browser (the desktop's embed API) and a fake server that records the chat lines.
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -8,6 +9,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { startCdpBridge } from '../desktop/cdp-bridge.mjs';
 import { closeAllBrowsers, ensureBrowser, returnToEmbed, startRunner } from '../desktop/runner/index.mjs';
+import { chromeForGoogle, wantsGoogle } from '../desktop/runner/google.mjs';
 
 const BOT = { id: 'b1', name: '映日所', browser: 'own' };
 const NOW = Date.now() / 1000;
@@ -35,12 +37,13 @@ async function fakeChrome(cookies, url = 'https://www.instagram.com/') {
 }
 // the desktop's side: realChrome flag, the in-app browser and the cookies set into it
 function fakeEmbed() {
-  const e = { external: new Set(), stay: new Set(), set: [], started: 0, used: [], bridge: null, onGoogle: null };
+  const e = { external: new Set(), stay: new Set(), set: [], started: 0, used: [], chrome: [], bridge: null, onGoogle: null };
   return Object.assign(e, {
     api: {
       external: id => e.external.has(id),
       autoBack: id => e.external.has(id) && !e.stay.has(id),
       useEmbedded: id => { e.used.push(id); e.external.delete(id); return true; },
+      useChrome: id => { e.chrome.push(id); e.external.add(id); return true; },
       async start(_bot, port) {
         e.started++;
         const pages = [{ id: 'p1', title: '', url: 'https://www.google.com/' }];
@@ -85,54 +88,54 @@ after(async () => {
   rmSync(home, { recursive: true, force: true });
 });
 
-test('a bot whose Chrome window is already signed in to Google comes back into OCTA with every sign-in', async () => {
+test('a bot in its Chrome window for Google stays there, even when it is signed in', async () => {
   const chrome = await fakeChrome([g('SID', 'old'), g('__Secure-1PSID', 'p-old'), g('sessionid', 'ig', '.instagram.com')]);
   embed.external.add(BOT.id);
   const port = await ensureBrowser(BOT);
-  assert.equal(port, 19011, 'the in-app browser, not the Chrome window');
-  assert.deepEqual(embed.used, [BOT.id]);
-  assert.equal(chrome.closed, true, 'the Chrome window is closed');
-  const names = embed.set.map(c => c.name);
-  for (const n of ['SID', '__Secure-1PSID', 'sessionid']) assert.ok(names.includes(n), n + ' brought over');
-  assert.ok(embed.set.find(c => c.name === 'SID').domain === '.google.com');
-  assert.ok(notes.some(n => n.bot === BOT.id && /已改回 OCTA 內建（帶入 3 筆網站登入）/.test(n.text)));
+  assert.equal(port, 9311, 'its Chrome window, not the in-app browser');
+  assert.deepEqual(embed.used, [], 'no automatic way back');
+  assert.equal(chrome.closed, false);
+  await chrome.bridge.close();
+  chrome.closed = true;
 });
 
-test('refused again: Chrome window plus a chat line, and a new sign-in there brings it back by itself', async () => {
-  embed.set.length = 0; notes.length = 0; embed.used.length = 0;
-  const chrome = await fakeChrome([g('SID', 'old'), g('__Secure-1PSID', 'p-old')], 'https://accounts.google.com/v3/signin/identifier');
+test('Google refuses the in-app browser: Chrome window plus a chat line; a sign-in there does not bring it back', async () => {
+  notes.length = 0; embed.used.length = 0; embed.set.length = 0;
+  const chrome = await fakeChrome([g('SID', 'old')], 'https://accounts.google.com/v3/signin/identifier');
   embed.external.add(BOT.id);   // what desktop googleBlocked() records before calling onGoogle
   assert.equal(typeof embed.onGoogle, 'function');
-  assert.equal(await embed.onGoogle(BOT.id, 'https://accounts.google.com/v3/signin/rejected?continue=https%3A%2F%2Fmail.google.com%2F', { again: true }), true);
+  assert.equal(await embed.onGoogle(BOT.id, 'https://accounts.google.com/v3/signin/rejected?continue=https%3A%2F%2Fmail.google.com%2F', { again: true, stay: true }), true);
   assert.equal(embed.bridge, null, 'the in-app browser was stopped');
-  assert.ok(notes.some(n => /Google 又擋下內建瀏覽器的登入/.test(n.text) && /自動改回/.test(n.text)));
-  // the sign-in it already had does not count
+  assert.ok(notes.some(n => /改用自己的 Chrome 視窗/.test(n.text) && /一直留在那裡/.test(n.text)));
+  chrome.cookies = [g('SID', 'new'), g('__Secure-1PSID', 'p-new')];
   await pause(4600);
-  assert.deepEqual(embed.used, []);
+  assert.deepEqual(embed.used, [], 'stays in Chrome');
   assert.equal(chrome.closed, false);
-  // the person signs in in the Chrome window
-  chrome.cookies = [g('SID', 'new'), g('__Secure-1PSID', 'p-new'), g('NID', 'n')];
-  for (let i = 0; i < 30 && !embed.used.length; i++) await pause(300);
-  for (let i = 0; i < 20 && !embed.set.length; i++) await pause(100);
-  assert.deepEqual(embed.used, [BOT.id]);
-  assert.equal(chrome.closed, true);
-  assert.equal(embed.set.find(c => c.name === 'SID')?.value, 'new');
-  assert.ok(notes.some(n => /已在 Chrome 視窗登入 Google/.test(n.text)));
 });
 
-test('refused right after coming back: stays in the Chrome window until switched back by hand', async () => {
+test('back into OCTA by hand: other sites come along, Google does not', async () => {
   notes.length = 0; embed.used.length = 0; embed.set.length = 0;
-  const chrome = await fakeChrome([g('SID', 'new')]);
-  embed.external.add(BOT.id); embed.stay.add(BOT.id);
-  await embed.onGoogle(BOT.id, 'https://accounts.google.com/signin/rejected', { again: true, stay: true });
-  assert.ok(notes.some(n => /先固定用 Chrome 視窗/.test(n.text)));
-  chrome.cookies = [g('SID', 'newer')];
-  await pause(4600);
-  assert.deepEqual(embed.used, [], 'no automatic way back');
+  const chrome = lastChrome;
+  chrome.cookies = [g('SID', 'newer'), g('NID', 'n'), g('sessionid', 'ig', '.instagram.com'), g('GMAIL_AT', 'x', 'mail.google.com')];
   const r = await returnToEmbed({ id: BOT.id, name: BOT.name }, { manual: true });
   assert.equal(r.ok, true);
-  assert.equal(r.google, true);
+  assert.equal(r.google, false);
   assert.deepEqual(embed.used, [BOT.id]);
   assert.equal(chrome.closed, true);
-  assert.equal(embed.set.find(c => c.name === 'SID')?.value, 'newer');
+  assert.deepEqual(embed.set.map(c => c.name), ['sessionid'], 'only the non-Google sign-in');
+});
+
+test('Gmail work moves the bot to its Chrome window before the browser opens', async () => {
+  embed.external.clear(); embed.chrome.length = 0; notes.length = 0;
+  assert.equal(wantsGoogle({ prompt: '幫我看 Gmail 有沒有新信' }), true);
+  assert.equal(wantsGoogle({ prompt: '整理 Google 雲端硬碟的報表' }), true);
+  assert.equal(wantsGoogle({ prompt: '用 Google 搜尋明天天氣' }), false);
+  assert.equal(wantsGoogle({ prompt: '看訂單', bot: { task: '每天看 Gmail 訂單信' } }), true);
+  const moved = await chromeForGoogle({ ...BOT });
+  if (moved) {
+    assert.deepEqual(embed.chrome, [BOT.id]);
+    assert.ok(notes.some(n => /Google 帳號/.test(n.text)));
+    assert.equal(await chromeForGoogle({ ...BOT }), false, 'already there');
+  }
+  assert.equal(await chromeForGoogle({ ...BOT, browser: 'mine' }), false, 'the user\'s own Chrome is left alone');
 });

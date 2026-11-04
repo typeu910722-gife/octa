@@ -11,7 +11,7 @@ import { cloudCaller, importStatus, migrateConfig } from './cloud-import.mjs';
 import { startCdpBridge } from './cdp-bridge.mjs';
 import { backupRootFrom, doneText, finishPendingWipe, makeBackup, planWipe, wipeTargets, writeMarker } from './wipe.mjs';
 import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, phoneInput, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
-import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, SAME_TO_CDP, braveDownload, chromeDownload, clientHintHeaders, edgeDownload, electronCookie, firefoxDownload, googleRefused, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
+import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, SAME_TO_CDP, braveDownload, chromeDownload, clientHintHeaders, edgeDownload, electronCookie, firefoxDownload, googleRefused, googleSignInPage, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
 // ---------- updates (GitHub Releases) ----------
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
@@ -511,25 +511,31 @@ async function notePage(wc, bucket) {
   }
   sendFrame(bucket, {});
 }
-// Google refused the sign-in inside OCTA ("這個瀏覽器或應用程式可能不安全"). A plain sign-in page is tried here first;
-// only a refusal hands this bot to a real Chrome window (its own profile). Once the sign-in is done there, the runner
-// brings the sign-ins back into this browser and the bot is shown in OCTA again (returnToEmbed).
-const STAY_MS = 15 * 60000;
+// Google's sign-in inside OCTA: Google refuses it ("這個瀏覽器或應用程式可能不安全"), and a sign-in copied in from Chrome
+// logs out again (Google binds it to the browser). 4.7: the moment this browser lands on Google's sign-in page (or a
+// refusal), the bot moves to its own real Chrome window (its own profile, driven over CDP) and stays there — no
+// automatic way back, no sign-in loop in here. 「改回內建瀏覽器」 by hand still works (Google's cookies are not copied).
 function googleBlocked(bucket, url, text = '') {
-  if (!googleRefused(url, text)) return;
+  if (!googleRefused(url, text) && !googleSignInPage(url)) return;
   if (!bucket.botId || bucket.toChrome || typeof embedApi.onGoogle !== 'function') return;
   bucket.toChrome = true;
-  const back = +cfg.embedBack?.[bucket.botId] || 0;   // when it last came back from Chrome
-  const again = back > 0;
-  // refused again right after coming back: keep the Chrome window until the person switches back by hand
-  const stay = again && Date.now() - back < STAY_MS;
-  cfg = { ...cfg, realChrome: { ...(cfg.realChrome || {}), [bucket.botId]: { at: Date.now(), why: 'google', ...(stay ? { stay: true } : {}) } } };
+  const again = (+cfg.embedBack?.[bucket.botId] || 0) > 0;   // it was in Chrome before and came back by hand
+  const stay = true;
+  cfg = { ...cfg, realChrome: { ...(cfg.realChrome || {}), [bucket.botId]: { at: Date.now(), why: 'google', stay: true } } };
   writeCfg(cfg);
   bucket.engineError = 'Google 不讓內嵌瀏覽器登入，正在改用 Chrome 視窗…';
   sendFrame(bucket, {});
   setTimeout(() => Promise.resolve(embedApi.onGoogle(bucket.botId, url, { again, stay })).catch(e => logError('google-chrome', e)), 300);
 }
-// the bot's browser is back in OCTA: forget the Chrome window, remember when (a quick second refusal then stays in Chrome)
+// 4.7: the runner moves a bot to its Chrome window before Google work (Gmail…), so it never meets the sign-in in here
+function useChrome(botId) {
+  const id = String(botId || '');
+  if (!id) return false;
+  cfg = { ...cfg, realChrome: { ...(cfg.realChrome || {}), [id]: { at: Date.now(), why: 'google', stay: true } } };
+  writeCfg(cfg);
+  return true;
+}
+// the bot's browser is back in OCTA (by hand): forget the Chrome window, remember when
 function useEmbedded(botId) {
   const id = String(botId || '');
   if (!id) return false;
@@ -748,8 +754,8 @@ async function embedStart(bot, port) {
 const embedApi = {
   start: embedStart, show: embedShow, stop: embedStop, onGoogle: null,
   external: id => !!cfg.realChrome?.[String(id)],
-  autoBack: id => browserMode(id).chrome && !browserMode(id).stay,   // may come back from Chrome by itself once signed in there
-  useEmbedded, mode: browserMode
+  autoBack: () => false,   // 4.7: a bot in Chrome for Google stays there (its Google sign-in only works in that profile)
+  useChrome, useEmbedded, mode: browserMode
 };
 async function bundledRunnerOpts() {
   const pwCli = unpacked(join(dirname(require.resolve('@playwright/mcp/package.json')), 'cli.js'));

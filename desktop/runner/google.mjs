@@ -13,6 +13,25 @@ import { cfg, log, workDir } from './state.mjs';
 import { cookieParams } from './transfer.mjs';
 import { closeSession, sessions } from './warm.mjs';
 
+// Google's own cookies (sign-in, account choice): bound to the browser they were made in, never copied between browsers
+const GOOGLE_DOMAIN = /(^|\.)(google\.[a-z.]+|gmail\.com|youtube\.com|googleusercontent\.com|gstatic\.com|googleapis\.com|withgoogle\.com)$/i;
+export const isGoogleCookie = c => GOOGLE_DOMAIN.test(String(c?.domain || '').replace(/^\./, ''));
+// a job that needs a Google account (Gmail, Drive, Calendar, Docs/Sheets, YouTube Studio, Business Profile…):
+// it runs in the bot's own Chrome window, where Google lets it sign in and keeps it signed in
+const GOOGLE_WORK = /gmail|mail\.google|google\s*(drive|雲端|日曆|calendar|docs?|文件|sheets?|試算表|表單|forms?|帳號|帳戶|account|商家|business|ads|analytics|search console|meet|photos|相簿|聯絡人|contacts)|雲端硬碟|docs\.google|drive\.google|calendar\.google|youtube\s*studio|accounts\.google/i;
+export const wantsGoogle = job => GOOGLE_WORK.test(`${job?.prompt || ''}\n${job?.bot?.task || ''}`);
+// before such a job: the bot moves to its Chrome window once (and stays there)
+export async function chromeForGoogle(bot) {
+  if (!cfg.embed?.useChrome || bot?.browser === 'mine' || cfg.embed.external?.(bot.id)) return false;
+  if (!findChrome()) return false;
+  cfg.embed.useChrome(bot.id);
+  if (browsers.get(bot.id)?.embed) browsers.delete(bot.id);
+  if (sessions.has(bot.id)) closeSession(bot.id);   // a waiting AI was connected to the in-app browser
+  try { await cfg.embed.stop?.(embedPortOf(bot.id)); } catch { }
+  log(`🌐 ${bot.name}：要用 Google 帳號，改用這個機器人自己的 Chrome 視窗`);
+  await chatNote(bot.id, '這件要用 Google 帳號（Gmail 等）。Google 不讓 OCTA 內建瀏覽器登入，所以這個機器人改用自己的 Chrome 視窗，登入會一直留在那裡。第一次需要登入時，在 Chrome 視窗或手機按「接手」登入一次就好。').catch(() => { });
+  return true;
+}
 export function googleSignInUrl(url) {
   let u; try { u = new URL(url); } catch { return ''; }
   if (u.hostname !== 'accounts.google.com' || !/signin|ServiceLogin|AddSession|rejected/i.test(u.pathname)) return '';
@@ -23,22 +42,15 @@ export async function switchToChrome(botId, url, info = {}) {
   const bot = knownBots.get(botId);
   const dest = googleSignInUrl(url);
   if (!bot || !dest || !cfg.embed) return false;
-  lookedBack.add(botId);   // the sign-in this profile already has did not get past Google: wait for a new one (watchChromeLogin)
+  lookedBack.add(botId);
   if (browsers.get(botId)?.embed) browsers.delete(botId);
   try { await cfg.embed.stop?.(embedPortOf(botId)); } catch { }
   try {
     const port = await openBrowser(bot, { noBack: true });
     await showBrowser(port, dest, false, true);
     log(`🌐 ${bot.name}：Google 不讓內嵌瀏覽器登入，已改用 Chrome 視窗`);
-    // it came back from Chrome before and Google refused again: say so in its chat
-    if (info.again) await chatNote(botId, info.stay
-      ? 'Google 又擋下內建瀏覽器的登入，已改用 Chrome 視窗。剛改回內建就又被擋，所以這個機器人先固定用 Chrome 視窗；要再試內建瀏覽器，到「瀏覽器」按「改回內建瀏覽器」。'
-      : 'Google 又擋下內建瀏覽器的登入（「這個瀏覽器或應用程式可能不安全」），已改用 Chrome 視窗。在 Chrome 視窗登入好之後，會自動改回 OCTA 內建瀏覽器。');
-    if (!info.stay) {
-      let before = [];
-      try { ({ cookies: before = [] } = await cdp(port, send => send('Storage.getCookies'))); } catch { }
-      watchChromeLogin(bot, googleLoginMark(before));
-    }
+    // 4.7: it stays in the Chrome window (no automatic way back: a copied Google sign-in logs out again)
+    await chatNote(botId, 'Google 不讓 OCTA 內建瀏覽器登入，這個機器人改用自己的 Chrome 視窗，Google 的登入會一直留在那裡（重開 OCTA 也一樣）。在 Chrome 視窗或手機按「接手」登入一次就好。').catch(() => { });
     return true;
   } catch (e) { log('改用 Chrome 失敗：' + e.message); return false; }
 }
@@ -127,11 +139,12 @@ export async function returnToEmbed(bot, opts = {}) {
     if (await cdpInfo(port)) await cdp(port, send => send('Browser.close')).catch(() => { });
     const embedPort = await openBrowser(bot, { show: opts.show !== false && !opts.quiet, noBack: true });
     if (!browsers.get(bot.id)?.embed) return { ok: false, error: '內建瀏覽器沒有起來' };
-    const list = cookieParams(cookies || []);
+    // Google's own cookies stay in the Chrome profile: copied here they only lead to a sign-in loop
+    const list = cookieParams((cookies || []).filter(c => !isGoogleCookie(c)));
     if (list.length) await cdp(embedPort, send => send('Storage.setCookies', { cookies: list })).catch(e => log('帶入 Chrome 登入失敗：' + e.message));
-    if (shareBrowser && list.length) addToJar(cookies);
+    if (shareBrowser && list.length) addToJar(cookies);   // (addToJar leaves Google's out)
     if (page && opts.show !== false && !opts.quiet) await showBrowser(embedPort, page, false, false).catch(() => { });
     log(`🌐 ${bot.name || bot.id}：瀏覽器改回 OCTA 內建（帶入 ${list.length} 筆登入）`);
-    return { ok: true, cookies: list.length, google: googleSignedIn(cookies), port: embedPort };
+    return { ok: true, cookies: list.length, google: false, port: embedPort };
   } finally { backing.delete(bot.id); }
 }

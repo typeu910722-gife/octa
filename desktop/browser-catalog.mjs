@@ -137,6 +137,12 @@ export function googleRefused(url, text = '') {
   return GOOGLE_REFUSED.slice(0, STRONG).some(w => t.includes(w)) || (/signin|ServiceLogin|AddSession/i.test(u.pathname) && GOOGLE_REFUSED.slice(STRONG).some(w => t.includes(w)) && /瀏覽器|browser|浏览器/i.test(t));
 }
 
+// 4.7: Google's own sign-in page (account chooser, e-mail, password, challenges): OCTA's browser never tries it, the bot's Chrome does
+export function googleSignInPage(url) {
+  let u; try { u = new URL(url); } catch { return false; }
+  return u.hostname === 'accounts.google.com' && /signin|ServiceLogin|AddSession|InteractiveLogin|AccountChooser|identifier|challenge/i.test(u.pathname + u.search);
+}
+
 export function pageUnsupported(text) {
   return String(text || '').includes('不支援此瀏覽器');
 }
