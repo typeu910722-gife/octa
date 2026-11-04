@@ -43,7 +43,7 @@
 .ov-cnt{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;flex:1;min-width:0}
 /* the counters are the filters: a tile each, the number big */
 .ov-f{position:relative;display:grid;align-content:center;justify-items:start;gap:1px;padding:7px 10px 6px;border-radius:12px;background:var(--sunk);border:1px solid transparent;color:var(--ink2);font-size:calc(11.5px * var(--fz));line-height:1.2;text-align:left;min-width:0;transition:background .15s,border-color .15s}
-.ov-f span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-f span{max-width:100%;line-height:1.15}
 .ov-f:hover{background:var(--hover)}
 .ov-f b{font-size:calc(19px * var(--fz));font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1}
 .ov-f.all b{color:var(--mute)}
