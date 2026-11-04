@@ -1,6 +1,8 @@
 // 4.7 任務總覽: every bot and group on one page — its job, today's done and not-done work, the next routine runs,
 // what is running now (with its steps), and failures to 重試. One request, a few aggregate reads.
-import { FAIL_KINDS } from '../lib/model-route.mjs';
+import { FAIL_KINDS, classifyJobFailure } from '../lib/model-route.mjs';
+// older rows were saved as 'unknown' (其他錯誤): read the message again with today's rules
+const kindOf = j => (!j.err_kind || j.err_kind === 'unknown' ? classifyJobFailure(j.err_msg || '') : j.err_kind);
 import { loadAll } from './db.mjs';
 import { REVIEW_TAG } from './memory.mjs';
 import { ALERT_KINDS, ensureAlerts, retryJob } from './notify.mjs';
@@ -86,8 +88,8 @@ export async function overviewData(env, db, U) {
       failed: failed.slice(0, 8).map(j => ({
         id: j.id,
         what: jobLine(j.prompt, rname.get(j.routine)),
-        kind: j.err_kind || 'unknown',
-        label: failLabel(j.err_kind || 'unknown'),
+        kind: kindOf(j),
+        label: failLabel(kindOf(j)),
         msg: String(j.err_msg || '').replace(/\s+/g, ' ').slice(0, 160),
         at: j.finished || j.created,
         bot: j.bot_id

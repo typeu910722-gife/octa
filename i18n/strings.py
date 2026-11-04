@@ -1689,3 +1689,10 @@ P.extend([
  (r'^連不上郵件伺服器：(.+)$', 'Couldn’t reach the mail server: $1', 'メールサーバーに接続できません：$1'),
  (r'^寄信登入失敗：(.+)$', 'Signing in to send failed: $1', '送信のログインに失敗しました：$1'),
 ])
+
+# 4.7.1 failure kind
+T.update({
+ '需要你提供資料': ('Needs info from you', 'あなたの情報が必要'),
+ '機器人缺少資料或看不到要處理的東西，要你補給它。': ('The bot is missing information or can’t see what it should work on, and needs you to provide it.', 'ボットに必要な情報が足りないか、対象が見えないため、補ってください。'),
+ '照它說的補上資料或截圖，再按重試。': ('Give it the information or screenshot it asks for, then retry.', '求められた情報やスクリーンショットを渡してから再試行してください。'),
+})
