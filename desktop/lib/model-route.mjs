@@ -119,7 +119,7 @@ const TIMEOUT_RE = /超過\s*\d+\s*分鐘|很久沒有回應|逾時|timed? ?out|
 const API_RE = /API.{0,20}(錯誤|失敗|出錯|回應\s*[45]\d\d|error|failed)|\bHTTP\s*[45]\d\d\b|status(?: code)?\s*[45]\d\d|\b(400|403|404|500) (Bad Request|Forbidden|Not Found|Internal Server Error)\b|網站的?金鑰(失效|無效|過期)/i;
 const MISSING_RE = /找不到(?:這次|今天|今日|要處理的|任何)?.{0,8}(名單|清單|訂單|資料|紀錄|報表|檔案|項目|訊息|列表)|(名單|清單|訂單|資料|報表|列表)(是空的|沒有出現|不見了|找不到)|沒有(?:任何)?(?:新的?)?(名單|清單|資料|報表)可以/;
 const TOOL_RE = /\bmcp\b|playwright|browser_\w+|tool (error|failed)|工具(錯誤|失敗|出錯)|target (page|closed)|net::ERR|ECONNREFUSED|ECONNRESET|瀏覽器(錯誤|失敗|打不開)|(瀏覽器|工具|網頁|頁面).{0,6}(連不上|開不起來|打不開|沒反應|卡住)|(停|卡)在(載入|讀取|loading)|一直(載入|轉圈|讀取)|載入不(出來|完)/i;
-const NEED_USER_RE = /需要你(提供|給|傳|告訴|確認)|請(你|您)(提供|給我|傳|告訴)|看不到.{0,20}(需要|請)/;
+const NEED_USER_RE = /需要你(提供|給|傳|告訴|確認)|請(你|您)(提供|給我|傳|告訴)|看不到.{0,20}(需要|請)|把(正確的?)?[^。\n]{0,16}(路徑|檔案|網址|資料|帳號)[^。\n]{0,8}給我|(檔案|路徑|資料夾)[^。\n]{0,12}(不存在|找不到)/;
 
 export function classifyJobFailure(text, { hint, stalled } = {}) {
   if (hint && FAIL_KINDS[hint]) return hint;
