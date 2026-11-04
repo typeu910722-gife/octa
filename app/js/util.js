@@ -107,6 +107,7 @@ function applyTheme(t,persist){
 document.addEventListener('click',e=>{const set=e.target.closest('[data-set-theme]');if(set)applyTheme(set.dataset.setTheme)});
 // the 深海 look's moving light behind the sidebar: on unless turned off, 省電模式, or reduced motion (CSS stops it then)
 function seaFx(){const h=document.documentElement;h.classList.toggle('seafx',h.dataset.theme==='sea'&&store.get('octa_seafx')!=='0'&&store.get('octa_lowpower')!=='1')}
+seaFx();
 
 /* text size for the whole interface (kept on this device). 80–200, and 200 is twice the standard size. */
 // 4.8: smaller sizes too (down to 70%: 極小／很小). Below 100% the whole interface is zoomed as one (text, icons,

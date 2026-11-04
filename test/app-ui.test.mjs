@@ -12,7 +12,7 @@ test('index.html is markup only and loads every script and stylesheet that exist
   assert.equal(html.match(/<style/g), null, 'no inline styles block');
   const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   assert.equal(inline.length, 1, 'only the before-first-paint look script is inline');
-  assert.ok(inline[0][1].length < 900);
+  assert.ok(inline[0][1].length < 960);   // 4.9: + the 深海 look
   for (const f of scriptNames) assert.ok(scripts[f], f + ' exists');
   assert.deepEqual([...scriptNames].sort(), Object.keys(scripts).sort(), 'every script in app/js is loaded');
   for (const f of styleNames) assert.ok(existsSync(join(root, 'app', 'css', f)), f);
@@ -90,9 +90,9 @@ test('looks: tokens for light and dark, the system decides unless you choose, re
   assert.match(html, /if\(t==='light'\|\|t==='dark'\)d\.setAttribute\('data-theme',t\)/);
   const applyTheme = fnSrc('applyTheme');
   assert.match(applyTheme, /else delete h\.dataset\.theme/);
-  assert.match(applyTheme, /store\.set\('octa_theme',t==='light'\|\|t==='dark'\?t:null\)/);
+  assert.match(applyTheme, /store\.set\('octa_theme',t==='light'\|\|t==='dark'\|\|t==='sea'\?t:null\)/);   // 4.9: and 深海
   assert.match(js, /data-set-theme="\$\{k\}"/);
-  assert.match(js, /\[\['system','跟隨系統','monitor'\],\['light','淺色','sun'\],\['dark','深色','moon'\]\]/);
+  assert.match(js, /\[\['system','跟隨系統','monitor'\],\['light','淺色','sun'\],\['dark','深色','moon'\],\['sea','深海','sea'\]\]/);
   // colours are tokens: components never hard-code the gold
   for (const f of ['components.css', 'layout.css', 'chat.css']) assert.doesNotMatch(read('app/css/' + f).replace(/url\("data:[^"]+"\)/g, ''), /#d4a23c|#96661a|#e2ae4d/i, f);
 });
