@@ -60,11 +60,13 @@ export const bump = (db, userId) =>
 
 // kind: null for conversation; 'bg' | 'fail' | 'note' go to the work panel instead of the chat (MSG_KINDS)
 export const MSG_KINDS = ['bg', 'fail', 'note'];
-export async function addMsg(db, userId, conv, by, text, files = null, reply = null, kind = null) {
+// meta (4.7): { notes:[{type,title,body}], result:{ok,text}, approval:{what,to,content,when} } — kept out of the text, shown by the app
+export async function addMsg(db, userId, conv, by, text, files = null, reply = null, kind = null, meta = null) {
   const rid = Number.isInteger(reply) && reply > 0 ? reply : null;
+  const m = meta && typeof meta === 'object' && Object.keys(meta).length ? JSON.stringify(meta) : null;
   await db
-    .prepare('INSERT INTO messages (user_id,conv,by_,text,files,ts,reply,kind) VALUES (?,?,?,?,?,?,?,?)')
-    .bind(userId, conv, by, text, files && files.length ? JSON.stringify(files) : null, now(), rid, MSG_KINDS.includes(kind) ? kind : null)
+    .prepare('INSERT INTO messages (user_id,conv,by_,text,files,ts,reply,kind,meta) VALUES (?,?,?,?,?,?,?,?,?)')
+    .bind(userId, conv, by, text, files && files.length ? JSON.stringify(files) : null, now(), rid, MSG_KINDS.includes(kind) ? kind : null, m)
     .run();
 }
 // chain: list of bot ids (all use `prompt`) or {b, p} steps
@@ -206,7 +208,10 @@ const MIGRATIONS = [
   'ALTER TABLE jobs ADD COLUMN outs TEXT',
   'CREATE INDEX IF NOT EXISTS job_hook ON jobs(hook)',
   'CREATE TABLE IF NOT EXISTS hook_jobs (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, routine TEXT NOT NULL, conv TEXT NOT NULL, from_ TEXT, text TEXT NOT NULL, parent TEXT, created INTEGER NOT NULL, seen INTEGER)',
-  'CREATE INDEX IF NOT EXISTS hook_job_routine ON hook_jobs(routine, created)'
+  'CREATE INDEX IF NOT EXISTS hook_job_routine ON hook_jobs(routine, created)',
+  // 4.7: what runner/done took out of a reply (notes, the ✅/⚠ result, the approval card), and 暫停 on a running job
+  'ALTER TABLE messages ADD COLUMN meta TEXT',
+  'ALTER TABLE jobs ADD COLUMN paused INTEGER'
 ];
 const schemaReady = new WeakSet();
 export async function ensureSchema(db) {
@@ -235,7 +240,9 @@ export async function ensureSchema(db) {
         'SELECT kind FROM messages',
         'SELECT hook, outs FROM jobs',
         "SELECT id FROM jobs INDEXED BY job_hook WHERE hook=''",
-        'SELECT id, seen FROM hook_jobs'
+        'SELECT id, seen FROM hook_jobs',
+        'SELECT meta FROM messages',
+        'SELECT paused FROM jobs'
       ].map(q => db.prepare(q + ' LIMIT 0'))
     );
     schemaReady.add(db);

@@ -154,7 +154,7 @@ export async function weeklyReview(env, db, U, force = false) {
     // only the last 7 days of rows are read: the id bound comes from the newest older message
     db
       .prepare(
-        "SELECT conv, by_, text FROM messages WHERE user_id=?1 AND id>IFNULL((SELECT id FROM messages WHERE user_id=?1 AND ts<?2 ORDER BY id DESC LIMIT 1),0) AND ((by_ NOT IN ('sys','me') AND text LIKE '⚠%') OR (by_='sys' AND text LIKE '已記住：%')) ORDER BY id DESC LIMIT 400"
+        "SELECT conv, by_, text FROM messages WHERE user_id=?1 AND id>IFNULL((SELECT id FROM messages WHERE user_id=?1 AND ts<?2 ORDER BY id DESC LIMIT 1),0) AND ((by_ NOT IN ('sys','me') AND (text LIKE '⚠%' OR meta LIKE '%\"ok\":false%')) OR (by_='sys' AND text LIKE '已記住：%')) ORDER BY id DESC LIMIT 400"
       )
       .bind(U, since),
     db

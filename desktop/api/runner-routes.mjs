@@ -5,6 +5,7 @@ import { addMsg, bump, getSettings, nap, putSettings, wake } from './db.mjs';
 import { ENGINES } from './engines.mjs';
 import { mimeOf, safePath } from './files.mjs';
 import { continueJob, nextWork } from './jobs.mjs';
+import { progressOf, sameProgress } from './progress.mjs';
 import { approvalNag, weeklyReview } from './memory.mjs';
 import { fireEvent, fireRoutines, tidyOnce } from './routines.mjs';
 import { runnerDone } from './runner-done.mjs';
@@ -53,7 +54,7 @@ export async function runnerRoutes(c) {
       const stale = (
         await db
           .prepare(
-            "SELECT * FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND (IFNULL(beat,started)<? OR started<?)) OR started<?)"
+            "SELECT * FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND (IFNULL(beat,started)<? OR (started<? AND IFNULL(paused,0)=0))) OR (started<? AND IFNULL(paused,0)=0))"
           )
           .bind(U, now() - 20 * MIN, now() - (maxMin + 5) * MIN, now() - Math.max(3 * 60, maxMin + 5) * MIN)
           .all()
@@ -159,26 +160,24 @@ export async function runnerRoutes(c) {
       return J({ ok: true });
     }
     if (path === 'runner/progress' && m === 'POST') {
-      // what the bot is doing now; also tells the computer if 停止 was pressed
-      const txt = clean(body.text, 120);
+      // what the bot is doing now (4.7: step x of y, kind); also tells the computer if 停止, 暫停 or 接手 was pressed
+      const p = progressOf(body);
       const jr = await db
-        .prepare("SELECT progress, beat FROM jobs WHERE id=? AND user_id=? AND status='running'")
+        .prepare("SELECT progress, beat, bot_id, paused FROM jobs WHERE id=? AND user_id=? AND status='running'")
         .bind(+body.id, U)
         .first();
       if (!jr) return J({ stop: true });
       if (now() - (jr.beat || 0) > MIN) await db.prepare('UPDATE jobs SET beat=? WHERE id=?').bind(now(), +body.id).run(); // alive (at most one write a minute)
-      if (jr.progress !== txt) {
-        // a heartbeat with the same text changes nothing for the screens
+      if (!sameProgress(jr.progress, p)) {
+        // a heartbeat with the same report changes nothing for the screens
         await db.batch([
-          db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(txt, +body.id),
+          db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(JSON.stringify({ ...p, at: now() }), +body.id),
           db.prepare('UPDATE users SET prog=prog+1 WHERE id=?').bind(U)
         ]);
         wake();
       }
-      const jobRow = await db.prepare('SELECT bot_id FROM jobs WHERE id=? AND user_id=?').bind(+body.id, U).first();
-      const handed =
-        jobRow && (await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(jobRow.bot_id, U).first());
-      return J({ ok: true, hand: !!handed?.handed });
+      const handed = await db.prepare('SELECT handed FROM live WHERE bot_id=? AND user_id=?').bind(jr.bot_id, U).first();
+      return J({ ok: true, hand: !!handed?.handed, pause: !!jr.paused });
     }
     if (path === 'runner/live' && m === 'POST') {
       const bot = clean(body.bot, 64);

@@ -5,11 +5,13 @@ import { cloneFile } from './files.mjs';
 import { applyRuleUpdates, groupAsk } from './memory.mjs';
 import { ownApproval, routinesOut } from './routines.mjs';
 import { localNow } from './schedule.mjs';
+import { busyRows } from './progress.mjs';
+import { metaOf } from './reply-meta.mjs';
 import { DAY, J, WAIT_MS, WARM, clean, err, now } from './util.mjs';
 
 // what is running now. bg: the bot is answering / doing what another bot asked (its avatar shows it chatting);
 // job: the id, for the work panel's timeline; created: when it was queued
-const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,eng,
+const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,paused,eng,
   CASE WHEN prompt LIKE '〔背景:%' OR via LIKE '%"k":"ask"%' OR via LIKE '%"k":"give"%' OR prompt LIKE '同事「%'
     OR instr(substr(prompt,1,80),' 問你：')>0 OR instr(substr(prompt,1,80),'把工作交接給你：')>0 THEN 1 ELSE 0 END AS bg
   FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')`;
@@ -41,7 +43,7 @@ export async function chatRoutes(c) {
         .all()
     ).results;
     const u = await db.prepare('SELECT prog FROM users WHERE id=?').bind(U).first();
-    return J({ busy, prog: u?.prog ?? 0 });
+    return J({ busy: busyRows(busy), prog: u?.prog ?? 0 });
   }
   if (path === 'state' && m === 'GET') {
     const all = await loadAll(db, U);
@@ -132,7 +134,7 @@ export async function chatRoutes(c) {
       routines: routinesOut(env, all.routines),
       last: last.results,
       ur: ur.results.map(r => [r.conv, r.id]),
-      busy: busy.results
+      busy: busyRows(busy.results)
     });
   }
   if (path === 'messages' && m === 'GET') {
@@ -146,16 +148,16 @@ export async function chatRoutes(c) {
         after
           ? db
               .prepare(
-                'SELECT id,conv,by_ AS by,text,files,ts,reply,kind FROM messages WHERE user_id=? AND conv=? AND id>? ORDER BY id LIMIT ?'
+                'SELECT id,conv,by_ AS by,text,files,ts,reply,kind,meta FROM messages WHERE user_id=? AND conv=? AND id>? ORDER BY id LIMIT ?'
               )
               .bind(U, conv, after, lim)
           : db
               .prepare(
-                'SELECT * FROM (SELECT id,conv,by_ AS by,text,files,ts,reply,kind FROM messages WHERE user_id=? AND conv=? AND id<? ORDER BY id DESC LIMIT ?) ORDER BY id'
+                'SELECT * FROM (SELECT id,conv,by_ AS by,text,files,ts,reply,kind,meta FROM messages WHERE user_id=? AND conv=? AND id<? ORDER BY id DESC LIMIT ?) ORDER BY id'
               )
               .bind(U, conv, before || 9e15, lim)
       ).all()
-    ).results.map(x => ({ ...x, files: x.files ? JSON.parse(x.files) : [] }));
+    ).results.map(x => ({ ...x, files: x.files ? JSON.parse(x.files) : [], meta: metaOf(x.meta) }));
     return J({ msgs: rows, more: !after && rows.length === lim });
   }
   // 幕後: what bots asked of / handed to each other around this conversation

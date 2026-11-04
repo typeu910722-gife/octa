@@ -99,6 +99,10 @@ export const FAIL_KINDS = {
   quota: { label: '額度用完', why: 'AI 的使用額度用完或被限流了。', next: '等額度重置，或在任務設定加一個備援 AI。', retry: false },
   interrupted: { label: '中斷', why: '主機電腦斷線、睡眠或重新啟動，工作做到一半停了。', next: '主機連上後會自動接著做；沒有接上就按重試。', retry: true },
   timeout: { label: '逾時', why: '做太久，或 AI 很久沒有回應，已中止。', next: '把工作拆小一點再交代，或稍後按重試。', retry: true },
+  // 4.7: kinds for the 異常主動推播 (a routine that runs alone hits one of these; the notice says which)
+  logout: { label: '被登出', why: '網站把機器人登出了（之前登入過，現在要重新登入）。', next: '在電腦或手機上打開機器人的瀏覽器按「接手」登入，好了按「我好了」。', retry: false },
+  api: { label: 'API 錯誤', why: '網站或服務的 API 回了錯誤（金鑰失效、權限不足或服務故障）。', next: '確認共用資料或連接器裡的金鑰還有效，再按重試。', retry: true },
+  missing: { label: '找不到資料', why: '要處理的名單、訂單或資料這次沒有出現（可能還沒產生、被移走或條件不對）。', next: '確認資料來源今天有資料，或告訴機器人新的位置。', retry: false },
   tool_error: { label: '工具出錯', why: '瀏覽器、搜尋或其他工具出錯。', next: '確認電腦的網路和瀏覽器正常，再按重試。', retry: true },
   unknown: { label: '其他錯誤', why: '執行時發生錯誤。', next: '看錯誤訊息後按重試；一直失敗就換個說法交代。', retry: true }
 };
@@ -109,6 +113,9 @@ export const autoRetryable = (kind, text) => !!FAIL_KINDS[kind]?.retry && !(kind
 const SITE_LOGIN_RE = /需要使用者在電腦上登入|登入(已)?(過期|逾時|失效)|被登出|請(先|重新)登入|要先登入|session (has )?expired|sign ?in (to continue|required)|log ?in required|please (log|sign) ?in|not logged in|未登入/i;
 const SITE_CHANGED_RE = /找不到(元素|按鈕|欄位|連結|選項|輸入框|要點的)|頁面(不同|改版|變了|不一樣)|版面(改|變)了?|element (is )?(not found|not attached|not visible)|no (such )?element|ref\b.{0,30}not found|strict mode violation|waiting for (locator|selector)|locator\(|not (found|visible) in (the )?(page|snapshot)/i;
 const TIMEOUT_RE = /超過\s*\d+\s*分鐘|很久沒有回應|逾時|timed? ?out|timeout|ETIMEDOUT/i;
+// 4.7: an API call that answered with an error, and the data a run expected that was not there
+const API_RE = /API.{0,20}(錯誤|失敗|出錯|回應\s*[45]\d\d|error|failed)|\bHTTP\s*[45]\d\d\b|status(?: code)?\s*[45]\d\d|\b(400|403|404|500) (Bad Request|Forbidden|Not Found|Internal Server Error)\b|網站的?金鑰(失效|無效|過期)/i;
+const MISSING_RE = /找不到(?:這次|今天|今日|要處理的|任何)?.{0,8}(名單|清單|訂單|資料|紀錄|報表|檔案|項目|訊息|列表)|(名單|清單|訂單|資料|報表|列表)(是空的|沒有出現|不見了|找不到)|沒有(?:任何)?(?:新的?)?(名單|清單|資料|報表)可以/;
 const TOOL_RE = /\bmcp\b|playwright|browser_\w+|tool (error|failed)|工具(錯誤|失敗|出錯)|target (page|closed)|net::ERR|ECONNREFUSED|ECONNRESET|瀏覽器(錯誤|失敗|打不開)/i;
 
 export function classifyJobFailure(text, { hint, stalled } = {}) {
@@ -116,12 +123,23 @@ export function classifyJobFailure(text, { hint, stalled } = {}) {
   if (stalled) return 'timeout';
   const t = String(text || '');
   const model = classifyModelFailure(t);
-  if (SITE_LOGIN_RE.test(t) || model === 'auth') return 'not_logged_in';
+  if (SITE_LOGIN_RE.test(t)) return 'not_logged_in';
+  if (API_RE.test(t)) return 'api';
+  if (model === 'auth') return 'not_logged_in';
   if (model === 'quota' || model === 'rate_limit') return 'quota';
+  if (MISSING_RE.test(t)) return 'missing';
   if (SITE_CHANGED_RE.test(t)) return 'site_changed';
   if (TIMEOUT_RE.test(t)) return 'timeout';
   if (model === 'tool' || model === 'transient' || model === 'unavailable' || TOOL_RE.test(t)) return 'tool_error';
   return 'unknown';
+}
+// 4.7: the AI answered but its result line says it did not get it done (⚠ 沒做成：…). Which kind of trouble, for the notice.
+// A routine (nobody watching) that meets a sign-in page was logged out since it last ran: 'logout'.
+export function classifyOutcome(text, { routine = false } = {}) {
+  const t = String(text || '');
+  const kind = classifyJobFailure(t);
+  if (kind === 'not_logged_in') return routine ? 'logout' : 'not_logged_in';
+  return kind;
 }
 // the job is tried again with the reason attached; earlier notes are replaced, not stacked
 const RETRY_NOTE = /\n\n（自動重試 \d+）[\s\S]*$/;

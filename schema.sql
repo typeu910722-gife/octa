@@ -95,7 +95,8 @@ CREATE TABLE IF NOT EXISTS messages (
   files TEXT,                    -- JSON [{id,name,mime}]
   ts INTEGER NOT NULL,
   reply INTEGER,                 -- id of the message in this conversation this one answers
-  kind TEXT                      -- 4.1: null = conversation; 'bg' background bot-to-bot, 'fail' a failed job, 'note' long system context (shown in the work panel, not the chat)
+  kind TEXT,                     -- 4.1: null = conversation; 'bg' background bot-to-bot, 'fail' a failed job, 'note' long system context (shown in the work panel, not the chat)
+  meta TEXT                      -- 4.7: JSON {notes:[{type,title,body}], result:{ok,text}, approval:{what,to,content,when}} taken out of the text by runner/done
 );
 CREATE INDEX IF NOT EXISTS msg_user ON messages(user_id, id);
 CREATE INDEX IF NOT EXISTS msg_conv ON messages(user_id, conv, id);
@@ -114,12 +115,12 @@ CREATE TABLE IF NOT EXISTS jobs (
   depth INTEGER NOT NULL DEFAULT 0, -- bot-to-bot question hops
   finished INTEGER,
   result TEXT,                   -- for kind='test' (AI connection test)
-  progress TEXT,                 -- what the bot is doing right now (shown while it works)
+  progress TEXT,                 -- what the bot is doing right now: 4.7 JSON {text,step,total,steps,kind,at,...} (older rows: plain text)
   tokens INTEGER,                -- tokens the run used (when the AI reports it)
   pc TEXT,                       -- only this computer may take it (handing logins over)
   eng TEXT,                      -- "engine|model" a backup AI runs this job with
   tries INTEGER NOT NULL DEFAULT 0, -- retries already used on that same model
-  err_kind TEXT,                 -- why it failed: not_logged_in | site_changed | quota | timeout | tool_error | unknown
+  err_kind TEXT,                 -- why it failed: not_logged_in | logout | site_changed | api | missing | quota | timeout | tool_error | unknown
   err_msg TEXT,                  -- the error text behind it (short)
   shot TEXT,                     -- files.id of the screenshot taken when it ended
   retry_of INTEGER,              -- the failed job this one tries again
@@ -127,7 +128,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   routine TEXT,                  -- routines.id that started this job (its result updates that routine's last_*)
   beat INTEGER,                  -- last heartbeat while running (a long job that keeps reporting is not stuck)
   hook TEXT,                     -- 4.5: hook_jobs.id of the 交接網址 work this job belongs to (kept by retries and the chain's next steps)
-  outs TEXT                      -- 4.5: JSON [{id,name,mime}] files the reply came with (hook work only)
+  outs TEXT,                     -- 4.5: JSON [{id,name,mime}] files the reply came with (hook work only)
+  paused INTEGER                 -- 4.7: 1 = the user pressed 暫停 (the runner holds before its next step)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created);

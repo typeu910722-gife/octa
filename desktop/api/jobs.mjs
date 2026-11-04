@@ -6,6 +6,7 @@ import { publicCodeTask } from './code-routes.mjs';
 import { addMsg, bump, getSettings, loadAll, putSettings } from './db.mjs';
 import { engineOk } from './engines.mjs';
 import { memoryFor } from './memory.mjs';
+import { parseProgress } from './progress.mjs';
 import { ROUTINE_SELF, userTurn } from './routines.mjs';
 import { correctionAsk, localNow, scheduleAsk } from './schedule.mjs';
 import { MAX_ASK_DEPTH, MIN, WARM, clean, jobMaxOk, now } from './util.mjs';
@@ -206,7 +207,7 @@ async function jobPayload(env, db, U, job) {
           doing: String(main.prompt || '')
             .replace(/\s+/g, ' ')
             .slice(0, 200),
-          progress: main.progress || ''
+          progress: parseProgress(main.progress)?.text || ''
         }
       : null,
     id: job.id,

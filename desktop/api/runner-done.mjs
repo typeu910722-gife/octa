@@ -5,6 +5,7 @@ import {
   autoRetryable,
   classifyJobFailure,
   classifyModelFailure,
+  classifyOutcome,
   decideRoute,
   failureNotice,
   replyIsProviderRefusal,
@@ -31,6 +32,7 @@ import { mimeOf, safePath } from './files.mjs';
 import { PARTIAL_TAG } from './jobs.mjs';
 import { REVIEW_TAG, parseManuals, saveManuals, statAdd } from './memory.mjs';
 import { needsYou, sendNotify } from './notify.mjs';
+import { replyMeta } from './reply-meta.mjs';
 import {
   moveTaskSchedules,
   nextText,
@@ -400,10 +402,29 @@ export async function runnerDone(c) {
   const vk = viaOf(job)?.k;
   const msgKind =
     vk === 'ask' || vk === 'give' || BG.test(job.prompt) ? 'bg' : !good && !LOGIN_WAIT.test(shown) ? 'fail' : vk === 'compact' ? 'note' : null;
-  if (shown && !(quiet && passed(shown) && !outs.length)) await addMsg(db, U, job.conv, job.bot_id, shown, outs, null, msgKind);
+  // 4.7: the markers handled above leave the text and go to messages.meta (small tags, the ✅／⚠ result, the approval card)
+  const notes =
+    good && job.kind === 'chat'
+      ? [
+          ...(learned ? [{ type: 'task', title: '指定任務', body: learned }] : []),
+          ...remember.map(v => ({ type: 'memory', title: '規則', body: v })),
+          ...factsNew.map(v => ({ type: 'memory', title: '事實', body: v })),
+          ...skillsNew.map(k => ({ type: 'skill', title: k.name, body: k.steps })),
+          ...manualsNew.map(k => ({ type: 'skill', title: '做事手冊：' + k.name, body: k.steps })),
+          ...sitesNew.map(([d, v]) => ({ type: 'site', title: d, body: v })),
+          ...plans.map(r => ({ type: 'routine', title: r.name, body: `${r.trigger === 'watch' ? '監看 ' + (r.watch?.url || '') : r.trigger ? '外部事件' : (r.times || []).join(',')}｜${r.prompt || ''}` })),
+          ...routineOps.map(([op, n]) => ({ type: 'routine', title: `${op}：${n}`, body: '' }))
+        ]
+      : [];
+  const split = job.kind === 'chat' ? replyMeta(shown, notes) : { text: shown, meta: null };
+  const outcome = good && job.kind === 'chat' && split.meta?.result?.ok === false && !LOGIN_WAIT.test(text) ? classifyOutcome(split.meta.result.text, { routine: !!job.routine }) : null;
+  const showIt = !!shown && !(quiet && passed(shown) && !outs.length);
+  if (showIt) await addMsg(db, U, job.conv, job.bot_id, split.text || shown, outs, null, msgKind, split.meta);
+  // the tags under the reply say it now: the separate system lines go to the work panel
+  const noteKind = showIt && split.meta?.notes?.length ? 'note' : null;
   if (job.routine && job.kind === 'chat') {
     // 排程看得到有沒有跑: this run's result goes on the routine
-    const st0 = !good || body.stopped || LOGIN_WAIT.test(text) ? 'error' : passed(text) && !outs.length ? 'skipped' : 'done';
+    const st0 = !good || body.stopped || LOGIN_WAIT.test(text) || outcome ? 'error' : passed(text) && !outs.length ? 'skipped' : 'done';
     const rr = await routineEnded(db, U, job, st0, body.stopped ? '使用者按了停止' : text);
     if (rr && st0 === 'error' && !body.stopped) {
       const nx = nextText(env, rr);
@@ -412,7 +433,7 @@ export async function runnerDone(c) {
         U,
         job.conv,
         'sys',
-        `⚠ 例行任務「${rr.name}」這次沒有完成${fail ? `（${(FAIL_KINDS[fail.kind] || FAIL_KINDS.unknown).label}）` : LOGIN_WAIT.test(text) ? '（要先登入）' : ''}。${nx ? `下次 ${nx} 會再執行；` : ''}要現在重做，按上面的「↻ 重試」或直接叫它做。`
+        `⚠ 例行任務「${rr.name}」這次沒有完成${fail ? `（${(FAIL_KINDS[fail.kind] || FAIL_KINDS.unknown).label}）` : LOGIN_WAIT.test(text) ? '（要先登入）' : outcome ? `（${(FAIL_KINDS[outcome] || FAIL_KINDS.unknown).label}）` : ''}。${nx ? `下次 ${nx} 會再執行；` : ''}要現在重做，按上面的「↻ 重試」或直接叫它做。`
       );
     }
   }
@@ -440,11 +461,11 @@ export async function runnerDone(c) {
       st.skills[job.bot_id] = [...cur, ...skillsNew].slice(-20);
     }
     await putSettings(db, U, st);
-    if (remember.length) await addMsg(db, U, job.conv, 'sys', `已記住：${remember.join('；').slice(0, 200)}`);
-    for (const k of skillsNew) await addMsg(db, U, job.conv, 'sys', `已存成技能「${k.name}」，輸入 / 就能叫它`);
-    if (factsNew.length) await addMsg(db, U, job.conv, 'sys', `已記下事實：${factsNew.join('；').slice(0, 200)}`);
+    if (remember.length) await addMsg(db, U, job.conv, 'sys', `已記住：${remember.join('；').slice(0, 200)}`, null, null, noteKind);
+    for (const k of skillsNew) await addMsg(db, U, job.conv, 'sys', `已存成技能「${k.name}」，輸入 / 就能叫它`, null, null, noteKind);
+    if (factsNew.length) await addMsg(db, U, job.conv, 'sys', `已記下事實：${factsNew.join('；').slice(0, 200)}`, null, null, noteKind);
     for (const k of manualsNew)
-      await addMsg(db, U, job.conv, 'sys', `已存成做事手冊「${k.name}」，下次做類似的事會照著做（任務設定可檢視、刪除）`);
+      await addMsg(db, U, job.conv, 'sys', `已存成做事手冊「${k.name}」，下次做類似的事會照著做（任務設定可檢視、刪除）`, null, null, noteKind);
   }
   const cv = viaOf(job);
   if (cv?.k === 'compact' && +cv.from > 0) {
@@ -554,7 +575,10 @@ export async function runnerDone(c) {
         U,
         job.conv,
         'sys',
-        `已自動更新「${(await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人'}」的指定任務，可在任務設定修改`
+        `已自動更新「${(await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人'}」的指定任務，可在任務設定修改`,
+        null,
+        null,
+        noteKind
       );
       if (!String(cur.task || '').trim()) await autoStandby(db, U, job.bot_id);
     }
@@ -571,16 +595,21 @@ export async function runnerDone(c) {
   const loginStuck = good && job.kind === 'chat' && LOGIN_WAIT.test(text);
   const loginAgain = loginStuck && earlierMine.length >= 2 && LOGIN_WAIT.test(earlierMine[1]?.text || '');
   // paused for a sign-in counts as not_logged_in in 工作紀錄, even though the reply itself came back fine
-  if (fail || loginStuck)
+  const loginKind = job.routine ? 'logout' : 'not_logged_in'; // 4.7: a routine that runs alone and meets a sign-in page was logged out
+  if (fail || loginStuck || outcome)
     await db
       .prepare('UPDATE jobs SET err_kind=?, err_msg=? WHERE id=?')
-      .bind(fail ? fail.kind : 'not_logged_in', fail ? fail.msg : clean(text, 500), job.id)
+      .bind(
+        fail ? fail.kind : loginStuck ? loginKind : outcome,
+        fail ? fail.msg : loginStuck ? clean(text, 500) : clean(split.meta.result.text, 500),
+        job.id
+      )
       .run();
   if (job.kind === 'chat' && !loginAgain) {
     const st = await getSettings(db, U);
     const who = (await db.prepare('SELECT name FROM bots WHERE id=?').bind(job.bot_id).first())?.name || '機器人';
     const photo =
-      (fail || loginStuck) &&
+      (fail || loginStuck || outcome) &&
       typeof body.shot === 'string' &&
       /^[A-Za-z0-9+/=]+$/.test(body.shot.slice(0, 200)) &&
       body.shot.length < 900000
@@ -593,11 +622,16 @@ export async function runnerDone(c) {
       link && (loginStuck || /需要.{0,6}登入|接手/.test(text))
         ? `\n\n📱 用手機接手：${link}#web=${encodeURIComponent(job.bot_id)}`
         : '';
-    if (fail || loginStuck)
+    if (fail || loginStuck || outcome)
       await sendNotify(
         env,
         st,
-        failureNotice(who, job.prompt, fail ? fail.kind : 'not_logged_in', fail ? fail.msg : text) + hand,
+        failureNotice(
+          who,
+          job.prompt,
+          fail ? fail.kind : loginStuck ? loginKind : outcome,
+          fail ? fail.msg : loginStuck ? text : split.meta.result.text
+        ) + hand,
         photo
       );
     else if (!good || needsYou(text)) await sendNotify(env, st, `【OCTA】${who} 需要你處理：\n${text.slice(0, 600)}${hand}`);

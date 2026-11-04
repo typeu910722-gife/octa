@@ -5,6 +5,7 @@ import { auth, bump, ensureSchema, newSession } from './db.mjs';
 import { fileRoutes } from './files.mjs';
 import { hookRoute } from './hooks.mjs';
 import { manageRoutes } from './manage-routes.mjs';
+import { jobRoutes } from './progress.mjs';
 import { runnerRoutes } from './runner-routes.mjs';
 import { screenRoutes } from './screen-routes.mjs';
 import { settingsRoutes } from './settings-routes.mjs';
@@ -27,7 +28,7 @@ export async function onRequest(ctx) {
 }
 
 // handlers in the order the old single router checked them; each returns a Response or nothing
-const HANDLERS = [fileRoutes, runnerRoutes, screenRoutes, chatRoutes, manageRoutes, codeRoutes, settingsRoutes];
+const HANDLERS = [fileRoutes, runnerRoutes, screenRoutes, chatRoutes, jobRoutes, manageRoutes, codeRoutes, settingsRoutes];
 
 async function route({ request: req, env, params }) {
   const db = env.DB;
