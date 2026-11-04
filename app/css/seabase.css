@@ -126,6 +126,7 @@
   .sea-c{padding:5px 10px;font-size:calc(12px * var(--fz))}.sea-c b{font-size:calc(15px * var(--fz))}
   .sea-depth{padding:6px 10px}.sea-depth b{font-size:calc(16px * var(--fz))}
   .sea-hint{display:none}
+  .sea-cards{align-items:flex-end}
   .sea-card{width:min(250px,70vw);padding:7px 9px 8px}
   .sea-ch b{font-size:calc(13.5px * var(--fz))}
   .sea-bots{max-height:62px}

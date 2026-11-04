@@ -126,6 +126,16 @@ gl_FragColor=vec4(vec3(.75,.97,1.),(ring*.75+hi*.9)*vA);
 }`});
   const vents=[];for(let i=0;i<9;i++){const a=rnd()*Math.PI*2,d=span+2+rnd()*12;vents.push([Math.cos(a)*d,Math.sin(a)*d])}
   const bub=new T.Points(pts(180,0,i=>{const v=vents[i%vents.length];return [v[0]+(rnd()-.5)*.8,0,v[1]+(rnd()-.5)*.8]}),bubM);grp.add(bub);G.bubM=bubM;
+  // jellyfish drifting in the dark above, glowing softly
+  const jc=document.createElement('canvas');jc.width=jc.height=128;const jx=jc.getContext('2d');
+  const bg=jx.createRadialGradient(64,46,4,64,50,40);bg.addColorStop(0,'rgba(255,255,255,.95)');bg.addColorStop(.6,'rgba(255,255,255,.45)');bg.addColorStop(1,'rgba(255,255,255,0)');
+  jx.fillStyle=bg;jx.beginPath();jx.ellipse(64,52,34,26,0,Math.PI,0);jx.quadraticCurveTo(64,64,30,52);jx.fill();
+  jx.strokeStyle='rgba(255,255,255,.55)';jx.lineWidth=2.2;jx.lineCap='round';
+  for(let i=0;i<6;i++){const x=40+i*9.5;jx.beginPath();jx.moveTo(x,56);jx.bezierCurveTo(x-6,76,x+6,92,x-2,118-(i%2)*12);jx.stroke()}
+  const jt=new T.CanvasTexture(jc);jt.colorSpace=T.SRGBColorSpace;G.extra.push(jt);G.jelly=[];
+  for(let i=0;i<6;i++){const a=rnd()*Math.PI*2,d=span*.6+rnd()*span*.9,col=[0xff8fd0,0x8ff7ff,0xb9a3ff][i%3];
+    const j=new T.Sprite(new T.SpriteMaterial({map:jt,color:col,transparent:true,opacity:.55,depthWrite:false,blending:T.AdditiveBlending,fog:true}));
+    const sz=1.6+rnd()*1.8;j.scale.set(sz,sz,1);j.position.set(Math.cos(a)*d,9+rnd()*9,Math.sin(a)*d);j.userData={y:j.position.y,ph:rnd()*6,sz};grp.add(j);G.jelly.push(j)}
   // a school of little fish circling far out
   const fishG=new T.ConeGeometry(.16,.7,4,1).rotateZ(-Math.PI/2),fish=new T.InstancedMesh(fishG,new T.MeshBasicMaterial({color:0x7fd8e8}),36);
   fish.userData.seed=[...Array(36)].map(()=>[rnd(),rnd(),rnd()]);fish.frustumCulled=false;grp.add(fish);G.fish=fish;
@@ -207,13 +217,14 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
     seaLabel(G,'b:'+b.id,null,'','sea-bt',colorHex(b.color)||OC_DEFAULT)}}
 // what a bot looks like now: its pose, screen, beacon, bubble — and where it should be (it swims there through the tubes)
 function seaBotState(G,b,m,L){const T=G.T,e=G.bots[b.id];if(!e)return;
-  if(e.state!==b.state+b.color){e.state=b.state+b.color;e.sp.material.map=seaOctTex(G,b.state,b.color);e.sp.material.needsUpdate=true}
+  const pose=b.need&&b.state==='idle'?'working':b.state;   // waiting for you: awake, not dozing
+  if(e.state!==pose+b.color){e.state=pose+b.color;e.sp.material.map=seaOctTex(G,pose,b.color);e.sp.material.needsUpdate=true}
   e.sp.material.color.set(b.paused?0x8a99a3:0xffffff);
   const tone=b.need?'need':b.fail?'fail':'';
   if(tone&&!e.beam){const col=tone==='need'?0xffb547:0xff4d4d,g=new T.Group();
-    const beam=new T.Mesh(new T.CylinderGeometry(.28,.5,7,16,1,true),new T.MeshBasicMaterial({color:col,transparent:true,opacity:.2,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide,toneMapped:false}));beam.position.y=4.6;g.add(beam);
+    const beam=new T.Mesh(new T.CylinderGeometry(.22,.55,7,16,1,true),new T.MeshBasicMaterial({color:col,transparent:true,opacity:.3,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide,toneMapped:false}));beam.position.y=4.6;g.add(beam);
     const ring=new T.Mesh(new T.RingGeometry(.7,.86,40).rotateX(-Math.PI/2),new T.MeshBasicMaterial({color:col,transparent:true,opacity:.8,blending:T.AdditiveBlending,depthWrite:false,toneMapped:false}));ring.position.y=.55;g.add(ring);
-    const lamp=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:col,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));lamp.position.y=2.45;lamp.scale.set(1.1,1.1,1);g.add(lamp);
+    const lamp=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:col,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));lamp.position.y=2.45;lamp.scale.set(1.5,1.5,1);g.add(lamp);
     g.userData={beam,ring,lamp,tone};G.base.add(g);e.beam=g}
   if(e.beam&&e.beam.userData.tone!==tone){G.base.remove(e.beam);seaDispose(e.beam);e.beam=null;if(tone)return seaBotState(G,b,m,L)}
   const spot=seaSpot(m,L,b);

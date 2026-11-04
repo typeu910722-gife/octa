@@ -61,7 +61,7 @@ function seaFallback(){const m=$('seaMsg');if(!m)return;m.hidden=false;
 async function seaLoadDone(){SEA.doneT=Date.now();SEA.doneRev=S.rev;
   try{const d=await api('overview');SEA.done=Object.fromEntries((d.bots||[]).map(x=>[x.id,+x.doneN||0]));SEA.sig='';seaRefresh()}catch(e){}}
 // 省電模式 or reduced motion changed while open
-function seaPrefs(){if(!SEA.el)return;SEA.el.classList.toggle('still',seaStill());if(SEA.g){SEA.g.r.setPixelRatio(seaPR());seaResize();SEA.g.loop.kick(2)}}
+function seaPrefs(){if(!SEA.el)return;SEA.el.classList.toggle('still',seaStill());if(SEA.g){SEA.g.pr=seaPR();SEA.g.q=null;SEA.g.r.setPixelRatio(SEA.g.pr);seaResize();SEA.g.loop.kick(2)}}
 const seaPR=()=>Math.min(devicePixelRatio||1,seaLow()?1:1.5);
 
 /* ---------- the HUD and the module cards (also the keyboard way in) ---------- */
@@ -124,7 +124,7 @@ function seaInit(T){const el=SEA.el;
   const scene=new T.Scene();scene.background=new T.Color(0x021019);scene.fog=new T.FogExp2(0x042132,.0135);
   const cam=new T.PerspectiveCamera(40,1,.1,500);
   const U={uTime:{value:0}};
-  const G={T,r,scene,cam,U,cv,tex:{},alive:true,bots:{},labels:{},base:null,env:null,t:0,
+  const G={T,r,scene,cam,U,cv,pr:seaPR(),tex:{},alive:true,bots:{},labels:{},base:null,env:null,t:0,
     view:{th:.55,ph:.98,d:60,tx:0,tz:0},goal:{th:.55,ph:.98,d:60,tx:0,tz:0},ptr:new Map(),moved:0,ray:new T.Raycaster(),
     glow:seaGlowTex(T),pick:[]};
   G.loop=seaLoop({raf:f=>requestAnimationFrame(f),caf:id=>cancelAnimationFrame(id),now:()=>performance.now(),frame:(dt)=>seaFrame(G,dt),
@@ -154,6 +154,8 @@ function seaMoving(G){const v=G.view,g=G.goal;if(Math.abs(v.th-g.th)+Math.abs(v.
 
 /* one frame: time, camera, octopuses, pulses, labels, then draw */
 function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
+  // a computer that cannot keep up (under 20 frames a second) gets fewer pixels, down to 60 %
+  if(!still){const q=G.q||(G.q={n:0,s:0});q.n++;q.s+=dt;if(q.n>=45){const slow=q.s/q.n>.05;q.n=q.s=0;if(slow&&G.pr>.6){G.pr=Math.max(.6,G.pr-.2);G.r.setPixelRatio(G.pr);seaResize()}}}
   if(!still)G.t+=dt;   // still pictures keep the time where it was
   const t=G.t;G.U.uTime.value=t;
   // the camera eases toward where you dragged or clicked
@@ -172,7 +174,7 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
     e.sh.position.set(x,.53,z);e.sh.scale.setScalar(1-bob*.8);
     e.halo.position.set(x,y+1.2+bob,z);e.halo.material.opacity=b.job&&!b.paused?.34+(still?0:Math.sin(t*3+e.ph)*.08):.14;
     if(e.beam){e.beam.position.set(x,0,z);const u=e.beam.userData,ph=still?.35:(t*.7+e.ph)%1;u.ring.scale.setScalar(1+ph*1.6);u.ring.material.opacity=.85*(1-ph);
-      u.lamp.material.opacity=still?1:.55+.45*Math.sin(t*(u.tone==='need'?5:2.2));u.lamp.position.y=2.45+bob;u.beam.material.opacity=u.tone==='need'?.2:.12}
+      u.lamp.material.opacity=still?1:.55+.45*Math.sin(t*(u.tone==='need'?5:2.2));u.lamp.position.y=2.45+bob;u.beam.material.opacity=u.tone==='need'?.32+(still?0:.08*Math.sin(t*5)):.18}
     // the desk screen: lit in the bot's colour while it works, flickering with the typing; dim when it rests
     const i=G.deskIdx[id];if(i!=null){const col=colorHex(b.color)||OC_DEFAULT;
       if(b.fail)scrC.set(0xff5a5a).multiplyScalar(.7+(still?0:.3*Math.sin(t*2)));
@@ -189,6 +191,7 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
   for(const s of G.pulses2||[])s.material.opacity=still?.8:.6+.4*Math.sin(t*2.2+(s.userData.pulse||0));
   for(const s of G.spin||[])s.rotation.z=still?0:t*(.4+s.userData.spin*.15);
   for(const h of G.holos||[])h.rotation.y=t*.6;
+  for(const j of G.jelly||[]){const u=j.userData,k=Math.sin(t*.9+u.ph);j.position.y=u.y+Math.sin(t*.25+u.ph)*1.2+(still?0:k*.15);j.scale.set(u.sz*(1+k*.06),u.sz*(1-k*.08),1)}
   for(const r of G.rays||[]){r.rotation.y=Math.atan2(c.position.x-r.position.x,c.position.z-r.position.z);r.rotation.z=r.userData.tilt}
   if(G.fish){const f=G.fish,M=new T.Matrix4(),Q=new T.Quaternion(),E=new T.Euler(),V=new T.Vector3(),one=new T.Vector3(1,1,1),R=(SEA.L?.span||26)+16;
     f.userData.seed.forEach(([a,b,cc],i)=>{const ang=t*.07+a*.9,rr=R+b*5+Math.sin(t*.5+i)*.6;V.set(Math.cos(ang)*rr,5.5+cc*2.5+Math.sin(t*.8+i)*.25,Math.sin(ang)*rr);E.set(0,-ang,Math.sin(t*3+i)*.15);Q.setFromEuler(E);M.compose(V,Q,one);f.setMatrixAt(i,M)});f.instanceMatrix.needsUpdate=true}
@@ -208,7 +211,9 @@ function seaTags(G){const W=SEA.el.clientWidth,H=SEA.el.clientHeight,V=new G.T.V
     if(b&&fp&&b.pod!==fp&&quiet&&SEA.hover!==b.id)show=false;
     list.push({lb,show,x:(V.x+1)/2*W,y:(1-V.y)/2*H,z:V.z,b,quiet,pod:key[0]!=='b'})}
   // places first (they stay put), then the octopuses nearest the camera
-  list.sort((a,b)=>(a.pod-b.pod)||(a.z-b.z));
+  // what needs you is placed first, then work in progress, then the rest; nearer first
+  const rank=it=>it.pod?9:!it.b.bubble?4:{need:0,fail:0,run:1,chat:1,pause:2}[it.b.bubble.tone]??3;
+  list.sort((a,b)=>(rank(a)-rank(b))||(a.z-b.z));
   for(const it of list){const lb=it.lb;let show=it.show;
     if(show){const el=lb.el;
       let small=it.b&&far&&!fp&&it.quiet&&SEA.hover!==it.b.id;
@@ -220,9 +225,10 @@ function seaTags(G){const W=SEA.el.clientWidth,H=SEA.el.clientHeight,V=new G.T.V
       else for(let pass=0;pass<5;pass++){const hit=placed.find(p=>Math.abs(p.x-it.x)<(p.w+w)/2+3&&Math.abs((p.y-p.h/2)-(y-h/2))<(p.h+h)/2+2);if(!hit)break;
         y=hit.y-hit.h-3}
       // no room above: just the name, where it belongs
-      if(it.b&&!small&&y-h<top-12){small=true;y=it.y;w=lb.nw;h=lb.nh}
+      if(it.b&&!small&&y-h<top-12){small=true;y=it.y;w=lb.nw;h=lb.nh;
+        if(placed.some(p=>Math.abs(p.x-it.x)<(p.w+w)/2&&Math.abs((p.y-p.h/2)-(y-h/2))<(p.h+h)/2))show=false}
       if(it.b&&lb.small!==small){lb.small=small;el.classList.toggle('nob',!!small)}
-      if(!it.pod&&(y-h<top-12||y>bottom+h*.5))show=false;
+      if(!it.pod&&(y-h<top-12||y>bottom+4))show=false;
       if(show&&it.pod){const x=Math.round(it.x),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,6px)`}}
       else if(show){placed.push({x:it.x,y,w,h});
         lb.el.classList.toggle('dim',!!(it.b&&fp&&it.b.pod!==fp));
