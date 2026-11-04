@@ -54,9 +54,8 @@ function seaBoot(){if(SEA.booted||$('app').hidden)return;SEA.booted=true;seaMoun
   $('seaHeadBar').onclick=()=>{store.set('octa_seafold',seaFolded()?null:'1');stageSync();if(SEA.g&&!seaFolded())requestAnimationFrame(()=>{seaResize();SEA.g.loop.kick(3)})};
   seaEnsure()}
 // load three.js and build the scene, when the base is to be shown and can be (once; later calls do nothing)
-function seaEnsure(){if(!SEA.booted||SEA.g||SEA.loading||!seaEnabled()||!seaShown())return;
-  if(SEA.gl==null)SEA.gl=seaHasGL();
-  if(!SEA.gl){seaFallback();return}
+function seaEnsure(){if(!SEA.booted||SEA.g||SEA.loading||SEA.gl===false||!seaEnabled()||!seaShown())return;
+  if(SEA.gl==null&&!seaHasGL()){seaFallback();return}SEA.gl=true;
   SEA.loading=true;
   seaLib().then(T=>{SEA.loading=false;if(seaEnabled()&&!SEA.g&&SEA.st)seaInit(T)}).catch(()=>{SEA.loading=false;seaFallback()})}
 // once a second: the picture follows the polled state; the cards ask the API again when work moved (at most every 1.5 s, or every 30 s)
@@ -64,7 +63,7 @@ function seaTick(){if($('app').hidden)return;seaRefresh();
   if(!ovShown())return;const k=S.rev+':'+S.prog;
   if((k!==SEA.ovSeen&&Date.now()-OV.t>1500)||Date.now()-OV.t>30000){SEA.ovSeen=k;loadOverview()}}
 // no WebGL: a still deep-sea gradient behind the chat (the app works the same); the phone shows no header
-function seaFallback(){SEA.gl=false;if(!SEA.st)return;SEA.st.classList.add('flat');const m=$('seaMsg');m.hidden=false;
+function seaFallback(){if(SEA.gl===false)return;SEA.gl=false;if(!SEA.st)return;SEA.st.classList.add('flat');const m=$('seaMsg');m.hidden=false;
   setHTML(m,`<b>這台裝置沒辦法顯示 3D 畫面</b><span>對話和總覽一樣可以用。</span>`);stageSync()}
 // 主畫面 3D 基地 on or off (Settings). Off: the scene and its GL context are freed, the chat fills the middle again
 function seaSet(on){store.set('octa_stage3d',on?null:'0');if(!on&&SEA.g)seaFree(SEA.g);stageSync();if(on)seaEnsure()}

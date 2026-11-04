@@ -123,3 +123,5 @@
   .side.seg-ov .list{display:none}
   .side.seg-ov .lov{display:flex;flex-direction:column;flex:1;min-height:0}
 }
+/* no WebGL on a computer: the note sits in a corner the chat panel leaves free */
+.app.stage .sea-stage.flat .sea-msg{left:auto;top:auto;right:16px;bottom:16px;transform:none;text-align:left;max-width:300px;padding:12px 16px}
