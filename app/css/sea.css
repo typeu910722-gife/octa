@@ -15,7 +15,7 @@
 :root[data-theme="sea"].seafx .side{background:linear-gradient(180deg,rgba(9,36,54,.72),rgba(5,22,35,.82));backdrop-filter:blur(10px) saturate(1.15);-webkit-backdrop-filter:blur(10px) saturate(1.15)}
 :root[data-theme="sea"] .side::after{content:"";position:absolute;top:0;bottom:0;right:-1px;width:1px;pointer-events:none;
   background:linear-gradient(180deg,rgba(95,240,236,0),rgba(95,240,236,.35) 30%,rgba(95,240,236,.12) 70%,rgba(95,240,236,0))}
-:root[data-theme="sea"] .pane{background:linear-gradient(180deg,rgba(10,36,52,.55),rgba(7,25,38,.35) 40%,transparent)}
+:root[data-theme="sea"] .pane{background:linear-gradient(180deg,#0c2a3c,#08202f 40%,#061826)}
 :root[data-theme="sea"] .ph,:root[data-theme="sea"] .wp-hd{border-bottom-color:transparent;box-shadow:inset 0 -1px 0 rgba(95,240,236,.12)}
 :root[data-theme="sea"] .wp{background:linear-gradient(180deg,rgba(11,38,56,.97),rgba(8,28,42,.98));border-left-color:transparent;box-shadow:inset 1px 0 0 rgba(95,240,236,.12)}
 :root[data-theme="sea"] .composer{background:linear-gradient(transparent,rgba(6,22,34,.92) 14px)}
@@ -43,7 +43,7 @@
 /* the moving light behind the sidebar (html.seafx): caustic blobs drifting, and specks of marine snow */
 .seafx-layer{display:none}
 :root.seafx .seafx-layer{display:block;position:fixed;left:0;top:0;bottom:0;width:var(--side-w);overflow:hidden;pointer-events:none;z-index:0;contain:strict}
-.seafx-layer i{position:absolute;inset:-40%;opacity:.55;will-change:transform;
+.seafx-layer i{position:absolute;inset:-40%;opacity:.8;will-change:transform;
   background:radial-gradient(closest-side,rgba(79,221,227,.22),transparent) 10% 20%/38% 26% no-repeat,radial-gradient(closest-side,rgba(120,180,255,.16),transparent) 70% 35%/44% 30% no-repeat,
     radial-gradient(closest-side,rgba(79,221,227,.18),transparent) 30% 70%/40% 28% no-repeat,radial-gradient(closest-side,rgba(150,120,255,.12),transparent) 80% 85%/36% 24% no-repeat;
   filter:blur(18px);animation:seafxA 26s ease-in-out infinite alternate}
@@ -58,3 +58,9 @@
 @keyframes seafxSnow{from{transform:translateY(0)}to{transform:translateY(50%)}}
 @media (prefers-reduced-motion:reduce){:root.seafx .seafx-layer{display:none}}
 @media (max-width:760px){:root.seafx .seafx-layer{width:100%}}
+/* the 待你核准 bar: a lit panel rather than a slab of colour */
+:root[data-theme="sea"] .apbar{background:linear-gradient(120deg,color-mix(in srgb,var(--accent) 26%,#0a2233),color-mix(in srgb,var(--accent) 12%,#0a2233));color:var(--ink);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 55%,transparent),0 0 20px color-mix(in srgb,var(--accent) 22%,transparent)}
+:root[data-theme="sea"] .apn{background:var(--accent);color:var(--on-accent)}
+/* 預設 主題色 is the sea's own cyan in this look */
+:root[data-theme="sea"] .sw0[data-accent=""] span{background:#4fdde3!important;box-shadow:0 0 10px rgba(79,221,227,.6)}

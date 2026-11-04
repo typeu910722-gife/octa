@@ -7,13 +7,13 @@
 .seabtn:hover{background:linear-gradient(135deg,#0e3346,#12495f)}
 .seabtn .icon{color:#5ff0ec}
 
-.sea{--sea-ink:#e9fbff;--sea-mute:#9ac4cf;--sea-glass:rgba(6,28,42,.62);--sea-line:rgba(120,230,255,.18);--sea-cy:#5ff0ec;
+.seaview{--sea-ink:#e9fbff;--sea-mute:#9ac4cf;--sea-glass:rgba(6,28,42,.62);--sea-line:rgba(120,230,255,.18);--sea-cy:#5ff0ec;
   position:fixed;inset:0;z-index:45;background:#021019;color:var(--sea-ink);overflow:hidden;font-family:var(--font);
   animation:seaIn .35s var(--ease);user-select:none;-webkit-user-select:none}
 @keyframes seaIn{from{opacity:0}}
 .sea-bg{position:absolute;inset:0;background:radial-gradient(120% 80% at 50% -10%,#0d4a5e 0%,#05293b 40%,#021019 80%)}
 .sea-cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;opacity:0;transition:opacity .6s ease}
-.sea.ready .sea-cv{opacity:1}
+.seaview.ready .sea-cv{opacity:1}
 .sea-tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 
 /* ---------- HUD ---------- */
@@ -41,7 +41,7 @@
 .sea-gauge{display:inline-block;width:5px;height:20px;border-radius:3px;background:rgba(95,240,236,.15);margin-left:6px;position:relative;align-self:center;overflow:hidden}
 .sea-gauge>i{position:absolute;left:0;right:0;top:0;background:var(--sea-cy);border-radius:3px;box-shadow:0 0 8px var(--sea-cy);transition:height .6s var(--ease)}
 .sea-hint{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(178px + var(--safe-b));font-size:calc(12px * var(--fz));color:rgba(210,240,248,.62);pointer-events:none;white-space:nowrap;text-shadow:0 1px 6px rgba(0,0,0,.6)}
-.sea.flat .sea-hint{display:none}
+.seaview.flat .sea-hint{display:none}
 .sea-all{position:absolute;left:20px;top:calc(122px + var(--safe-t));display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;background:var(--sea-glass);border:1px solid var(--sea-line);color:var(--sea-ink);font-size:calc(13px * var(--fz));backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .sea-all .icon{width:16px;height:16px}
 .sea-all:hover{background:rgba(20,70,92,.75)}
@@ -51,6 +51,7 @@
 /* ---------- names and speech bubbles (they follow the octopus) ---------- */
 .sea-tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:5px;will-change:transform;transition:opacity .25s}
 .sea-tag.dim{opacity:.35}
+.sea-tag.nob .sea-bub{display:none}
 .sea-nm{display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 8px;border-radius:999px;background:rgba(240,252,255,.95);color:#173340;font-size:calc(12px * var(--fz));font-weight:700;font-family:var(--mono);letter-spacing:.02em;box-shadow:0 3px 12px rgba(0,10,20,.35);white-space:nowrap;max-width:150px}
 .sea-nm span{overflow:hidden;text-overflow:ellipsis}
 .sea-nm i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 30%,transparent)}
@@ -63,15 +64,16 @@
 .sea-bub.pause{background:#e9eef1;color:#3b4a52}.sea-bub.pause::after{border-top-color:#e9eef1}
 .sea-bub.chat{background:#f1ecff;color:#2c1f5c}.sea-bub.chat::after{border-top-color:#f1ecff}.sea-bub.chat b{color:#6440d8}
 .sea-bub.idle{background:rgba(240,252,255,.86);color:#3a5560;font-weight:400}.sea-bub.idle::after{border-top-color:rgba(240,252,255,.86)}
-.sea-pl{gap:2px}
-.sea-pl b{font-size:calc(14px * var(--fz));font-weight:800;color:#fff;text-shadow:0 0 14px var(--c),0 2px 8px rgba(0,0,0,.8);white-space:nowrap}
+.sea-pl{gap:0;flex-direction:row;align-items:baseline;gap:6px;padding:3px 10px;border-radius:8px;background:rgba(3,16,25,.72);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);box-shadow:0 0 14px color-mix(in srgb,var(--c) 25%,transparent)}
+.sea-pl.room{flex-direction:row}
+.sea-pl b{font-size:calc(13px * var(--fz));font-weight:800;color:#fff;white-space:nowrap}
 .sea-pl small{font-size:calc(11px * var(--fz));color:color-mix(in srgb,var(--c) 70%,#fff);font-family:var(--mono);letter-spacing:.08em;text-shadow:0 1px 6px rgba(0,0,0,.9);white-space:nowrap}
 .sea-pl.room b{font-size:calc(12.5px * var(--fz))}
 
 /* ---------- module cards (the floor cards): one per 分區, buttons for keyboard and touch ---------- */
 .sea-cards{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;padding:0 16px calc(14px + var(--safe-b));overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none}
 .sea-cards::-webkit-scrollbar{display:none}
-.sea-card{flex:0 0 auto;width:min(300px,78vw);scroll-snap-align:start;border-radius:16px;background:rgba(6,26,40,.72);border:1px solid var(--sea-line);border-top:3px solid var(--pc);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);box-shadow:0 10px 30px rgba(0,8,16,.45);padding:10px 10px 10px;display:grid;gap:8px;transition:border-color .2s,box-shadow .2s}
+.sea-card{flex:0 0 auto;align-content:start;width:min(300px,78vw);scroll-snap-align:start;border-radius:16px;background:rgba(6,26,40,.72);border:1px solid var(--sea-line);border-top:3px solid var(--pc);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);box-shadow:0 10px 30px rgba(0,8,16,.45);padding:8px 10px 10px;display:grid;gap:6px;transition:border-color .2s,box-shadow .2s}
 .sea-card.on{box-shadow:0 0 0 1px var(--pc),0 0 26px color-mix(in srgb,var(--pc) 35%,transparent),0 10px 30px rgba(0,8,16,.45)}
 .sea-ch{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:8px;text-align:left;color:var(--sea-ink);padding:2px 4px;border-radius:10px}
 .sea-ch:hover{background:rgba(120,230,255,.07)}
@@ -79,7 +81,7 @@
 .sea-ch small{grid-column:2;color:var(--sea-mute);font-size:calc(12px * var(--fz))}
 .sea-ch .nd{color:#ffc56b}
 .sea-pd{width:10px;height:10px;border-radius:3px;background:var(--pc);box-shadow:0 0 10px var(--pc);grid-row:span 2}
-.sea-bots{display:flex;flex-wrap:wrap;gap:5px;max-height:84px;overflow:auto;scrollbar-width:none}
+.sea-bots{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;gap:5px;max-height:64px;overflow:auto;scrollbar-width:none}
 .sea-bot{display:inline-flex;align-items:center;gap:6px;padding:4px 9px 4px 7px;border-radius:999px;background:rgba(120,230,255,.07);border:1px solid rgba(120,230,255,.12);color:var(--sea-ink);font-size:calc(12.5px * var(--fz));max-width:100%}
 .sea-bot:hover{background:rgba(120,230,255,.14)}
 .sea-bot i{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none}
@@ -95,7 +97,7 @@
 .sea-room .icon{width:14px;height:14px}
 .sea-room:hover{color:var(--sea-ink)}
 .sea-room.need{border-color:#ffb547;color:#ffc56b}
-.sea :focus-visible{box-shadow:0 0 0 2px #021019,0 0 0 4px var(--sea-cy);outline:none}
+.seaview :focus-visible{box-shadow:0 0 0 2px #021019,0 0 0 4px var(--sea-cy);outline:none}
 
 /* ---------- hover tip and the quick card ---------- */
 .sea-tip{position:absolute;left:0;top:0;display:grid;gap:1px;padding:8px 11px;border-radius:10px;background:rgba(4,20,30,.92);border:1px solid var(--sea-line);font-size:calc(12.5px * var(--fz));pointer-events:none;max-width:260px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
@@ -112,7 +114,7 @@
 .sea-qb b{margin-right:4px}
 .sea-qb.need{background:rgba(255,181,71,.14);color:#ffe1b0}.sea-qb.fail{background:rgba(255,107,107,.14);color:#ffd0d0}
 .sea-qa{display:flex;flex-wrap:wrap;gap:6px}
-.sea-qa .ghost{color:var(--sea-ink);border-color:rgba(120,230,255,.22)}
+.sea-qa .ghost{color:var(--sea-ink);background:rgba(120,230,255,.06);border-color:rgba(120,230,255,.22)}
 .sea-qa .ghost:hover{background:rgba(120,230,255,.1)}
 .sea-qa .btn{background:var(--sea-cy);color:#032029;border-color:transparent}
 .sea-qa .btn:hover{background:#86f6f1}
@@ -123,12 +125,13 @@
   .sea-logo{display:none}
   .sea-c{padding:5px 10px;font-size:calc(12px * var(--fz))}.sea-c b{font-size:calc(15px * var(--fz))}
   .sea-depth{padding:6px 10px}.sea-depth b{font-size:calc(16px * var(--fz))}
-  .sea-hint{bottom:calc(158px + var(--safe-b));font-size:calc(11px * var(--fz))}
-  .sea-card{width:min(260px,74vw)}
+  .sea-hint{display:none}
+  .sea-card{width:min(250px,70vw);padding:7px 9px 8px}
+  .sea-ch b{font-size:calc(13.5px * var(--fz))}
   .sea-bots{max-height:62px}
   .sea-all{top:calc(100px + var(--safe-t));left:12px}
   .sea-bub{max-width:160px;font-size:calc(12px * var(--fz));padding:6px 9px}
   .sea-nm{font-size:calc(11px * var(--fz))}
 }
-@media (prefers-reduced-motion:reduce){.sea,.sea-qc{animation:none}.sea-c.need.on::before{animation:none}}
-.sea.still .sea-c.need.on::before{animation:none}
+@media (prefers-reduced-motion:reduce){.seaview,.sea-qc{animation:none}.sea-c.need.on::before{animation:none}}
+.seaview.still .sea-c.need.on::before{animation:none}

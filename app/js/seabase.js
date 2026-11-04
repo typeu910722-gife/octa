@@ -7,6 +7,7 @@
 const SEA_LIB='/vendor/three-0.170.0.module.min.js';
 const SEA={el:null,g:null,m:null,L:null,done:{},doneT:0,doneRev:-1,sig:'',ssig:'',focus:null,qc:null,ac:null,iv:0,hover:null};
 const seaOpen=()=>!!SEA.el;
+const seaPodName=p=>p.kind==='hub'?I18N.t(p.name):p.name;
 const seaLow=()=>store.get('octa_lowpower')==='1';
 const seaReduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
 const seaStill=()=>seaLow()||seaReduced();
@@ -17,7 +18,7 @@ const seaInput=()=>({bots:ordered(S.bots),groups:S.groups,folders:S.folders,busy
 
 /* ---------- open / close ---------- */
 function openSea(){if(SEA.el)return;if(typeof closeMenu==='function')closeMenu();
-  const el=document.createElement('div');el.className='sea';el.id='sea';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',I18N.t('深海基地'));
+  const el=document.createElement('div');el.className='seaview';el.id='sea';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',I18N.t('深海基地'));
   el.innerHTML=`<div class="sea-bg" aria-hidden="true"></div><div class="sea-tags" id="seaTags" aria-hidden="true"></div>
     <header class="sea-hud">
       <div class="sea-ttl"><button type="button" class="sea-x" id="seaX" aria-label="關閉深海基地" title="關閉（Esc）">${ic('back')}</button>
@@ -72,19 +73,19 @@ function seaRefresh(force){if(!SEA.el)return;
   seaDepth();seaCards();if(SEA.g)seaSync();if(SEA.qc)seaQc(SEA.qc,true)}
 function seaDepth(){const m=SEA.m;if(!m)return;const p=m.pods.find(x=>x.id===SEA.focus)||m.pods[0];
   setHTML($('seaDepth'),`<small>深度</small><b data-u>${p.depth}</b><small data-u>m</small><i class="sea-gauge"><i style="height:${Math.min(100,Math.round((p.depth-100)/Math.max(1,(m.pods.length)*20+20)*100))}%"></i></i>`)}
-const SEA_TONE={need:'need',fail:'bad',pause:'pause'};
+const SEA_OCT=2.2;   // an octopus is this tall (metres)
 function seaChip(b){const tone=b.need?'need':b.fail?'bad':b.paused?'pause':b.job?'run':'idle';
   return `<button type="button" class="sea-bot ${tone}" data-sbot="${esc(b.id)}" aria-label="${esc(b.name+' · '+I18N.t(b.word))}"><i style="--c:${esc(colorHex(b.color)||OC_DEFAULT)}"></i><span class="nm" data-u>${esc(b.name)}</span><small>${esc(b.word)}</small></button>`}
 function seaCards(){const m=SEA.m;if(!m)return;
   const h=m.pods.map(p=>{const bs=p.bots.map(id=>m.bots.find(b=>b.id===id)),run=bs.filter(b=>b.job&&!b.paused).length,need=bs.filter(b=>b.need).length+m.rooms.filter(r=>r.pod===p.id&&r.need).length;
     const rooms=m.rooms.filter(r=>r.pod===p.id);
     return `<section class="sea-card${SEA.focus===p.id?' on':''}" style="--pc:${p.color}" data-spod="${esc(p.id)}">
-      <button type="button" class="sea-ch" data-sgo="${esc(p.id)}" aria-pressed="${SEA.focus===p.id}"><i class="sea-pd"></i><b data-u>${esc(p.name)}</b><small><span data-u>${p.depth}m</span> · <span data-u>${run}</span> <span>工作中</span>${need?` · <span class="nd"><span data-u>${need}</span> <span>需要你</span></span>`:''}</small></button>
+      <button type="button" class="sea-ch" data-sgo="${esc(p.id)}" aria-pressed="${SEA.focus===p.id}"><i class="sea-pd"></i><b data-u>${esc(seaPodName(p))}</b><small><span data-u>${p.depth}m</span> · <span data-u>${run}</span> <span>工作中</span>${need?` · <span class="nd"><span data-u>${need}</span> <span>需要你</span></span>`:''}</small></button>
       <div class="sea-bots">${bs.map(seaChip).join('')||'<small class="sea-none">還沒有機器人</small>'}</div>
       ${rooms.length?`<div class="sea-rooms">${rooms.map(r=>`<button type="button" class="sea-room${r.need?' need':''}" data-sroom="${esc(r.id)}">${ic('users')}<span>會議室</span> <span data-u>${esc(r.name)}</span></button>`).join('')}</div>`:''}
     </section>`}).join('');
   const box=$('seaCards'),k=box.dataset.k;if(k===h)return;box.dataset.k=h;
-  const sl=box.scrollLeft;setHTML(box,h);paintIcons(box);box.scrollLeft=sl}
+  const sl=box.scrollLeft;setHTML(box,h);paintIcons(box);box.scrollLeft=sl;if(SEA.g)seaResize()}
 function seaCardClick(e){const g=e.target.closest('[data-sgo]');if(g){seaFocus(SEA.focus===g.dataset.sgo?null:g.dataset.sgo);return}
   const b=e.target.closest('[data-sbot]');if(b){seaQc({bot:b.dataset.sbot,from:b});return}
   const r=e.target.closest('[data-sroom]');if(r)seaQc({room:r.dataset.sroom,from:r})}
@@ -139,7 +140,7 @@ const SEA_F_GLASS=`uniform vec3 uRim;uniform float uTime;uniform float uBase;uni
 void main(){vec3 n=normalize(vN);float f=pow(1.-abs(dot(n,normalize(vV))),2.4);
 float ln=uLines*(1.-smoothstep(0.,.05,abs(fract(vW.y*1.25-uTime*.04)-.5)-.44));
 float sp=pow(max(dot(reflect(-normalize(vV),n),normalize(vec3(-.35,.8,.45))),0.),40.);
-vec3 c=uRim*(f*1.15+ln*.5)+vec3(.85,.97,1.)*sp*.8;float a=uBase+f*.62+ln*.1+sp*.5;gl_FragColor=vec4(c,clamp(a,0.,1.));
+vec3 c=uRim*(f*1.5+ln*.6)+vec3(.85,.97,1.)*sp*.8;float a=uBase+f*.7+ln*.09+sp*.5;gl_FragColor=vec4(c,clamp(a,0.,1.));
 #include <fog_fragment>
 }`;
 function seaGlass(T,U,rim,base,lines){return seaMat(T,U,{uniforms:{uRim:{value:new T.Color(rim)},uBase:{value:base??.05},uLines:{value:lines??1}},v:SEA_V_GLASS,f:SEA_F_GLASS})}
@@ -147,8 +148,8 @@ function seaGlass(T,U,rim,base,lines){return seaMat(T,U,{uniforms:{uRim:{value:n
 function seaInit(T){const el=SEA.el;
   const cv=document.createElement('canvas');cv.className='sea-cv';cv.setAttribute('aria-hidden','true');el.insertBefore(cv,el.firstChild.nextSibling);
   let r;try{r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'default',stencil:false})}catch(e){cv.remove();seaFallback();return}
-  r.setPixelRatio(seaPR());r.toneMapping=T.ACESFilmicToneMapping;r.toneMappingExposure=1.15;
-  const scene=new T.Scene();scene.background=new T.Color(0x021019);scene.fog=new T.FogExp2(0x05293b,.019);
+  r.setPixelRatio(seaPR());r.toneMapping=T.ACESFilmicToneMapping;r.toneMappingExposure=1.05;
+  const scene=new T.Scene();scene.background=new T.Color(0x021019);scene.fog=new T.FogExp2(0x042132,.0135);
   const cam=new T.PerspectiveCamera(40,1,.1,500);
   const U={uTime:{value:0}};
   const G={T,r,scene,cam,U,cv,tex:{},alive:true,bots:{},labels:{},base:null,env:null,t:0,
@@ -157,9 +158,10 @@ function seaInit(T){const el=SEA.el;
   G.loop=seaLoop({raf:f=>requestAnimationFrame(f),caf:id=>cancelAnimationFrame(id),now:()=>performance.now(),frame:(dt)=>seaFrame(G,dt),
     hidden:()=>document.hidden||!SEA.el,animate:()=>!seaStill()||seaMoving(G)});
   SEA.g=G;
-  scene.add(new T.HemisphereLight(0x8fe9ff,0x0b2430,1.35));
-  const sun=new T.DirectionalLight(0xc6f4ff,1.9);sun.position.set(12,40,6);scene.add(sun);
-  scene.add(new T.AmbientLight(0x1d5a6e,.6));
+  scene.add(new T.HemisphereLight(0x7fdcf0,0x081820,1.15));
+  const sun=new T.DirectionalLight(0xc6f4ff,1.7);sun.position.set(12,40,6);scene.add(sun);
+  const fill=new T.DirectionalLight(0x6a7dff,.35);fill.position.set(-20,8,-14);scene.add(fill);
+  scene.add(new T.AmbientLight(0x1d5a6e,.45));
   G.env=seaEnv(G);scene.add(G.env);
   seaSync();seaResize();seaFocus(null,true);
   seaControls(G);
@@ -170,7 +172,10 @@ function seaFree(G){G.alive=false;G.loop.stop();
   G.r.renderLists?.dispose();G.r.dispose();try{G.r.forceContextLoss()}catch(e){}G.cv.remove();G.scene.clear();G.tex={};G.bots={};G.labels={};
   SEA.freed=n}
 function seaResize(){const G=SEA.g;if(!G||!SEA.el)return;const w=SEA.el.clientWidth,h=SEA.el.clientHeight;if(!w||!h)return;
-  G.r.setSize(w,h,false);G.cam.aspect=w/h;G.cam.updateProjectionMatrix();if(!SEA.focus)seaFocus(null,true);G.loop.kick(2)}
+  G.r.setSize(w,h,false);G.cam.aspect=w/h;
+  // the HUD on top and the cards below: the picture's centre moves to the middle of what is left
+  const top=$('seaCnt')?.getBoundingClientRect().bottom||100,bot=$('seaCards')?.offsetHeight||0,off=Math.round((bot-top)/2);
+  G.cam.setViewOffset(w,h,0,off,w,h);G.cam.updateProjectionMatrix();G.top=top;G.bot=h-bot;$('seaHint').style.bottom=(bot+8)+'px';if(!SEA.focus)seaFocus(null,true);G.loop.kick(2)}
 
 /* the sea itself: floor with moving caustics, rocks, kelp, glowing coral, light shafts from above, drifting snow, bubbles, fish */
 function seaEnv(G){const T=G.T,U=G.U,grp=new T.Group();G.extra=[];
@@ -185,14 +190,14 @@ function seaEnv(G){const T=G.T,U=G.U,grp=new T.Group();G.extra=[];
   for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i),d=Math.hypot(x,z),k=Math.max(0,Math.min(1,(d-span)/40));
     const n=Math.sin(x*.11)*Math.cos(z*.13)*1.6+Math.sin(x*.031+z*.04)*3.2+Math.sin(z*.27+x*.05)*.5;pos.setY(i,-.02+k*k*(n+4+k*6)+(1-k)*Math.sin(x*.4)*Math.cos(z*.37)*.06)}
   fg.computeVertexNormals();
-  const fm=new T.MeshStandardMaterial({color:0x1a4a52,roughness:.95,metalness:0,flatShading:true});
+  const fm=new T.MeshStandardMaterial({color:0x1d4448,roughness:.95,metalness:0,flatShading:true});
   fm.onBeforeCompile=sh=>{sh.uniforms.uTime=U.uTime;
     sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWp;').replace('#include <begin_vertex>','#include <begin_vertex>\nvWp=(modelMatrix*vec4(position,1.)).xyz;');
     sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
 uniform float uTime;varying vec3 vWp;
 float seaCaus(vec2 p,float t){vec2 q=p+vec2(sin(p.y*1.3+t),cos(p.x*1.1-t*.8))*.6;float v=sin(q.x*2.1+t)*sin(q.y*2.3-t*.7);
-vec2 r=p*1.7+vec2(cos(p.y*.9-t*.6),sin(p.x*1.4+t*.5))*.8;v+=sin(r.x*1.9-t*.4)*sin(r.y*2.-t*.9)*.8;return pow(max(0.,1.-abs(v)*1.6),5.);}`)
-      .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\nfloat cz=seaCaus(vWp.xz*.32,uTime*.55)+seaCaus(vWp.xz*.17+3.1,uTime*.4)*.6;totalEmissiveRadiance+=vec3(.28,.8,.86)*cz*.42*(1.-smoothstep(25.,95.,length(vWp.xz)));')};
+vec2 r=p*1.7+vec2(cos(p.y*.9-t*.6),sin(p.x*1.4+t*.5))*.8;v+=sin(r.x*1.9-t*.4)*sin(r.y*2.-t*.9)*.8;return pow(max(0.,1.-abs(v)*1.4),4.);}`)
+      .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\nfloat cz=seaCaus(vWp.xz*.55,uTime*.5)*.7+seaCaus(vWp.xz*.31+3.1,uTime*.38)*.45;totalEmissiveRadiance+=vec3(.3,.78,.82)*cz*.075*(1.-smoothstep(14.,46.,length(vWp.xz)));')};
   const floor=new T.Mesh(fg,fm);grp.add(floor);
   // a soft lit disc under the base, like work lights on the sand
   const pad=new T.Mesh(new T.CircleGeometry(span+4,64).rotateX(-Math.PI/2),new T.MeshBasicMaterial({map:G.glow,color:0x1f8a96,transparent:true,opacity:.28,depthWrite:false,blending:T.AdditiveBlending}));pad.position.y=.03;grp.add(pad);
@@ -235,9 +240,9 @@ void main(){vec3 c=mix(vec3(.02,.09,.07),vec3(.08,.42,.3),vH);c+=vec3(.2,.9,.7)*
   const rayM=seaMat(T,U,{add:true,side:T.DoubleSide,uniforms:{uSeed:{value:0}},
     v:`varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
     f:`uniform float uTime;uniform float uSeed;varying vec2 vU;void main(){float e=smoothstep(0.,.45,vU.x)*smoothstep(1.,.55,vU.x);float h=smoothstep(0.,.75,vU.y)*smoothstep(1.,.88,vU.y);
-float fl=.55+.45*sin(uTime*.5+uSeed*7.+vU.y*3.);gl_FragColor=vec4(vec3(.45,.9,1.)*e*h*fl*.16,1.);}`});
+float fl=.55+.45*sin(uTime*.5+uSeed*7.+vU.y*3.);gl_FragColor=vec4(vec3(.45,.9,1.)*e*e*h*fl*.12,1.);}`});
   rayM.fog=false;G.rays=[];
-  for(let i=0;i<7;i++){const m=rayM.clone();m.uniforms.uTime=U.uTime;m.uniforms.uSeed={value:rnd()*10};const w=3+rnd()*5,h=46;
+  for(let i=0;i<7;i++){const m=rayM.clone();m.uniforms.uTime=U.uTime;m.uniforms.uSeed={value:rnd()*10};const w=5+rnd()*7,h=50;
     const ray=new T.Mesh(new T.PlaneGeometry(w,h),m);const a=rnd()*Math.PI*2,d=4+rnd()*(span+6);ray.position.set(Math.cos(a)*d,h/2-2,Math.sin(a)*d);ray.userData.tilt=(rnd()-.5)*.35;grp.add(ray);G.rays.push(ray)}
   G.extra.push(rayM);
   // drifting snow and rising bubbles: the shader moves them, the CPU does nothing
@@ -283,15 +288,15 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
   if(G.base){G.scene.remove(G.base);seaDispose(G.base)}
   for(const id in G.labels)G.labels[id].el.remove();G.labels={};const keep=G.bots;G.bots={};G.pick=[];
   const base=new T.Group();G.base=base;G.scene.add(base);
-  const metal=new T.MeshStandardMaterial({color:0x1d3f4f,roughness:.45,metalness:.65}),dark=new T.MeshStandardMaterial({color:0x0f2632,roughness:.6,metalness:.5});
-  const floorM=new T.MeshStandardMaterial({color:0x173948,roughness:.7,metalness:.2});
+  const metal=new T.MeshStandardMaterial({color:0x2a5568,roughness:.45,metalness:.6}),dark=new T.MeshStandardMaterial({color:0x0f2632,roughness:.6,metalness:.5});
+  const floorM=new T.MeshStandardMaterial({color:0x1d4656,roughness:.6,metalness:.25});
   const dome=(x,z,r,col,id,kind)=>{const g=new T.Group();g.position.set(x,0,z);
     const plat=new T.Mesh(new T.CylinderGeometry(r+.35,r+.75,.5,48),metal);plat.position.y=.25;g.add(plat);
     const fl=new T.Mesh(new T.CircleGeometry(r+.2,48).rotateX(-Math.PI/2),floorM);fl.position.y=.505;g.add(fl);
     const ringM=new T.MeshBasicMaterial({color:col,toneMapped:false});
     const ring=new T.Mesh(new T.TorusGeometry(r+.42,.055,6,96).rotateX(Math.PI/2),ringM);ring.position.y=.52;g.add(ring);
     const inner=new T.Mesh(new T.RingGeometry(r*.32,r*.32+.05,64).rotateX(-Math.PI/2),new T.MeshBasicMaterial({color:col,transparent:true,opacity:.35,toneMapped:false}));inner.position.y=.51;g.add(inner);
-    const gl=new T.Mesh(new T.SphereGeometry(r+.36,48,20,0,Math.PI*2,0,Math.PI/2),seaGlass(T,U,col,.045,1));gl.position.y=.5;gl.renderOrder=2;gl.userData[kind]=id;g.add(gl);G.pick.push(gl);
+    const gl=new T.Mesh(new T.SphereGeometry(r+.36,48,20,0,Math.PI*2,0,Math.PI/2),seaGlass(T,U,col,.035,1));gl.position.y=.5;gl.renderOrder=2;gl.userData[kind]=id;g.add(gl);G.pick.push(gl);
     const ribM=new T.MeshStandardMaterial({color:0x2a5566,roughness:.4,metalness:.7,emissive:new T.Color(col),emissiveIntensity:.08});
     for(let i=0;i<3;i++){const rib=new T.Mesh(new T.TorusGeometry(r+.37,.045,5,40,Math.PI),ribM);rib.rotation.y=i*Math.PI/3;rib.position.y=.5;g.add(rib)}
     const cap=new T.Mesh(new T.CylinderGeometry(.35,.5,.35,12),dark);cap.position.y=.5+r+.45;g.add(cap);
@@ -305,12 +310,12 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
       for(let i=0;i<4;i++){const rg=new T.Mesh(new T.TorusGeometry(.95-i*.08,.05,6,40).rotateX(Math.PI/2),new T.MeshBasicMaterial({color:p.color,toneMapped:false}));rg.position.y=c.r+2.4+i*1.7;rg.userData.spin=i;g.add(rg);(G.spin||(G.spin=[])).push(rg)}
       const top=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:0x9ff7ff,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));top.position.y=c.r+10;top.scale.set(3,3,1);g.add(top);G.pulses2.push(top);
       const holo=new T.Mesh(new T.CylinderGeometry(.9,1.25,.3,24),dark);holo.position.y=.65;g.add(holo)}
-    seaLabel(G,'p:'+p.id,{x:c.x,y:.5+c.r+(p.id==='hub'?1.8:1.5),z:c.z},`<b data-u>${esc(p.name)}</b><small><span>深度</span> <span data-u>${p.depth}m</span></small>`,'sea-pl',p.color)}
+    seaLabel(G,'p:'+p.id,{x:c.x,y:0,z:c.z,r:c.r+.9},`<b data-u>${esc(seaPodName(p))}</b><small><span>深度</span> <span data-u>${p.depth}m</span></small>`,'sea-pl',p.color)}
   for(const r of m.rooms){const c=L.rooms[r.id],p=m.pods.find(x=>x.id===r.pod);const g=dome(c.x,c.z,c.r,p.color,r.id,'room');
     const tb=new T.Mesh(new T.CylinderGeometry(1,1,.08,32),new T.MeshStandardMaterial({color:0x24495a,roughness:.3,metalness:.6}));tb.position.y=1.15;g.add(tb);
     const leg=new T.Mesh(new T.CylinderGeometry(.18,.3,.6,10),dark);leg.position.y=.82;g.add(leg);
     const holo=new T.Mesh(new T.ConeGeometry(.75,1.3,24,1,true),new T.MeshBasicMaterial({color:p.color,transparent:true,opacity:.16,blending:T.AdditiveBlending,depthWrite:false,side:T.DoubleSide,toneMapped:false}));holo.rotation.x=Math.PI;holo.position.y=1.85;g.add(holo);G.holos=(G.holos||[]);G.holos.push(holo);
-    seaLabel(G,'r:'+r.id,{x:c.x,y:3.6,z:c.z},`<small><span>會議室</span></small><b data-u>${esc(r.name)}</b>`,'sea-pl room',p.color)}
+    seaLabel(G,'r:'+r.id,{x:c.x,y:0,z:c.z,r:c.r+.9},`<small><span>會議室</span></small><b data-u>${esc(r.name)}</b>`,'sea-pl room',p.color)}
   // tubes: the hub to each module, each module to its meeting rooms; light pulses run along them
   G.tubes=[];const glassT=seaGlass(T,U,0x6ff3ff,.03,0),collarM=new T.MeshStandardMaterial({color:0x2c5a6b,roughness:.4,metalness:.7,emissive:new T.Color(0x2fd8e6),emissiveIntensity:.25});
   const tube=(a,b,ra,rb,col,key)=>{const dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1,ux=dx/l,uz=dz/l;
@@ -325,9 +330,9 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
   for(const r of m.rooms){const a=L.pods[r.pod],b=L.rooms[r.id];tube(a,b,a.r+.4,b.r+.4,m.pods.find(x=>x.id===r.pod).color,r.pod+'>'+r.id)}
   // desks: one mesh each for tops, monitors, screens and stools (instanced)
   const ids=m.bots.map(b=>b.id),n=Math.max(1,ids.length);
-  const top=new T.InstancedMesh(new T.BoxGeometry(1.35,.07,.66),new T.MeshStandardMaterial({color:0x2a5263,roughness:.35,metalness:.55}),n);
+  const top=new T.InstancedMesh(new T.BoxGeometry(1.35,.07,.66),new T.MeshStandardMaterial({color:0x5d8fa0,roughness:.35,metalness:.3}),n);
   const legs=new T.InstancedMesh(new T.BoxGeometry(1.15,.62,.06),dark,n);
-  const mon=new T.InstancedMesh(new T.BoxGeometry(.86,.52,.05),new T.MeshStandardMaterial({color:0x0b1a22,roughness:.4,metalness:.4}),n);
+  const mon=new T.InstancedMesh(new T.BoxGeometry(.86,.52,.05),new T.MeshStandardMaterial({color:0x10242e,roughness:.4,metalness:.4,emissive:new T.Color(0x1a5566),emissiveIntensity:.5}),n);
   const scr=new T.InstancedMesh(new T.PlaneGeometry(.78,.44),new T.MeshBasicMaterial({color:0xffffff,toneMapped:false}),n);
   const stool=new T.InstancedMesh(new T.CylinderGeometry(.32,.38,.42,14),metal,n);
   const M=new T.Matrix4(),Q=new T.Quaternion(),V=new T.Vector3(),one=new T.Vector3(1,1,1),Y=new T.Vector3(0,1,0),C=new T.Color(0x0e2a3a);
@@ -340,8 +345,8 @@ function seaBuild(G,m,L){const T=G.T,U=G.U;
   base.add(top,legs,mon,scr,stool);G.scr=scr;G.deskIdx=Object.fromEntries(ids.map((id,i)=>[id,i]));
   // the octopuses
   const shadowM=new T.MeshBasicMaterial({map:G.glow,color:0x000000,transparent:true,opacity:.5,depthWrite:false});G.extra.push(shadowM);
-  for(const b of m.bots){const old=keep[b.id],sp=new T.Sprite(new T.SpriteMaterial({map:seaOctTex(G,b.state,b.color),transparent:true,depthWrite:true,alphaTest:.15}));
-    sp.center.set(.5,.12);sp.scale.set(1.75,1.75,1);sp.userData.bot=b.id;sp.renderOrder=1;base.add(sp);G.pick.push(sp);
+  for(const b of m.bots){const old=keep[b.id],sp=new T.Sprite(new T.SpriteMaterial({map:seaOctTex(G,b.state,b.color),transparent:true,depthWrite:true,alphaTest:.12,fog:false,toneMapped:false}));
+    sp.center.set(.5,.1);sp.scale.set(SEA_OCT,SEA_OCT,1);sp.userData.bot=b.id;sp.renderOrder=5;base.add(sp);G.pick.push(sp);
     const sh=new T.Mesh(new T.PlaneGeometry(1.4,1.4).rotateX(-Math.PI/2),shadowM);base.add(sh);
     const halo=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:new T.Color(colorHex(b.color)||OC_DEFAULT),transparent:true,opacity:.3,depthWrite:false,blending:T.AdditiveBlending}));halo.scale.set(2.6,2.6,1);base.add(halo);
     const e={sp,sh,halo,beam:null,ph:Math.random()*6,pos:old?old.pos:null,route:null,s:0,node:null,state:''};G.bots[b.id]=e;
@@ -367,7 +372,7 @@ function seaBotState(G,b,m,L){const T=G.T,e=G.bots[b.id];if(!e)return;
   // the label: a name tag, and a bubble when there is something to say
   const lb=G.labels['b:'+b.id];if(lb){const bb=b.bubble;
     const h=`${bb&&(bb.lab||bb.txt)?`<div class="sea-bub ${bb.tone}">${bb.lab?`<b>${esc(bb.lab)}</b>`:''}${bb.txt?`<span data-u>${esc(bb.txt)}</span>`:''}</div>`:''}<div class="sea-nm"><i></i><span data-u>${esc(b.name)}</span></div>`;
-    if(lb.h!==h){lb.h=h;setHTML(lb.el,h);lb.w=0}lb.el.className='sea-tag sea-bt t-'+(bb?.tone||'none')}}
+    if(lb.h!==h){lb.h=h;setHTML(lb.el,h);lb.w=0;lb.fw=0}const tc='t-'+(bb?.tone||'none');if(lb.tc!==tc){if(lb.tc)lb.el.classList.remove(lb.tc);lb.el.classList.add(tc);lb.tc=tc}}}
 function seaPath(pts){const seg=[];let len=0;for(let i=1;i<pts.length;i++){const l=Math.hypot(pts[i].x-pts[i-1].x,pts[i].z-pts[i-1].z);seg.push(l);len+=l}return {pts,seg,len}}
 function seaAlong(r,s){let d=s*r.len;for(let i=0;i<r.seg.length;i++){if(d<=r.seg[i]||i===r.seg.length-1){const k=r.seg[i]?Math.min(1,d/r.seg[i]):1,a=r.pts[i],b=r.pts[i+1];return {x:a.x+(b.x-a.x)*k,z:a.z+(b.z-a.z)*k}}d-=r.seg[i]}return r.pts[r.pts.length-1]}
 function seaLabel(G,key,at,html,cls,col){const el=document.createElement('div');el.className='sea-tag '+cls;el.style.setProperty('--c',col);if(html)setHTML(el,html);$('seaTags').appendChild(el);
@@ -381,6 +386,7 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
   const t=G.t;G.U.uTime.value=t;
   // the camera eases toward where you dragged or clicked
   const v=G.view,g=G.goal,k=seaReduced()?1:1-Math.exp(-dt*7);for(const x of ['th','ph','d','tx','tz'])v[x]+=(g[x]-v[x])*k;
+  G.scene.fog.density=.0135*Math.max(.4,Math.min(1,48/v.d));   // far out, less murk: the base stays readable
   const c=G.cam,sp=Math.sin(v.ph);c.position.set(v.tx+v.d*sp*Math.sin(v.th),v.d*Math.cos(v.ph)+.5,v.tz+v.d*sp*Math.cos(v.th));c.lookAt(v.tx,1.2,v.tz);
   // octopuses
   const scrC=new T.Color();let scrDirty=false;
@@ -389,10 +395,10 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
       if(e.s>=1){e.route=null;e.pos={x:e.goal.x,z:e.goal.z}}}
     const bob=still||b.paused?0:b.state==='idle'?Math.sin(t*1.3+e.ph)*.05:b.state==='working'?Math.abs(Math.sin(t*4.2+e.ph))*.1:b.state==='thinking'?Math.sin(t*1.8+e.ph)*.07:Math.sin(t*2.6+e.ph)*.06;
     e.sp.position.set(x,y+bob+(swim?Math.sin(t*6)*.08:0),z);
-    const sq=still||b.paused?1:b.state==='working'?1+Math.sin(t*8.4+e.ph)*.035:1+Math.sin(t*2+e.ph)*.015;e.sp.scale.set(1.75/sq,1.75*sq,1);
+    const sq=still||b.paused?1:b.state==='working'?1+Math.sin(t*8.4+e.ph)*.035:1+Math.sin(t*2+e.ph)*.015;e.sp.scale.set(SEA_OCT/sq,SEA_OCT*sq,1);
     e.sp.material.rotation=still?0:b.state==='thinking'?Math.sin(t*1.6+e.ph)*.1:swim?Math.sin(t*5)*.12:0;
     e.sh.position.set(x,.53,z);e.sh.scale.setScalar(1-bob*.8);
-    e.halo.position.set(x,y+1.1+bob,z);e.halo.material.opacity=b.job&&!b.paused?.34+(still?0:Math.sin(t*3+e.ph)*.08):.14;
+    e.halo.position.set(x,y+1.2+bob,z);e.halo.material.opacity=b.job&&!b.paused?.34+(still?0:Math.sin(t*3+e.ph)*.08):.14;
     if(e.beam){e.beam.position.set(x,0,z);const u=e.beam.userData,ph=still?.35:(t*.7+e.ph)%1;u.ring.scale.setScalar(1+ph*1.6);u.ring.material.opacity=.85*(1-ph);
       u.lamp.material.opacity=still?1:.55+.45*Math.sin(t*(u.tone==='need'?5:2.2));u.lamp.position.y=2.45+bob;u.beam.material.opacity=u.tone==='need'?.2:.12}
     // the desk screen: lit in the bot's colour while it works, flickering with the typing; dim when it rests
@@ -417,31 +423,62 @@ function seaFrame(G,dt){if(!G.alive)return;const T=G.T,still=seaStill();
   G.r.render(G.scene,c);
   seaTags(G)}
 // names and bubbles follow their octopus on the screen; bubbles that would cover each other step up
-function seaScreen(id){const G=SEA.g,e=G?.bots[id];if(!e)return null;const v=new G.T.Vector3(e.sp.position.x,e.sp.position.y+1.75,e.sp.position.z).project(G.cam);
+function seaScreen(id){const G=SEA.g,e=G?.bots[id];if(!e)return null;const v=new G.T.Vector3(e.sp.position.x,e.sp.position.y+SEA_OCT*.95,e.sp.position.z).project(G.cam);
   if(v.z>1)return null;return {x:(v.x+1)/2*SEA.el.clientWidth,y:(1-v.y)/2*SEA.el.clientHeight}}
-function seaTags(G){const W=SEA.el.clientWidth,H=SEA.el.clientHeight,V=new G.T.Vector3(),cam=G.cam,placed=[],far=G.view.d>62,fp=SEA.focus;
+function seaTags(G){const W=SEA.el.clientWidth,H=SEA.el.clientHeight,V=new G.T.Vector3(),cam=G.cam,placed=[],far=G.view.d>48,fp=SEA.focus,top=(G.top||100)+6,bottom=G.bot||H;
   const list=[];
   for(const key in G.labels){const lb=G.labels[key];let at=lb.at,b=null;
-    if(key[0]==='b'){const e=G.bots[key.slice(2)];if(!e)continue;b=e.b;at={x:e.sp.position.x,y:e.sp.position.y+1.62,z:e.sp.position.z}}
-    V.set(at.x,at.y,at.z).project(cam);const on=V.z<1&&V.x>-1.2&&V.x<1.2&&V.y>-1.2&&V.y<1.2;
-    let show=on;if(b&&far&&!fp&&b.bubble?.tone==='idle')show=on&&SEA.hover===b.id;
-    if(b&&fp&&b.pod!==fp&&!b.room&&!(b.bubble&&b.bubble.tone!=='idle'))show=false;
-    if(lb.vis!==show){lb.vis=show;lb.el.style.visibility=show?'':'hidden'}
-    if(!show)continue;list.push({lb,x:(V.x+1)/2*W,y:(1-V.y)/2*H,z:V.z,b})}
-  list.sort((a,b)=>a.z-b.z);
-  for(const it of list){const lb=it.lb;if(!lb.w){lb.w=lb.el.offsetWidth;lb.hh=lb.el.offsetHeight}
-    let y=it.y;if(it.b){const w=lb.w,h=lb.hh;for(let pass=0;pass<4;pass++){const hit=placed.find(p=>Math.abs(p.x-it.x)<(p.w+w)/2+4&&Math.abs(p.y-y)<(p.h+h)/2+2);if(!hit)break;y=hit.y-(hit.h+h)/2-3}
-      placed.push({x:it.x,y,w,h})}
-    lb.el.classList.toggle('dim',it.b?(fp&&it.b.pod!==fp):false);
-    const x=Math.round(it.x),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,-100%)`}}
+    if(key[0]==='b'){const e=G.bots[key.slice(2)];if(!e)continue;b=e.b;at={x:e.sp.position.x,y:e.sp.position.y+SEA_OCT*.92,z:e.sp.position.z}}
+    else{const dx=cam.position.x-at.x,dz=cam.position.z-at.z,l=Math.hypot(dx,dz)||1;at={x:at.x+dx/l*at.r,y:.15,z:at.z+dz/l*at.r}}   // a nameplate on the front of the base
+    V.set(at.x,at.y,at.z).project(cam);let show=V.z<1&&V.x>-1.1&&V.x<1.1&&V.y>-1.2&&V.y<1.2;
+    // far away, a quiet bot shows only its name; in a module you look into, the others step back
+    const quiet=b&&(!b.bubble||b.bubble.tone==='idle'||(W<760&&!fp&&!['need','fail'].includes(b.bubble.tone)));   // a phone shows what needs you first
+    if(b&&fp&&b.pod!==fp&&quiet&&SEA.hover!==b.id)show=false;
+    list.push({lb,show,x:(V.x+1)/2*W,y:(1-V.y)/2*H,z:V.z,b,quiet,pod:key[0]!=='b'})}
+  // places first (they stay put), then the octopuses nearest the camera
+  list.sort((a,b)=>(a.pod-b.pod)||(a.z-b.z));
+  for(const it of list){const lb=it.lb;let show=it.show;
+    if(show){const el=lb.el;
+      let small=it.b&&far&&!fp&&it.quiet&&SEA.hover!==it.b.id;
+      // sizes with and without the bubble, measured once per change of text
+      if(it.b&&!lb.fw){el.classList.remove('nob');lb.fw=el.offsetWidth;lb.fh=el.offsetHeight;el.classList.add('nob');lb.nw=el.offsetWidth;lb.nh=el.offsetHeight;lb.small=null}
+      if(!it.b&&!lb.w){lb.w=el.offsetWidth;lb.hh=el.offsetHeight}
+      let y=it.y,w=it.b?(small?lb.nw:lb.fw):lb.w,h=it.b?(small?lb.nh:lb.fh):lb.hh;
+      if(it.pod){if(y+h>bottom+4||y<top||placed.some(p=>Math.abs(p.x-it.x)<(p.w+w)/2&&y<p.y&&y+h>p.y-p.h))show=false}   // a nameplate gives way to an octopus
+      else for(let pass=0;pass<5;pass++){const hit=placed.find(p=>Math.abs(p.x-it.x)<(p.w+w)/2+3&&Math.abs((p.y-p.h/2)-(y-h/2))<(p.h+h)/2+2);if(!hit)break;
+        y=hit.y-hit.h-3}
+      // no room above: just the name, where it belongs
+      if(it.b&&!small&&y-h<top-12){small=true;y=it.y;w=lb.nw;h=lb.nh}
+      if(it.b&&lb.small!==small){lb.small=small;el.classList.toggle('nob',!!small)}
+      if(!it.pod&&(y-h<top-12||y>bottom+h*.5))show=false;
+      if(show&&it.pod){const x=Math.round(it.x),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,6px)`}}
+      else if(show){placed.push({x:it.x,y,w,h});
+        lb.el.classList.toggle('dim',!!(it.b&&fp&&it.b.pod!==fp));
+        const x=Math.round(Math.max(w/2+4,Math.min(W-w/2-4,it.x))),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,-100%)`}}}
+    if(lb.vis!==show){lb.vis=show;lb.el.style.visibility=show?'':'hidden'}}
   if(SEA.qc)seaQcPlace()}
 
 /* ---------- moving around: drag to turn, right-drag / two fingers / Shift to pan, wheel or pinch to zoom, click a dome ---------- */
 function seaFocus(id,now){const G=SEA.g;SEA.focus=id;$('seaAll').hidden=!id;seaCards();seaDepth();
   if(!G)return;const L=SEA.L,g=G.goal,asp=G.cam.aspect||1;
-  if(id&&L.pods[id]){const p=L.pods[id];g.tx=p.x;g.tz=p.z;g.d=(p.r*2.3+7)/Math.min(1,asp*1.05);g.ph=.92;g.th=id==='hub'?g.th:Math.atan2(p.x,p.z)||g.th}
-  else{g.tx=0;g.tz=0;g.d=Math.min(150,(L.span*1.85+10)/Math.min(1,asp*.95));g.ph=.9}
+  if(id&&L.pods[id]){const p=L.pods[id];g.tx=p.x;g.tz=p.z;g.d=(p.r*2.6+9)/Math.min(1,asp*1.05);g.ph=.9;g.th=id==='hub'?g.th:Math.atan2(p.x,p.z)||g.th}
+  else{g.ph=.86;seaFit(G,g,!G.fitted||!now);G.fitted=true}
+  const tw=Math.PI*2;g.th=G.view.th+((((g.th-G.view.th+Math.PI)%tw)+tw)%tw)-Math.PI;   // the short way round
   if(now||seaReduced())Object.assign(G.view,g);G.loop.kick(3)}
+// the whole base in view, between the HUD and the cards: centre on its middle, then the nearest distance that fits
+function seaFit(G,g,turn){const L=SEA.L,T=G.T,pts=[];let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+  for(const o of [...Object.values(L.pods),...Object.values(L.rooms)]){x0=Math.min(x0,o.x-o.r);x1=Math.max(x1,o.x+o.r);z0=Math.min(z0,o.z-o.r);z1=Math.max(z1,o.z+o.r);
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]])pts.push(new T.Vector3(o.x+dx*(o.r+.6),0,o.z+dz*(o.r+.6)));pts.push(new T.Vector3(o.x,o.r+2.4,o.z))}
+  g.tx=(x0+x1)/2;g.tz=(z0+z1)/2;
+  const c=G.cam.clone(),H=SEA.el.clientHeight||800,yTop=1-2*((G.top||100)+52)/H,yBot=1-2*(G.bot||H)/H,V=new T.Vector3();
+  const fits=d=>{const sp=Math.sin(g.ph);c.position.set(g.tx+d*sp*Math.sin(g.th),d*Math.cos(g.ph)+.5,g.tz+d*sp*Math.cos(g.th));c.lookAt(g.tx,1.2,g.tz);c.updateMatrixWorld();
+    return pts.every(p=>{V.copy(p).project(c);return V.z<1&&Math.abs(V.x)<.94&&V.y<yTop&&V.y>yBot})};
+  const best=()=>{let lo=8,hi=180;for(let i=0;i<13;i++){const m=(lo+hi)/2;if(fits(m))hi=m;else lo=m}return hi};
+  // the first time (and 回到全景): turn to the side that shows the base biggest
+  // (and no module hidden behind another: domes that cover each other on the screen count against a side)
+  const cover=d=>{fits(d);const ps=[...Object.values(L.pods),...Object.values(L.rooms)].map(o=>{V.set(o.x,o.r*.5,o.z).project(c);return {x:V.x,y:V.y*H/(SEA.el.clientWidth||1),r:o.r/Math.max(1,c.position.distanceTo(new T.Vector3(o.x,0,o.z)))*2.2}});
+    let n=0;for(let i=0;i<ps.length;i++)for(let j=i+1;j<ps.length;j++){const a=ps[i],b=ps[j];if(Math.hypot(a.x-b.x,(a.y-b.y))<(a.r+b.r)*.85)n++}return n};
+  if(turn){let bt=g.th,bd=1e9,bs=1e9;for(let i=0;i<12;i++){g.th=i*Math.PI/6+.3;const d=best(),sc=d*(1+.35*cover(d));if(sc<bs-.5){bs=sc;bd=d;bt=g.th}}g.th=bt;g.d=bd}else g.d=best()}
 function seaControls(G){const cv=G.cv,sig={signal:SEA.ac.signal},P=G.ptr;let pinch=0,mid=null;
   const clampG=()=>{const g=G.goal,L=SEA.L;g.ph=Math.max(.32,Math.min(1.36,g.ph));g.d=Math.max(6,Math.min(170,g.d));const lim=(L?.span||26)+8;g.tx=Math.max(-lim,Math.min(lim,g.tx));g.tz=Math.max(-lim,Math.min(lim,g.tz))};
   const pan=(dx,dy)=>{const g=G.goal,s=g.d*.0016,c=Math.cos(g.th),n=Math.sin(g.th);g.tx-=(dx*c-dy*n*1.3)*s;g.tz-=(-dx*n-dy*c*1.3)*s};
@@ -469,7 +506,7 @@ function seaHover(e){const G=SEA.g;if(!G||G.hv)return;G.hv=requestAnimationFrame
   G.cv.style.cursor=u?'pointer':'';if(!u){tip.hidden=true;return}
   const m=SEA.m;let h='';
   if(u.bot){const b=m.bots.find(x=>x.id===u.bot);if(b)h=`<b data-u>${esc(b.name)}</b><span>${esc(b.word)}</span>${b.bubble?.txt?`<small data-u>${esc(b.bubble.txt)}</small>`:''}`}
-  else if(u.pod){const p=m.pods.find(x=>x.id===u.pod);if(p){const bs=p.bots.map(id=>m.bots.find(b=>b.id===id));h=`<b data-u>${esc(p.name)}</b><span><span data-u>${bs.length}</span> <span>個機器人</span> · <span data-u>${bs.filter(b=>b.job).length}</span> <span>工作中</span></span><small>點一下進入</small>`}}
+  else if(u.pod){const p=m.pods.find(x=>x.id===u.pod);if(p){const bs=p.bots.map(id=>m.bots.find(b=>b.id===id));h=`<b data-u>${esc(seaPodName(p))}</b><span><span data-u>${bs.length}</span> <span>個機器人</span> · <span data-u>${bs.filter(b=>b.job).length}</span> <span>工作中</span></span><small>點一下進入</small>`}}
   else if(u.room){const r=m.rooms.find(x=>x.id===u.room);if(r)h=`<b data-u>${esc(r.name)}</b><span>會議室</span><small>點一下看群組</small>`}
   if(!h){tip.hidden=true;return}if(tip.dataset.k!==h){tip.dataset.k=h;setHTML(tip,h)}tip.hidden=false;
   const W=SEA.el.clientWidth;tip.style.transform=`translate(${Math.min(W-tip.offsetWidth-10,e.clientX+16)}px,${e.clientY+14}px)`})}

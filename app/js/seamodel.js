@@ -73,7 +73,7 @@ function seaLayout(m){const P={},R={},B={};
 // where a bot is meant to be: its desk, a seat at its group's table, or beside the colleague it handed work to
 function seaSpot(m,L,b){if(b.room&&L.rooms[b.room]){const r=L.rooms[b.room],ms=m.bots.filter(x=>x.room===b.room),i=ms.indexOf(b),a=Math.PI*2*i/Math.max(ms.length,1)+Math.PI/2;
     return {x:r.x+Math.cos(a)*1.25,z:r.z+Math.sin(a)*1.25,node:'room:'+b.room}}
-  if(b.visit&&L.desks[b.visit]){const t=L.desks[b.visit],a=t.face+Math.PI/2;return {x:t.x+Math.cos(a)*1.15,z:t.z+Math.sin(a)*1.15,node:'pod:'+t.pod}}
+  if(b.visit&&L.desks[b.visit]){const t=L.desks[b.visit],a=t.face+Math.PI/2;return {x:t.x+Math.cos(a)*1.55-Math.cos(t.face)*.5,z:t.z+Math.sin(a)*1.55-Math.sin(t.face)*.5,node:'pod:'+t.pod}}
   const d=L.desks[b.id];return d?{x:d.x,z:d.z,node:'pod:'+d.pod}:{x:0,z:0,node:'pod:hub'}}
 // the way from one place to another, through the tubes: up to the hub and down again (points {x,z})
 function seaRoute(L,fromNode,toNode,a,b){if(fromNode===toNode)return [a,b];
