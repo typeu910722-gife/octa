@@ -49,10 +49,49 @@ function seaModel(d){d=d||{};const bots=d.bots||[],groups=d.groups||[],folders=d
   // a bot that handed work over (and has nothing of its own running) swims to the colleague and waits beside it
   for(const k of links){const a=out.find(x=>x.id===k.from);if(a&&!a.job&&!a.visit){a.visit=k.to;if(!a.need&&!a.fail)a.bubble={lab:'等回覆',txt:seaCut(name(k.to),10),tone:'chat'}}}
   for(const x of out){pod(x.pod).bots.push(x.id);if(x.room)rooms.find(r=>r.id===x.room).busy=true}
+  // 4.9.2 nothing to do: no dozing at the desk — each finds something to do (two of them play together); work always wins
+  const acts=seaActs(out.filter(seaFree).map(x=>x.id),now);
+  for(const x of out){const a=acts[x.id]||null;x.act=a;if(!a)continue;
+    x.word=SEA_ACTS[a.k].word;x.bubble={lab:SEA_ACTS[a.k].word,txt:a.with?seaCut(name(a.with),8):'',tone:a.k==='nap'?'idle':'play'}}
   for(const r of rooms){const nt=needTag(lastOf(r.id),(d.lastJob||{})[r.id]);r.need=(d.gask||{})[r.id]?'ap':['ap','login','ask'].includes(nt.k)?nt.k:''}
   const need=out.filter(x=>x.need).length+rooms.filter(r=>r.need).length;
   const counters={working:out.filter(x=>x.job&&!x.paused).length,need,done:Object.values(d.done||{}).reduce((a,n)=>a+(+n||0),0),fail:out.filter(x=>x.fail).length};
   return {pods,rooms,bots:out,links,counters}}
+/* 4.9.2 what an idle bot does instead of dozing. two: a game for two at a table in 遊戲角 (the play corner beside the hub);
+   at: where it happens (t0 / t1 tables, arcade, juke, bean in 遊戲角; desk, edge of its own dome, lap round it);
+   pose: the octopus drawing; w: how often it is picked (a nap is rare) */
+const SEA_ACTS={
+  pingpong:{two:1,at:'t0',word:'打桌球中 🏓',pose:'working'},
+  chess:{two:1,at:'t1',word:'下棋中 ♟️',pose:'thinking'},
+  cards:{two:1,at:'t1',word:'玩牌中 🃏',pose:'working'},
+  arcade:{at:'arcade',one:1,word:'挑戰街機高分 🕹️',pose:'working',w:3},
+  dance:{at:'juke',one:1,word:'跟著音樂跳舞 🎵',pose:'working',w:2},
+  read:{at:'bean',one:1,word:'窩在懶骨頭看書 📖',pose:'thinking',w:3},
+  juggle:{at:'desk',word:'玩泡泡雜耍',pose:'working',w:3},
+  yoyo:{at:'desk',word:'玩溜溜球',pose:'working',w:2},
+  feed:{at:'edge',word:'餵小魚 🐟',pose:'working',w:2},
+  coral:{at:'edge',word:'照顧發光珊瑚',pose:'thinking',w:2},
+  lap:{at:'lap',word:'繞著艙室游一圈',pose:'working',w:2},
+  nap:{at:'desk',word:'小睡一下',pose:'idle',w:1}};
+const SEA_SOLO=Object.keys(SEA_ACTS).filter(k=>!SEA_ACTS[k].two);
+const SEA_PAIR_MS=45000;
+// free to play: nothing running, queued, waiting for you, failed, or waiting on a colleague
+const seaFree=x=>!x.job&&!x.queued&&!x.need&&!x.fail&&!x.visit&&!x.paused;
+function seaHash(s){let h=2166136261;for(const c of String(s)){h^=c.codePointAt(0);h=Math.imul(h,16777619)}return h>>>0}
+/* ids: the bots free to play; now: the time. → {id: {k, at, with?, side?}}
+   The same bots at the same moment always get the same answer. Pairs change every 45 s (up to two tables, each used
+   about three times in four); everyone else changes on their own rhythm, every 20–60 s; the arcade cabinet, the jukebox
+   and the bean bag take one bot at a time. */
+function seaActs(ids,now){const out={},slot=Math.floor(now/SEA_PAIR_MS);
+  const order=[...ids].sort((a,b)=>(seaHash(a+':'+slot)-seaHash(b+':'+slot))||(a<b?-1:1));let i=0;
+  for(const [at,kinds] of [['t0',['pingpong']],['t1',['chess','cards']]]){if(order.length-i<2)break;if(seaHash(at+'#'+slot)%4===3)continue;
+    const a=order[i++],b=order[i++],k=kinds[seaHash(at+':'+slot)%kinds.length];out[a]={k,at,with:b,side:0};out[b]={k,at,with:a,side:1}}
+  const taken=new Set(),W=SEA_SOLO.reduce((n,k)=>n+SEA_ACTS[k].w,0);
+  for(const id of [...ids].sort()){if(out[id])continue;
+    const per=20000+seaHash(id)%40000,s=Math.floor((now+seaHash(id+'~')%per)/per);let r=seaHash(id+':'+s)%W,j=0;
+    while(r>=SEA_ACTS[SEA_SOLO[j]].w){r-=SEA_ACTS[SEA_SOLO[j]].w;j++}
+    for(let n=0;n<SEA_SOLO.length;n++){const k=SEA_SOLO[(j+n)%SEA_SOLO.length];if(SEA_ACTS[k].one&&taken.has(k))continue;if(SEA_ACTS[k].one)taken.add(k);out[id]={k,at:SEA_ACTS[k].at};break}}
+  return out}
 // the sea floor: the hub in the middle, modules around it, each meeting room beside its module. Units are metres.
 function seaLayout(m){const P={},R={},B={};
   const podR=n=>n<=1?3.4:Math.min(11,2.6+n*.78);
@@ -68,13 +107,30 @@ function seaLayout(m){const P={},R={},B={};
   const per={};for(const r of m.rooms){const k=r.pod;per[k]=(per[k]||0)+1;const i=per[k]-1,c=P[k];
     const base=k==='hub'?Math.PI/2+i*.9:(c.a||0)+(i%2?-1:1)*(.62+Math.floor(i/2)*.45);
     const d=c.r+4.2;R[r.id]={x:c.x+Math.cos(base)*d,z:c.z+Math.sin(base)*d,r:2.5,pod:k}}
+  // 4.9.2 遊戲角: a small dome beside the hub, where the free bots play; the nearest spot clear of everything else
+  const LR=4.4,others=[...Object.values(P),...Object.values(R)];let pl=null;
+  for(let i=0;i<24;i++){const a=i/24*Math.PI*2+.13;for(let d=P.hub.r+LR+3;d<P.hub.r+LR+60;d+=.5){const x=Math.cos(a)*d,z=Math.sin(a)*d;
+    const clear=Math.min(...others.map(o=>Math.hypot(o.x-x,o.z-z)-o.r-LR));if(clear>2.6){if(!pl||d<pl.d-.01)pl={x,z,r:LR,a,d};break}}}
+  const S={};
+  if(pl){P.play={x:pl.x,z:pl.z,r:LR,a:pl.a};
+    // spots in the dome: u points away from the hub, v across
+    const ux=Math.cos(pl.a),uz=Math.sin(pl.a),at=(u,v,face)=>({x:pl.x+ux*u-uz*v,z:pl.z+uz*u+ux*v,face});
+    Object.assign(S,{t0:at(-.3,-1.7),t0a:at(-.3,-3.35),t0b:at(-.3,-.05),t1:at(.9,1.9),t1a:at(-.25,1.9),t1b:at(2.05,1.9),
+      arcade:at(3.3,-.6),arcadeB:at(2.25,-.6),juke:at(2.3,-2.9),jukeB:at(1.45,-2.05),bean:at(-1.9,2.9),beanB:at(-1.9,2.9)})}
   let span=10;for(const k in P)span=Math.max(span,Math.hypot(P[k].x,P[k].z)+P[k].r);for(const k in R)span=Math.max(span,Math.hypot(R[k].x,R[k].z)+R[k].r);
-  return {pods:P,rooms:R,desks:B,span}}
+  return {pods:P,rooms:R,desks:B,span,spots:S}}
 // where a bot is meant to be: its desk, a seat at its group's table, or beside the colleague it handed work to
 function seaSpot(m,L,b){if(b.room&&L.rooms[b.room]){const r=L.rooms[b.room],ms=m.bots.filter(x=>x.room===b.room),i=ms.indexOf(b),a=Math.PI*2*i/Math.max(ms.length,1)+Math.PI/2;
     return {x:r.x+Math.cos(a)*1.25,z:r.z+Math.sin(a)*1.25,node:'room:'+b.room}}
   if(b.visit&&L.desks[b.visit]){const t=L.desks[b.visit],a=t.face+Math.PI/2;return {x:t.x+Math.cos(a)*1.55-Math.cos(t.face)*.5,z:t.z+Math.sin(a)*1.55-Math.sin(t.face)*.5,node:'pod:'+t.pod}}
-  const d=L.desks[b.id];return d?{x:d.x,z:d.z,node:'pod:'+d.pod}:{x:0,z:0,node:'pod:hub'}}
+  const d=L.desks[b.id];
+  // 4.9.2 playing: at a table, the arcade, the jukebox or the bean bag in 遊戲角, or near its own desk (only while free)
+  const a=b.act&&!b.job?b.act:null;
+  if(a&&d){const S=L.spots||{};
+    if(a.with!=null&&S[a.at+(a.side?'b':'a')]){const s=S[a.at+(a.side?'b':'a')];return {x:s.x,z:s.z,node:'pod:play'}}
+    if(S[a.at+'B']){const s=S[a.at+'B'];return {x:s.x,z:s.z,node:'pod:play'}}
+    if(a.at==='edge'){const p=L.pods[d.pod],k=Math.max(0,p.r-1.1);return {x:p.x+Math.cos(d.face)*k,z:p.z+Math.sin(d.face)*k,node:'pod:'+d.pod}}}
+  return d?{x:d.x,z:d.z,node:'pod:'+d.pod}:{x:0,z:0,node:'pod:hub'}}
 // the way from one place to another, through the tubes: up to the hub and down again (points {x,z})
 function seaRoute(L,fromNode,toNode,a,b){if(fromNode===toNode)return [a,b];
   const up=n=>{const [k,id]=n.split(':');if(k==='room'){const r=L.rooms[id];return r?['pod:'+r.pod]:[]}return id==='hub'?[]:['pod:hub']};
