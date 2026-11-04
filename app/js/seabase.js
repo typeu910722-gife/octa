@@ -118,7 +118,7 @@ function seaSelect(id,from3d){SEA.sel=id||null;ovMark();if(!id){if(SEA.g)SEA.g.l
   if(from3d)ovReveal(id);seaLook(id)}
 function seaLook(id){const G=SEA.g,L=SEA.L,m=SEA.m;if(!G||!L||!m||seaFolded())return;
   const b=m.bots.find(x=>x.id===id),r=L.rooms[id],e=G.bots[id];let x,z,d;
-  if(b&&e){const p=e.goal||e.pos;x=p.x;z=p.z;d=12}else if(r){x=r.x;z=r.z;d=13}else return;
+  if(b&&e){const p=e.goal||e.pos;x=p.x;z=p.z;d=19}else if(r){x=r.x;z=r.z;d=17}else return;
   SEA.focus=b?b.pod:m.rooms.find(q=>q.id===id)?.pod||null;$('seaAll').hidden=false;seaDepth();ovMark();
   const g=G.goal,asp=G.cam.aspect||1;g.tx=x;g.tz=z;g.d=d/Math.min(1,asp*1.05);g.ph=.92;
   const tw=Math.PI*2;g.th=G.view.th+((((g.th-G.view.th+Math.PI)%tw)+tw)%tw)-Math.PI;
@@ -219,14 +219,14 @@ function seaScreen(id){const G=SEA.g,e=G?.bots[id];if(!e)return null;const v=new
   if(v.z>1)return null;return {x:(v.x+1)/2*seaW(),y:(1-v.y)/2*seaH()}}
 function seaTags(G){const W=seaW(),H=seaH(),V=new G.T.Vector3(),cam=G.cam,placed=[],far=G.view.d>48,fp=SEA.focus,top=(G.top||100)+6,bottom=G.bot||H;
   const list=[];
-  for(const key in G.labels){const lb=G.labels[key];let at=lb.at,b=null;
-    if(key[0]==='b'){const e=G.bots[key.slice(2)];if(!e)continue;b=e.b;at={x:e.sp.position.x,y:e.sp.position.y+SEA_OCT*.92,z:e.sp.position.z}}
+  for(const key in G.labels){const lb=G.labels[key];let at=lb.at,b=null,bp=null;   // bp: where it is now (遊戲角 while it plays)
+    if(key[0]==='b'){const e=G.bots[key.slice(2)];if(!e)continue;b=e.b;at={x:e.sp.position.x,y:e.sp.position.y+SEA_OCT*.92,z:e.sp.position.z};bp=e.node&&e.node.startsWith('pod:')?e.node.slice(4):b?.pod}
     else{const dx=cam.position.x-at.x,dz=cam.position.z-at.z,l=Math.hypot(dx,dz)||1;at={x:at.x+dx/l*at.r,y:.15,z:at.z+dz/l*at.r}}   // a nameplate on the front of the base
     V.set(at.x,at.y,at.z).project(cam);let show=V.z<1&&V.x>-1.1&&V.x<1.1&&V.y>-1.2&&V.y<1.2;
     // far away, a quiet bot shows only its name; in a module you look into, the others step back
     const quiet=b&&(!b.bubble||b.bubble.tone==='idle'||(W<760&&!fp&&!['need','fail'].includes(b.bubble.tone)));   // a phone shows what needs you first
-    if(b&&fp&&b.pod!==fp&&quiet&&SEA.hover!==b.id&&SEA.sel!==b.id)show=false;
-    list.push({lb,show,x:(V.x+1)/2*W,y:(1-V.y)/2*H,z:V.z,b,quiet,pod:key[0]!=='b'})}
+    if(b&&fp&&bp!==fp&&quiet&&SEA.hover!==b.id&&SEA.sel!==b.id)show=false;
+    list.push({lb,show,x:(V.x+1)/2*W,y:(1-V.y)/2*H,z:V.z,b,bp,quiet,pod:key[0]!=='b'})}
   // places first (they stay put), then the octopuses nearest the camera
   // what needs you is placed first, then work in progress, then the rest; nearer first
   const rank=it=>it.pod?9:it.b&&(SEA.sel===it.b.id||SEA.hover===it.b.id)?-1:!it.b.bubble?4:{need:0,fail:0,run:1,chat:1,pause:2}[it.b.bubble.tone]??3;
@@ -249,7 +249,7 @@ function seaTags(G){const W=seaW(),H=seaH(),V=new G.T.Vector3(),cam=G.cam,placed
       if(!it.pod&&(y-h<top-12||y>bottom+4))show=false;
       if(show&&it.pod){const x=Math.round(it.x),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,6px)`}}
       else if(show){placed.push({x:it.x,y,w,h});
-        lb.el.classList.toggle('dim',!!(it.b&&fp&&it.b.pod!==fp));
+        lb.el.classList.toggle('dim',!!(it.b&&fp&&it.bp!==fp));
         const x=Math.round(Math.max(w/2+4,Math.min(W-w/2-4,it.x))),yy=Math.round(y);if(x!==lb.x||yy!==lb.y){lb.x=x;lb.y=yy;lb.el.style.transform=`translate(${x}px,${yy}px) translate(-50%,-100%)`}}}
     if(lb.vis!==show){lb.vis=show;lb.el.style.visibility=show?'':'hidden'}}}
 

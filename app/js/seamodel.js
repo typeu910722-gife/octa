@@ -109,15 +109,15 @@ function seaLayout(m){const P={},R={},B={};
     const base=k==='hub'?Math.PI/2+i*.9:(c.a||0)+(i%2?-1:1)*(.62+Math.floor(i/2)*.45);
     const d=c.r+4.2;R[r.id]={x:c.x+Math.cos(base)*d,z:c.z+Math.sin(base)*d,r:2.5,pod:k}}
   // 4.9.2 遊戲角: a small dome beside the hub, where the free bots play; the nearest spot clear of everything else
-  const LR=4.4,others=[...Object.values(P),...Object.values(R)];let pl=null;
+  const LR=5.2,others=[...Object.values(P),...Object.values(R)];let pl=null;
   for(let i=0;i<24;i++){const a=i/24*Math.PI*2+.13;for(let d=P.hub.r+LR+3;d<P.hub.r+LR+60;d+=.5){const x=Math.cos(a)*d,z=Math.sin(a)*d;
     const clear=Math.min(...others.map(o=>Math.hypot(o.x-x,o.z-z)-o.r-LR));if(clear>2.6){if(!pl||d<pl.d-.01)pl={x,z,r:LR,a,d};break}}}
   const S={};
   if(pl){P.play={x:pl.x,z:pl.z,r:LR,a:pl.a};
     // spots in the dome: u points away from the hub, v across
     const ux=Math.cos(pl.a),uz=Math.sin(pl.a),at=(u,v,face)=>({x:pl.x+ux*u-uz*v,z:pl.z+uz*u+ux*v,face});
-    Object.assign(S,{t0:at(-.3,-1.7),t0a:at(-.3,-3.35),t0b:at(-.3,-.05),t1:at(.9,1.9),t1a:at(-.25,1.9),t1b:at(2.05,1.9),
-      arcade:at(3.3,-.6),arcadeB:at(2.25,-.6),juke:at(2.3,-2.9),jukeB:at(1.45,-2.05),bean:at(-1.9,2.9),beanB:at(-1.9,2.9)})}
+    Object.assign(S,{t0:at(0,-2.2),t0a:at(0,-3.95),t0b:at(0,-.45),t1:at(-1.2,2.4),t1a:at(-2.5,2.4),t1b:at(.1,2.4),
+      arcade:at(3.9,-.5),arcadeB:at(2.85,-.5),juke:at(2.6,-3.6),jukeB:at(1.9,-2.6),bean:at(2.2,3.2),beanB:at(2.2,3.1)})}
   let span=10;for(const k in P)span=Math.max(span,Math.hypot(P[k].x,P[k].z)+P[k].r);for(const k in R)span=Math.max(span,Math.hypot(R[k].x,R[k].z)+R[k].r);
   return {pods:P,rooms:R,desks:B,span,spots:S}}
 // where a bot is meant to be: its desk, a seat at its group's table, or beside the colleague it handed work to

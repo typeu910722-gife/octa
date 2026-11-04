@@ -270,25 +270,25 @@ function seaLounge(G,base,L,dome){const T=G.T,c=L.pods.play,g=dome(c.x,c.z,c.r,S
   const box=(w,h,d,m,x,y,z)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m);o.position.set(x,y,z);lg.add(o);return o};
   const leg=std(0x1b3442,{metalness:.6});
   // the ping-pong table (t0), long across the room
-  box(1.3,.07,2.6,std(0x1c6fb0,{roughness:.35}),-.3,1.25,-1.7);
-  box(.04,.01,2.6,new T.MeshBasicMaterial({color:0xe8f6ff}),-.3,1.29,-1.7);
-  box(1.42,.18,.03,new T.MeshBasicMaterial({color:0xdff3ff,transparent:true,opacity:.75}),-.3,1.37,-1.7);
-  box(1.1,.75,.08,leg,-.3,.87,-2.6);box(1.1,.75,.08,leg,-.3,.87,-.8);
+  box(1.3,.07,2.6,std(0x1c6fb0,{roughness:.35}),0,1.25,-2.2);
+  box(.04,.01,2.6,new T.MeshBasicMaterial({color:0xe8f6ff}),0,1.29,-2.2);
+  box(1.42,.18,.03,new T.MeshBasicMaterial({color:0xdff3ff,transparent:true,opacity:.75}),0,1.37,-2.2);
+  box(1.1,.75,.08,leg,0,.87,-3);box(1.1,.75,.08,leg,0,.87,-1.4);
   // the low table (t1): chess or cards
-  const tt=new T.Mesh(new T.CylinderGeometry(.72,.72,.08,28),std(0x6b4a8a,{roughness:.4}));tt.position.set(.9,1,1.9);lg.add(tt);
-  const tl=new T.Mesh(new T.CylinderGeometry(.14,.26,.5,10),leg);tl.position.set(.9,.75,1.9);lg.add(tl);
+  const tt=new T.Mesh(new T.CylinderGeometry(.72,.72,.08,28),std(0x6b4a8a,{roughness:.4}));tt.position.set(-1.2,1,2.4);lg.add(tt);
+  const tl=new T.Mesh(new T.CylinderGeometry(.14,.26,.5,10),leg);tl.position.set(-1.2,.75,2.4);lg.add(tl);
   const boardM=new T.MeshBasicMaterial({map:seaBoardTex(G,'chess'),toneMapped:false});
-  const board=new T.Mesh(new T.PlaneGeometry(.92,.92).rotateX(-Math.PI/2),boardM);board.position.set(.9,1.05,1.9);lg.add(board);
+  const board=new T.Mesh(new T.PlaneGeometry(.92,.92).rotateX(-Math.PI/2),boardM);board.position.set(-1.2,1.05,2.4);lg.add(board);
   // the arcade cabinet: screen and marquee face the room
-  box(.85,1.9,.85,std(0x2a1745,{roughness:.6}),3.3,1.45,-.6);
-  const scrM=new T.MeshBasicMaterial({color:0x3a2a66,toneMapped:false}),scr=new T.Mesh(new T.PlaneGeometry(.62,.46),scrM);scr.rotation.y=-Math.PI/2;scr.position.set(2.865,1.9,-.6);lg.add(scr);
-  box(.9,.18,.9,new T.MeshBasicMaterial({color:0xff7ad9,toneMapped:false}),3.3,2.48,-.6);
-  box(.45,.08,.7,std(0x111822),2.75,1.4,-.6);
+  box(.85,1.9,.85,std(0x2a1745,{roughness:.6}),3.9,1.45,-.5);
+  const scrM=new T.MeshBasicMaterial({color:0x3a2a66,toneMapped:false}),scr=new T.Mesh(new T.PlaneGeometry(.62,.46),scrM);scr.rotation.y=-Math.PI/2;scr.position.set(3.465,1.9,-.5);lg.add(scr);
+  box(.9,.18,.9,new T.MeshBasicMaterial({color:0xff7ad9,toneMapped:false}),3.9,2.48,-.5);
+  box(.45,.08,.7,std(0x111822),3.35,1.4,-.5);
   // the jukebox: an arch of light that changes colour
-  box(.8,1.3,.55,std(0x3b1f2a,{roughness:.4,metalness:.4}),2.3,1.15,-2.9);
-  const jM=new T.MeshBasicMaterial({color:0xffb86b,toneMapped:false}),jk=new T.Mesh(new T.TorusGeometry(.3,.06,6,24,Math.PI),jM);jk.position.set(2.3,1.45,-2.6);lg.add(jk);
+  box(.8,1.3,.55,std(0x3b1f2a,{roughness:.4,metalness:.4}),2.6,1.15,-3.6);
+  const jM=new T.MeshBasicMaterial({color:0xffb86b,toneMapped:false}),jk=new T.Mesh(new T.TorusGeometry(.3,.06,6,24,Math.PI),jM);jk.position.set(2.6,1.45,-3.3);lg.add(jk);
   // a bean bag and a soft rug
-  const bean=new T.Mesh(new T.SphereGeometry(.78,20,12),std(0xff7aa8,{roughness:.95,metalness:0}));bean.scale.set(1,.5,1);bean.position.set(-1.9,.75,2.9);lg.add(bean);
+  const bean=new T.Mesh(new T.SphereGeometry(.78,20,12),std(0xff7aa8,{roughness:.95,metalness:0}));bean.scale.set(1,.5,1);bean.position.set(2.2,.75,3.3);lg.add(bean);
   const rug=new T.Mesh(new T.CircleGeometry(c.r*.82,40).rotateX(-Math.PI/2),new T.MeshBasicMaterial({color:0xff9ad5,transparent:true,opacity:.13,depthWrite:false}));rug.position.y=.52;lg.add(rug);
   const ball=new T.Sprite(new T.SpriteMaterial({map:G.glow,color:0xffffff,transparent:true,depthWrite:false,toneMapped:false}));ball.scale.set(.34,.34,1);ball.visible=false;base.add(ball);
   G.lounge={ball,boardM,boardK:'chess',scr:scrM,juke:jM};
