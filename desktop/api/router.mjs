@@ -4,6 +4,7 @@ import { codeRoutes } from './code-routes.mjs';
 import { auth, bump, ensureSchema, newSession } from './db.mjs';
 import { fileRoutes } from './files.mjs';
 import { hookRoute } from './hooks.mjs';
+import { mailRoutes } from './mail-routes.mjs';
 import { manageRoutes } from './manage-routes.mjs';
 import { runnerRoutes } from './runner-routes.mjs';
 import { screenRoutes } from './screen-routes.mjs';
@@ -27,7 +28,8 @@ export async function onRequest(ctx) {
 }
 
 // handlers in the order the old single router checked them; each returns a Response or nothing
-const HANDLERS = [fileRoutes, runnerRoutes, screenRoutes, chatRoutes, manageRoutes, codeRoutes, settingsRoutes];
+// mailRoutes before runnerRoutes: a bot's call to a mailbox (4.7) is answered there
+const HANDLERS = [fileRoutes, mailRoutes, runnerRoutes, screenRoutes, chatRoutes, manageRoutes, codeRoutes, settingsRoutes];
 
 async function route({ request: req, env, params }) {
   const db = env.DB;

@@ -202,6 +202,7 @@ async function openBoard(span){
 /* ---------- 進階 ---------- */
 SEC.adv=async arg=>{
   const notes=block('sNotes','共用資料','所有機器人都會讀的固定資訊。只給某個分區的資料，請在側邊欄分區名稱旁的 ⋯ →「分區名稱與資料」填寫。');
+  const mail=block('sMail','Gmail（應用程式密碼）','讓機器人讀信、搜尋、整理和寄信，不用開瀏覽器登入 Gmail。密碼只存在這台電腦，不會進對話；寄信前一樣會先問你。');   // 4.7 (mail.js)
   const conn=block('sConn','連接器','有接上的服務，機器人直接問它，金鑰留在這台電腦，不會進對話。沒有接上的，才會改開瀏覽器。');
   const files=block('sFiles','檔案儲存');
   const tpl=block('sTpl','範本','一鍵建立一組常用的機器人，之後都能改名、改任務。');
@@ -221,6 +222,7 @@ SEC.adv=async arg=>{
   trackDirty(notes,save);
   $('gSave').onclick=async()=>{if(await save())toast(I18N.t('已儲存 ✓'))};
   paintConnectors(conn);
+  paintMail(mail);
   paintStore(files);
   if(DESK()){let ds=null;try{ds=await api('desktop/status')}catch(e){}if($('autoRow')){$('autoRow').innerHTML=toggleRow('dAuto','開機自動啟動',!!ds?.autostart,'電腦開機後自動打開 OCTA，例行任務才會準時執行。');
     $('dAuto').onclick=async()=>{const on=!$('dAuto').classList.contains('on');swSet($('dAuto'),on);await api('desktop/autostart','POST',{on}).catch(()=>{})}}}
