@@ -267,3 +267,14 @@ test('app: overview, memory page, alerts, usage and role picker are wired in and
   assert.match(scripts['pure.js'], /retry/);
   for (const s of ['任務總覽', '它記得什麼', '一鍵重試', '只取名字', '有問題的']) assert.ok(dict.en.t[s], s);
 });
+
+test('the /go page passes a 一鍵重試 link on to the app (only with a bot, only digits)', async () => {
+  const go = await import(pathToFileURL(join(import.meta.dirname, '..', 'site', 'go-core.js')).href);
+  assert.deepEqual(go.parseFragment('#web=b-1&retry=42'), { web: 'b-1', retry: '42' });
+  assert.equal(go.parseFragment('#retry=42').retry, undefined);
+  assert.equal(go.parseFragment('#web=b-1&retry=4x').retry, undefined);
+  assert.match(go.appUrl('https://x.trycloudflare.com', { t: 't'.repeat(20), web: 'b-1', retry: '42', go: 'https://octa.yzprojecttw.com/go' }), /#t=t+&web=b-1&retry=42&go=/);
+  const octaFrag = new Function(scripts['pure.js'] + ';return octaFrag')();
+  assert.deepEqual(octaFrag('#web=b-1&retry=42'), { web: 'b-1', retry: '42' });
+  assert.equal(octaFrag('#retry=42').retry, undefined);
+});

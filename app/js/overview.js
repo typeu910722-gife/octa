@@ -107,7 +107,8 @@ function retryBar(a){const b=bot(a.bot);if(!b)return;$('alBar')?.remove();
     e.target.closest('button').disabled=true;if(await oneRetry(a.job))el.remove();else e.target.closest('button').disabled=false}}
 // …#web=<bot>&retry=<job>: the 一鍵重試 link in a Telegram / LINE alert (through the phone's /go page) — shows the bar
 function retryDeepLink(){let job='',web='';try{job=sessionStorage.getItem('octa_goretry')||'';web=sessionStorage.getItem('octa_goretryb')||'';sessionStorage.removeItem('octa_goretry');sessionStorage.removeItem('octa_goretryb')}catch(e){}
-  if(!job||!bot(web))return;if(cur!==web)openConv(web);retryBar({bot:web,job:+job,kind:'',label:'沒有完成工作'})}
+  if(!job||!bot(web))return;if(cur!==web)openConv(web);retryBar({bot:web,job:+job,kind:'',label:'沒有完成工作'});
+  api('alerts').then(d=>{const a=(d.alerts||[]).find(x=>x.job===+job&&x.bot===web);if(a&&$('alBar'))retryBar(a)}).catch(()=>{})}   // what happened, when the alert is still there
 setInterval(()=>{if(!ready())return;if(AL.rev===-2)retryDeepLink();if(S.rev!==AL.rev){AL.rev=S.rev;pollAlerts()}},1500);
 
 /* ---------- 額度看得到: Claude 本週剩 62% in the sidebar footer ---------- */
