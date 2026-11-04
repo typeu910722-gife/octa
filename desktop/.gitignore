@@ -6,3 +6,4 @@ dist/
 /model-route.mjs
 /connectors.mjs
 /schema.sql
+/ports.json

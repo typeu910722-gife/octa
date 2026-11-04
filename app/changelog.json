@@ -1,5 +1,42 @@
 [
  {
+  "v": "4.7.0",
+  "date": "2026-11-04",
+  "notes": [
+   "機器人在同一輪直接操作瀏覽器，不再派給另一輪：你看得到它在點，隨時可以接手",
+   "每件工作顯示「步驟 2/5：正在做什麼」，可以暫停、繼續、停止",
+   "核准改成卡片：看得到對象、內容、時間，按「核准」或「修改」就好，不用打字",
+   "📌📝🧩⏰ 這些內部標記收成小標籤，對話只留人話；回覆第一行放結果，細節可展開",
+   "新增「任務總覽」：每個機器人今天做了什麼、沒做成什麼、下次排程，一頁看完",
+   "新增「它記得什麼」：規則、技能、手冊可以搜尋、修改、刪除，看得到是誰設的",
+   "被登出、API 壞掉、名單沒出現時主動通知，附「一鍵重試」",
+   "建立機器人可選客服、房務、報表等範本，自帶規則和排程；左下角一直顯示 AI 額度",
+   "Gmail：Google 網站改用機器人自己的 Chrome 並保持登入；也可以用「Gmail（應用程式密碼）」直接讀信寄信"
+  ],
+  "notes_en": [
+   "Bots now use the browser themselves in the same turn — you see them click and can take over any time",
+   "Each job shows \"Step 2/5: what it is doing\", with pause, resume and stop",
+   "Approvals are cards with recipient, content and time — just press Approve or Edit",
+   "Internal markers become small tags; the chat keeps only plain words, with the result first and details folded",
+   "New Overview page: what every bot did today, what failed, and what is scheduled next",
+   "New \"What it remembers\" page: search, edit and delete rules, skills and manuals, with who set them",
+   "Instant alerts with one-tap retry when a bot is logged out, an API fails, or expected data is missing",
+   "Role templates (customer service, housekeeping, reports…) when creating a bot; AI quota always visible",
+   "Gmail: Google sites use the bot's own Chrome and stay signed in; or connect \"Gmail (app password)\" to read and send mail directly"
+  ],
+  "notes_ja": [
+   "ボットが同じターンで自分でブラウザを操作。クリックが見え、いつでも引き継げます",
+   "各作業に「ステップ 2/5：作業内容」を表示、一時停止・再開・停止が可能",
+   "承認はカードに：宛先・内容・時間を確認して「承認」か「修正」",
+   "内部マーカーは小さなタグに。チャットは結果を先頭に、詳細は折りたたみ",
+   "新しい「タスク一覧」：各ボットの今日の作業、失敗、次の予定を一画面で",
+   "新しい「覚えていること」：ルール・スキル・手順書を検索・編集・削除、誰が設定したかも表示",
+   "ログアウト・API エラー・データ未取得を即通知、ワンタップで再試行",
+   "ボット作成時に役割テンプレート（接客・清掃・レポートなど）、AI 残量を常に表示",
+   "Gmail：Google サイトはボット専用の Chrome でログインを維持。「Gmail（アプリパスワード）」で直接メール送受信も可能"
+  ]
+ },
+ {
   "v": "4.6.1",
   "date": "2026-11-03",
   "notes": [
