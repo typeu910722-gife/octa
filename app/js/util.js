@@ -24,6 +24,10 @@ const ICONS={
   back:'<path d="m14.5 5-7 7 7 7"/>',
   chev:'<path d="m9.5 6 6 6-6 6"/>',
   down:'<path d="M12 5v14M6 13l6 6 6-6"/>',
+  up:'<path d="M12 19V5M6 11l6-6 6 6"/>',
+  gauge:'<path d="M4.5 16.5a8 8 0 1 1 15 0"/><path d="m12 13 3.5-4"/><circle cx="12" cy="13.2" r="1.2"/>',
+  grip:'<circle cx="9" cy="7" r="1.1"/><circle cx="15" cy="7" r="1.1"/><circle cx="9" cy="12" r="1.1"/><circle cx="15" cy="12" r="1.1"/><circle cx="9" cy="17" r="1.1"/><circle cx="15" cy="17" r="1.1"/>',
+  keyboard:'<rect x="3" y="6.5" width="18" height="11" rx="2"/><path d="M7 10.5h.01M10.5 10.5h.01M14 10.5h.01M17.5 10.5h.01M8 14h8"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
   send:'<path d="M12 19V5M6 11l6-6 6 6"/>',
   clip:'<path d="m20.5 11.5-8.4 8.4a5 5 0 0 1-7.1-7.1l8.8-8.8a3.3 3.3 0 0 1 4.7 4.7l-8.8 8.8a1.7 1.7 0 0 1-2.4-2.4l8-8"/>',
@@ -100,10 +104,12 @@ function applyTheme(t,persist){
 document.addEventListener('click',e=>{const set=e.target.closest('[data-set-theme]');if(set)applyTheme(set.dataset.setTheme)});
 
 /* text size for the whole interface (kept on this device). 80–200, and 200 is twice the standard size. */
-function fsName(p){return p<=90?'小':p<=105?'標準':p<150?'大':'特大'}
-function currentFsPercent(){const f=store.get('octa_fs');const map={s:93,m:100,l:112,xl:200};if(map[f])return map[f];const n=Math.round(Number(f));return n>=80&&n<=200?n:100}
-function applyFs(raw){let p=Math.round(Number(raw));if(!Number.isFinite(p))p=100;p=Math.min(200,Math.max(80,p));const z=p/100;const root=document.documentElement;root.style.setProperty('--fz',String(z));
-  if(z>=1.6)root.dataset.fs='xl';else if(z>=1.08)root.dataset.fs='l';else if(z<=0.95)root.dataset.fs='s';else delete root.dataset.fs;
+// 4.8: smaller sizes too (65%–80%: 極小／很小) for people who want more on the screen
+const FS_MIN=65,FS_MAX=200;
+function fsName(p){return p<=72?'極小':p<=82?'很小':p<=92?'小':p<=105?'標準':p<150?'大':'特大'}
+function currentFsPercent(){const f=store.get('octa_fs');const map={s:93,m:100,l:112,xl:200};if(map[f])return map[f];const n=Math.round(Number(f));return n>=FS_MIN&&n<=FS_MAX?n:100}
+function applyFs(raw){let p=Math.round(Number(raw));if(!Number.isFinite(p))p=100;p=Math.min(FS_MAX,Math.max(FS_MIN,p));const z=p/100;const root=document.documentElement;root.style.setProperty('--fz',String(z));
+  if(z>=1.6)root.dataset.fs='xl';else if(z>=1.08)root.dataset.fs='l';else if(z<=0.8)root.dataset.fs='xs';else if(z<=0.95)root.dataset.fs='s';else delete root.dataset.fs;
   store.set('octa_fs',String(p));const lab=$('fsLab');if(lab)lab.textContent=I18N.t(fsName(p))+' · '+p+'%';if(typeof grow==='function')grow()}
 
 /* ---------- time ---------- */
@@ -117,6 +123,23 @@ setInterval(()=>document.querySelectorAll('.el[data-since]').forEach(e=>e.textCo
 const ago=t=>{const m=Math.round((Date.now()-t)/60000),rt=new Intl.RelativeTimeFormat(I18N.lang,{numeric:'auto'});return m<60?rt.format(-m,'minute'):m<1440?rt.format(-Math.round(m/60),'hour'):rt.format(-Math.round(m/1440),'day')};
 const when=t=>t?new Date(t).toLocaleString(I18N.lang,{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 const setHTML=(el,h)=>{if(el._h!==h){el._h=h;el.innerHTML=h;return true}return false};
+/* 4.8 smoother redraws: like setHTML, but what did not change stays the very same element (no flicker, pictures not
+   reloaded, hover, focus and running animations kept). A piece with a key (data-k, data-ws, data-mid) that changed inside
+   is updated in place, one level down at a time; anything else that changed is replaced. */
+function morph(el,h){if(el._h===h)return false;el._h=h;const t=document.createElement('template');t.innerHTML=h;morphKids(el,[...t.content.childNodes]);return true}
+const morphKey=n=>n.nodeType===1?(n.getAttribute('data-k')||n.getAttribute('data-ws')||n.getAttribute('data-mid')):null;
+function morphKids(el,nu){const exact=new Map(),byKey=new Map(),used=new Set();
+  for(const n of el.childNodes){if(n._k!=null)(exact.get(n._k)||exact.set(n._k,[]).get(n._k)).push(n);const kk=morphKey(n);if(kk)byKey.set(n.nodeName+'|'+kk,n)}
+  const out=nu.map(n=>{const k=n.nodeType===1?n.outerHTML:'#'+n.textContent,a=exact.get(k);let keep=null;
+    while(a&&a.length){const c=a.shift();if(!used.has(c)){keep=c;break}}
+    if(!keep){const kk=morphKey(n),o=kk&&byKey.get(n.nodeName+'|'+kk);
+      if(o&&!used.has(o)){
+        for(const at of [...o.attributes])if(!n.hasAttribute(at.name))o.removeAttribute(at.name);
+        for(const at of [...n.attributes])if(o.getAttribute(at.name)!==at.value)o.setAttribute(at.name,at.value);
+        morphKids(o,[...n.childNodes]);keep=o}}
+    keep=keep||n;used.add(keep);keep._k=k;return keep});
+  for(const n of [...el.childNodes])if(!used.has(n))n.remove();
+  let ref=el.firstChild;for(const n of out){if(n===ref){ref=ref.nextSibling;continue}el.insertBefore(n,ref)}}
 
 /* phone layout (one column) and touch screens */
 const phoneUI=()=>matchMedia('(max-width:760px)').matches;

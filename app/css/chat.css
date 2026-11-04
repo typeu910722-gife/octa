@@ -266,6 +266,16 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}
 .rres.bad .rri{background:var(--warn)}
 .rri .icon{width:14px;height:14px;stroke-width:2.6}
 .rrt{min-width:0;overflow-wrap:anywhere}
+/* 4.8: the line leads with 完成／未完成 in words, then what it says */
+.rrk{margin-right:8px;font-weight:750;color:var(--ok)}
+.rres.bad .rrk{color:var(--warn)}
+/* 4.8: the hint above the chat says what happened */
+.followbar{max-width:min(92%,640px)}
+.followbar #followBit{display:flex;align-items:center;gap:7px;min-width:0}
+.followbar #followBit b{flex:none;font-weight:650}
+.followbar .fw{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)}
+.followbar .fav{flex:none}
+.followbar.need{border-color:color-mix(in srgb,var(--warn) 35%,var(--line))}
 .rrt code{font-size:.9em}
 .more3.fold{display:inline-flex;align-items:center;gap:4px;padding:3px 10px 3px 6px;margin-top:-2px;border-radius:var(--r-full);background:var(--sunk);color:var(--ink2);font-weight:600;font-size:calc(12.5px * var(--fz))}
 .more3.fold:hover{background:var(--press);color:var(--ink)}
@@ -300,13 +310,15 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}
 .aped input{font-weight:400;color:var(--ink)}
 .aped .apkv{padding-left:0}
 
-/* ---------- 4.7: a running job in the chat — one line, a thin bar, 暫停／繼續, 停止 ---------- */
-.jchip{align-self:stretch;display:flex;align-items:center;gap:6px;margin:10px 0 4px;padding:5px 6px 5px 5px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);box-shadow:var(--sh-1);max-width:min(100%,620px)}
-.jchip.paused,.jchip.pausing{background:color-mix(in srgb,var(--warn-soft) 70%,var(--panel));border-color:color-mix(in srgb,var(--warn) 30%,var(--line))}
-.jmain{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:2px 6px 2px 2px;border-radius:10px;text-align:left}
-.jmain:hover{background:var(--hover)}
-.jmain .av{flex:none}
-.jtx{flex:1;min-width:0;display:grid;gap:5px}
+/* ---------- 4.8: a running job in the chat is only 「…」 (its steps, 暫停 and 停止 are in the 工作 panel) ---------- */
+.m.typing{align-items:center}
+.tdots{display:inline-flex;align-items:center;gap:4px;height:34px;padding:0 14px;border-radius:17px 17px 17px 6px;background:var(--sunk);color:var(--mute);font-size:calc(12.5px * var(--fz))}
+.tdots:hover{background:var(--hover);color:var(--ink2)}
+.tdots>i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.35;animation:tdot 1.2s infinite ease-in-out}
+.tdots>i:nth-child(2){animation-delay:.15s}.tdots>i:nth-child(3){animation-delay:.3s}
+.tdots.paused{background:var(--warn-soft);color:var(--warn);font-weight:600}
+@keyframes tdot{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:.9;transform:translateY(-3px)}}
+/* the progress bar in the 工作 panel's current card */
 .jl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:calc(13.5px * var(--fz));color:var(--ink2);line-height:1.35}
 .jstep{color:var(--accent-ink);font-weight:700;font-variant-numeric:tabular-nums}
 .jsep{color:var(--faint)}
@@ -314,17 +326,12 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}
 .jps{display:inline-block;margin-right:6px;padding:0 7px;border-radius:var(--r-full);background:var(--warn-soft);color:var(--warn);font-weight:650;font-size:.92em}
 .jbar{display:block;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
 .jbar>i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--brand));transition:width .5s var(--ease)}
-.jchip.paused .jbar>i{background:var(--warn)}
-.jmain .el{flex:none;color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums}
+.wcur.paused .jbar>i{background:var(--warn)}
 .jb{flex:none;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:9px;color:var(--ink2);font-size:calc(12.5px * var(--fz));font-weight:600}
 .jb:hover:not(:disabled){background:var(--hover);color:var(--ink)}
 .jb .icon{width:15px;height:15px}
-.jb.stop:hover:not(:disabled){background:var(--err-soft);color:var(--err)}
-.jchip:not(.paused):not(.pausing) .jtx .jcur::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:jdots 1.4s steps(4,end) infinite;vertical-align:bottom}
-@keyframes jdots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
 
-/* the header: 工作中… 2/5, and a bot waiting on a colleague */
-#psub .pstep{font-variant-numeric:tabular-nums;font-weight:700;margin-left:2px}
+/* the header: a bot waiting on a colleague */
 .cwait{flex:none;display:inline-flex;align-items:center;gap:5px;max-width:min(42%,360px);height:30px;padding:0 11px 0 8px;margin-right:4px;border-radius:var(--r-full);background:var(--info-soft);color:var(--ink2);font-size:calc(12.5px * var(--fz));white-space:nowrap;overflow:hidden}
 .cwait:hover{background:color-mix(in srgb,var(--info) 18%,transparent);color:var(--ink)}
 .cwait b{color:var(--ink);font-weight:650;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -334,23 +341,13 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}
 .cwait .cwf::after{content:"·";margin-left:5px;color:var(--faint)}
 .cwait .cwm{font-variant-numeric:tabular-nums;font-weight:700;color:var(--info)}
 
-/* the sidebar row of a working bot: 2/5 and a thin bar along its bottom */
 .item{position:relative}
-.lw .lstep{font-variant-numeric:tabular-nums;font-weight:700;margin-left:2px}
-.lbar{position:absolute;left:58px;right:12px;bottom:5px;height:2px;border-radius:2px;background:var(--line);overflow:hidden}
-.lbar>i{display:block;height:100%;background:var(--accent);border-radius:2px;transition:width .5s var(--ease)}
 
 @media (max-width:760px){
-  .jchip{margin:8px 0 2px;gap:2px;padding:4px}
-  .jmain{gap:8px}
-  .jmain .el{display:none}
-  .jchip .jb{padding:0 8px}
-  .jchip .jb span{display:none}
   .apcard.wait .appr{display:grid;grid-template-columns:1fr 1fr}
   .apcard.wait .appr>button{width:100%}
   .apbody,.aped{margin-left:0;padding-left:0}
   .apbody{padding-left:12px}
   .cwait{max-width:40%;padding:0 9px 0 7px;margin-right:0}
   .cwait .cwl,.cwait .cwf{display:none}
-  .lbar{left:62px}
 }

@@ -141,8 +141,9 @@ function renderChat(scroll){
   $('pname').textContent=c.name;
   // while it works, the line under the name says what it is doing (the details are in the work panel)
   const st=g?(busyIn(cur).some(x=>x.status==='running')?'working':''):stateOf(cur);
-  const rj=runOf(cur),rv=rj&&progView(rj.progress),ps=rj&&pauseOf(rj);
-  setHTML($('psub'),st&&st!=='idle'?`<span class="pst">${ps==='paused'?'<span>已暫停</span>':`${esc(I18N.t(STATE_LABEL[st]))}…`}${rv?.has?` <span class="pstep">${rv.step}/${rv.total}</span>`:''}</span> · ${subLine(c)}`:subLine(c));
+  const rj=runOf(cur),ps=rj&&pauseOf(rj);
+  // 4.8: no step count here — progress lives in the 工作 panel only (評論：「步驟 1/3 出現三次」)
+  setHTML($('psub'),st&&st!=='idle'?`<span class="pst">${ps==='paused'?'<span>已暫停</span>':`${esc(I18N.t(STATE_LABEL[st]))}…`}</span> · ${subLine(c)}`:subLine(c));
   const off=!S.runnerOnline;$('offb').hidden=!off;
   if(off)setHTML($('offb'),`${ic('info')}<span>${DESK()?'機器人目前沒有在工作。訊息會先排著，OCTA 準備好就會做。':CFG.via?'主機電腦上的 OCTA 沒有在執行。訊息會先排著，主機電腦開機後就會做。':'電腦上的 OCTA 沒有在執行。訊息會先排著，電腦開機後就會做。'}</span>`);
   $('msg').placeholder=I18N.t(g&&!phoneUI()?'輸入指示，可用 @ 指定誰做':'輸入指示…');
@@ -152,6 +153,9 @@ function renderChat(scroll){
   paintTo();
   const box=$('msgs'),atBottom=box.scrollHeight-box.scrollTop-box.clientHeight<120;
   const switched=box._conv!==cur;box._conv=cur;
+  // 4.8: a reply that just arrived rises in (once); opening a chat shows its history as it is
+  const seenIds=box._seen&&!switched?box._seen:null,nowIds=new Set();
+  const freshK=m=>{nowIds.add(m.id);return seenIds&&!seenIds.has(m.id)?' fresh':''};
   const mc=MSG[cur];
   let mh=!mc?.loaded?'<div class="sys fade">載入中…</div>':mc.more?'<button type="button" class="ghost sm older" id="older">載入更早的訊息</button>':'';
   let prevDay='';
@@ -161,30 +165,32 @@ function renderChat(scroll){
       if(!long)return `<div class="sys"><span>${esc(t)}</span><span class="ts">${hm(m.ts)}</span></div>`;
       const head=first.length>48?first.slice(0,46)+'…':first;   // long background notes: one line, the rest on tap
       return `<details class="sys sysd"${SYSOPEN.has(String(m.id))?' open':''} data-sid="${esc(String(m.id))}"><summary><span>${esc(head)}</span><span class="ts">${hm(m.ts)}</span></summary><div class="sysfull">${esc(t)}</div></details>`}
-    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}${rk}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'<span>傳送中…</span>':hm(m.ts)}</div></div>${m.tmp?'':acts(m,true)}</div>`;
+    if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}${rk}${m.tmp?' fresh':''}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'<span>傳送中…</span>':hm(m.ts)}</div></div>${m.tmp?'':acts(m,true)}</div>`;
     // 4.7: only the human words; the bot's markers become chips under it, its ✅ 完成／⚠ 沒做成 line leads, long replies fold
-    const v=msgView(m),open=OPENED.has(m.id),mv={...m,text:v.text};
-    const body=APPR.test(v.text)?apprStrip(optText(mv)):optText(mv),f=foldReply(body);
+    // 4.8: when the ✅／⚠ line says what the reply opens with, it is said once (the pill), not twice
+    const v=msgView(m),open=OPENED.has(m.id),rb=resultBody(v.text,v.result,msgMeta(m)?.result?.whole),mv={...m,text:rb.text};
+    const body=APPR.test(rb.text)?apprStrip(optText(mv)):optText(mv),f=foldReply(body);
     const long=!f.rest&&(body.length>1400||body.split('\n').length>30);
     const shown=f.rest?f.head+(open?'\n\n'+f.rest:''):body;
-    const res=v.result?`<div class="rres ${v.result.ok?'ok':'bad'}"><span class="rri" aria-hidden="true">${v.result.ok?ic('check'):'!'}</span><span class="rrt">${v.result.text?`<span data-u>${inl(v.result.text)}</span>`:`<span>${v.result.ok?'完成':'沒做成'}</span>`}</span></div>`:'';
+    const res=v.result&&rb.pill?`<div class="rres ${v.result.ok?'ok':'bad'}"><span class="rri" aria-hidden="true">${v.result.ok?ic('check'):'!'}</span><span class="rrt"><b class="rrk">${v.result.ok?'完成':'未完成'}</b>${v.result.text?`<span data-u>${inl(v.result.text)}</span>`:''}</span></div>`:'';
     const more=f.rest?`<button type="button" class="more3 fold" data-expand="${m.id}" aria-expanded="${open}">${ic('chev','fch')}<span>${open?'收合詳細':'展開詳細'}</span></button>`
       :long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:'';
-    return `<div class="m bot${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx"><div class="mh"><b data-u>${esc(nameOf(m.by))}</b><span class="ts">${hm(m.ts)}</span></div>${quoteHtml(m)}${res||shown||(m.files||[]).length?`<div class="bub md${long&&!open?' long':''}${res?' hasres':''}" data-dragmsg="1">${res}${shown?`<div data-u>${md(shown)}</div>`:''}${filesHtml(m.files)}</div>`:''}${more}${notesHtml(m,v.notes)}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}</div>${acts(m,false)}</div>`};
+    return `<div class="m bot${rk}${freshK(m)}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx"><div class="mh"><b data-u>${esc(nameOf(m.by))}</b><span class="ts">${hm(m.ts)}</span></div>${quoteHtml(m)}${res||shown||(m.files||[]).length?`<div class="bub md${long&&!open?' long':''}${res?' hasres':''}" data-dragmsg="1">${res}${shown?`<div data-u>${md(shown)}</div>`:''}${filesHtml(m.files)}</div>`:''}${more}${notesHtml(m,v.notes)}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}</div>${acts(m,false)}</div>`};
   loadBack(cur);   // 幕後 (for the work panel, and to tell older background answers apart)
   // the conversation only: what you said, replies, pictures and files, approvals, questions. The rest is in the work panel.
   const shown=chatMsgs(cur),same=(a,b)=>!!a&&!!b&&a.by!=='sys'&&a.by===b.by&&Math.abs((b.ts||0)-(a.ts||0))<5*60000&&new Date(a.ts).toDateString()===new Date(b.ts).toDateString();
   if(mc?.loaded&&!shown.length&&!busyIn(cur).length&&!mc.more)mh+=welcomeHtml(c,g);
   mh+=shown.map((m,i)=>{const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day"><span>${esc(dayLabel(m.ts))}</span></div>`}return sep+row(m,(same(shown[i-1],m)&&!sep?' cont':'')+(same(m,shown[i+1])?'':' tail'))}).join('');
-  // it is answering you: one compact line with its face, 「步驟 2/5：…」 and a thin bar, 暫停／繼續 and 停止 (the step list is in the work panel)
+  // it is answering you: only a small 「…」 with its face (a tap opens 工作, where the steps, 暫停 and 停止 are). 4.8: one place for progress
   const typing=busyIn(cur).filter(x=>x.status==='running'&&(x.kind==='chat'||x.kind==='code')&&!+x.bg&&bot(x.bot_id));
-  if(typing.length)mh+=typing.map(jobChip).join('');
+  if(typing.length)mh+=typing.map(typingDots).join('');
   const ed=AED.mid!=null&&document.activeElement?.dataset?.aedit,sel=ed?[document.activeElement.selectionStart,document.activeElement.selectionEnd]:null;
-  const changed=setHTML(box,mh);if(changed){loadThumbs(box);paintIcons(box)}
+  box._seen=new Set([...(seenIds||[]),...nowIds]);
+  const changed=morph(box,mh);if(changed){loadThumbs(box);paintIcons(box)}
   if(changed&&AED.mid!=null&&(ed||AED.focus)){const el=box.querySelector(`[data-aedit="${ed||AED.focus}"]`);if(el){el.focus({preventScroll:!!ed});if(sel)el.setSelectionRange(...sel);else{el.setSelectionRange(el.value.length,el.value.length);el.scrollIntoView({block:'nearest'})}}AED.focus=null}   // the editor keeps what you type and where
   if(switched||scroll){box.scrollTop=box.scrollHeight;$('jump').hidden=true}
   else if(changed){if(atBottom)box.scrollTo({top:box.scrollHeight,behavior:'smooth'});else $('jump').hidden=false}
-  if(atBottom||switched||scroll){markSeen(cur)}
+  if(atBottom||switched||scroll){markSeen(cur);failSeen(cur)}
   paintReply();
   paintFail(c);
   paintSend();
@@ -196,10 +202,12 @@ const HINT={gone:new Set(),key:''};
 function hideFollow(){const bar=$('followbar');if(bar)bar.hidden=true;HINT.key=''}
 // is something being written here? then nothing may take this chat away
 const composing=()=>!!((($('msg')&&$('msg').value)||'').trim()||pending.length||replyTo);
-function showHint(id,kind,key){const c=conv(id),bar=$('followbar');if(!c||!bar||id===cur||HINT.gone.has(key))return;
-  HINT.key=key;bar.dataset.conv=id;bar.dataset.key=key;bar.hidden=false;
+// 4.8: the hint says what happened (the reply's first sentence, the approval's what, why it did not work out), not just 「有新動態」
+function showHint(id,kind,key,what,need){const c=conv(id),bar=$('followbar');if(!c||!bar||id===cur||HINT.gone.has(key))return;
+  HINT.key=key;bar.dataset.conv=id;bar.dataset.key=key;bar.hidden=false;bar.classList.toggle('need',!!need?.k);
   setHTML($('followBit'),kind==='remote'?`<span>另一台裝置正在看</span> <b data-u>「${esc(c.name)}」</b>`
-    :`<b data-u>${esc(c.name)}</b> <span>${kind==='ask'?'在等你核准':'有新動態'}</span>`)}
+    :`<span class="fav av xs" data-u>${isG(id)?gStack(c):avOf(id)}</span><b data-u>${esc(c.name)}</b>${need?.k?`<i class="need ${need.k}">${esc(I18N.t(need.label))}</i>`:''}<span class="fw" data-u>${esc(what||I18N.t(kind==='ask'?'在等你核准':'有新動態'))}</span>`)
+  $('followGo').textContent=I18N.t(need?.k==='ap'?'去核准':need?.k==='login'?'去登入':'打開')}
 function followRemote(f){
   if(!f?.conv||f.conv===cur||!conv(f.conv)||Date.now()-(f.at||0)>180000){if(String(HINT.key).startsWith('f:'))hideFollow();return}
   showHint(f.conv,'remote','f:'+f.conv+':'+(f.at||0))}

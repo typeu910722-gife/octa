@@ -1,7 +1,7 @@
 /* OCTA web app — 4.7 pieces of the conversation: a running job's line (步驟 2/5, 暫停／繼續, 停止), the bot's markers as chips,
    the approval card's editor and the header line when a bot waits on a colleague. Used by chat.js, panel.js and list.js. */
 'use strict';
-/* ---------- 4.7 a running job: 「步驟 2/5：正在讀…」, a thin bar, 暫停／繼續 and 停止 (chat line, work panel, sidebar) ---------- */
+/* ---------- 4.7 a running job: 「步驟 2/5：正在讀…」, a thin bar, 暫停／繼續 and 停止 — 4.8: only in the 工作 panel ---------- */
 const PAUSE={};   // job → {on, at}: what you pressed, until the runner says so (paused)
 function pauseOf(x){const p=PAUSE[x.job],on=!!+x.paused;
   if(p&&(p.on===on||Date.now()-p.at>120000))delete PAUSE[x.job];
@@ -15,10 +15,9 @@ function progLine(x){const v=progView(x.progress),ps=pauseOf(x);
 const progBar=x=>{const v=progView(x.progress);return v.has?`<i class="jbar" role="progressbar" aria-valuemin="0" aria-valuemax="${v.total}" aria-valuenow="${v.step-1}"><i style="width:${v.pct}%"></i></i>`:''};
 function pauseBtn(x){const ps=pauseOf(x),resume=ps==='paused'||ps==='pausing';
   return `<button type="button" class="jb" data-jpause="${x.job}" data-on="${resume?0:1}"${ps==='resuming'?' disabled':''} title="${resume?'繼續':'暫停'}">${ic(resume?'play':'pause')}<span>${resume?'繼續':'暫停'}</span></button>`}
-function jobChip(x){const ps=pauseOf(x);
-  return `<div class="jchip${ps?' '+ps:''}" data-job="${x.job}"><button type="button" class="jmain" data-wgo="work" title="在工作面板看每一步"><span class="av sm" data-u>${avOf(x.bot_id,'always')}</span>
-    <span class="jtx"><span class="jl">${progLine(x)}</span>${progBar(x)}</span><span class="el" data-since="${x.started||x.created}">${elapsed(x.started||x.created)}</span></button>
-    ${x.kind==='open'?'':pauseBtn(x)}<button type="button" class="jb stop" data-jstop title="停止">${ic('stop')}<span>停止</span></button></div>`}
+// 4.8 the chat shows only that it is answering: its face and three dots (a tap opens 工作 with the steps)
+function typingDots(x){const ps=pauseOf(x);
+  return `<div class="m bot typing" data-job="${x.job}"><span class="av sm" data-u>${avOf(x.bot_id,'always')}</span><button type="button" class="tdots${ps==='paused'?' paused':''}" data-wgo="work" title="${esc(I18N.t('在工作面板看每一步'))}" aria-label="${esc(nameOf(x.bot_id)+' '+I18N.t(ps==='paused'?'已暫停':'正在回覆'))}">${ps==='paused'?`<span>${I18N.t('已暫停')}</span>`:'<i></i><i></i><i></i>'}</button></div>`}
 async function jobPause(job,on,btn){if(!job)return;if(btn)btn.disabled=true;PAUSE[job]={on,at:Date.now()};render(false);
   try{await api('job/'+job+'/pause','POST',{on});refresh()}
   catch(err){delete PAUSE[job];render(false);toast(err.message)}}

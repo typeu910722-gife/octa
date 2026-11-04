@@ -43,7 +43,7 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
 .iw.dragging{opacity:.45}
 .iw.over .item{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent)}
 .iw.over::after{content:attr(data-hint);position:absolute;right:8px;top:6px;font-size:11px;font-weight:650;color:var(--accent-ink);background:var(--panel);border-radius:var(--r-full);padding:2px 8px;box-shadow:var(--sh-1)}
-.item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:8px 8px;border-radius:var(--r);min-height:58px;transition:background var(--t-fast)}
+.item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:var(--row-py,8px) 8px;border-radius:var(--r);min-height:var(--row-h,58px);transition:background var(--t-fast)}
 .item:hover{background:var(--hover)}
 .item.on{background:var(--panel);box-shadow:var(--sh-1),inset 0 0 0 1px var(--line)}
 .item .t{flex:1;min-width:0;display:grid;gap:2px}
@@ -53,9 +53,16 @@ button.sect:hover{color:var(--ink2);background:var(--hover)}
 .tm{font-size:11.5px;color:var(--faint);flex:none;font-variant-numeric:tabular-nums}
 .l2{display:flex;align-items:center;gap:6px;min-width:0}
 .l2 small{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mute);font-size:calc(12.5px * var(--fz))}
-.ub{flex:none;min-width:19px;height:19px;padding:0 6px;border-radius:10px;background:var(--accent);color:var(--on-accent);font-style:normal;font-size:11px;font-weight:700;display:grid;place-items:center}
-.need{flex:none;font-style:normal;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:var(--r-full);background:var(--warn-soft);color:var(--warn)}
+.l2 small.pv{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.38;overflow-wrap:anywhere}
+.l2:has(.pv){align-items:flex-start}
+.l2 .need,.l2 .ub{margin-top:1px}
+/* 4.8: new messages are a quiet grey count; what needs you is a coloured tag with words */
+.ub{flex:none;min-width:19px;height:18px;padding:0 6px;border-radius:9px;background:var(--line);color:var(--ink2);font-style:normal;font-size:11px;font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.need{flex:none;font-style:normal;font-size:calc(10.5px * var(--fz));font-weight:700;padding:1px 7px;border-radius:var(--r-full);background:var(--err-soft);color:var(--err);white-space:nowrap;line-height:1.55}
 .need.ap{background:var(--accent);color:var(--on-accent)}
+.need.login{background:var(--warn-soft);color:var(--warn)}
+.need.ask{background:var(--info-soft);color:var(--info)}
+.need.fail{background:var(--err-soft);color:var(--err)}
 .iw>.more{position:absolute;right:6px;top:8px;opacity:0;background:var(--panel);box-shadow:var(--sh-1)}
 .iw:hover>.more,.iw>.more:focus-visible{opacity:1}
 .iw:hover .tm{visibility:hidden}

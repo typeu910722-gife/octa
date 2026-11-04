@@ -5,7 +5,10 @@
 <script>
 /* look and text size before first paint: data-theme is set only when the person picked one (otherwise the system decides) */
 (function(){try{var d=document.documentElement,q=new URLSearchParams(location.search).get('theme'),s=localStorage.getItem('octa_theme');var t=(q==='light'||q==='dark')?q:s;if(t==='light'||t==='dark')d.setAttribute('data-theme',t);if(window.octaDesktop)d.classList.add('desk');
-var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=80&&n<=200)z=n/100}if(z){d.style.setProperty('--fz',String(z));if(z>=1.6)d.setAttribute('data-fs','xl');else if(z>=1.08)d.setAttribute('data-fs','l');else if(z<=.95)d.setAttribute('data-fs','s')}}catch(e){}})();
+var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=65&&n<=200)z=n/100}if(z){d.style.setProperty('--fz',String(z));if(z>=1.6)d.setAttribute('data-fs','xl');else if(z>=1.08)d.setAttribute('data-fs','l');else if(z<=.8)d.setAttribute('data-fs','xs');else if(z<=.95)d.setAttribute('data-fs','s')}
+var dn=localStorage.getItem('octa_density');if(dn==='compact')d.setAttribute('data-density','compact');var cw=localStorage.getItem('octa_cw');if(cw==='narrow'||cw==='wide')d.setAttribute('data-cw',cw);
+var sw=+localStorage.getItem('octa_sidew');if(sw>=220&&sw<=440)d.style.setProperty('--side-w',sw+'px');
+var ac=localStorage.getItem('octa_accent_css');if(ac){var st=document.createElement('style');st.id='accentCss';st.textContent=ac;document.head.appendChild(st)}}catch(e){}})();
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
@@ -26,6 +29,7 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
 <link rel="stylesheet" href="/css/avatar.css">
 <link rel="stylesheet" href="/css/workpanel.css">
 <link rel="stylesheet" href="/css/overview.css">
+<link rel="stylesheet" href="/css/prefs.css">
 <script src="/i18n-dict.js"></script>
 <script src="/i18n-core.js"></script>
 </head>
@@ -168,6 +172,7 @@ var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[
 <div class="veil" id="veil" hidden></div>
 
 <script defer src="/js/util.js"></script>
+<script defer src="/js/prefs.js"></script>
 <script defer src="/js/pure.js"></script>
 <script defer src="/js/api.js"></script>
 <script defer src="/js/avatar.js"></script>

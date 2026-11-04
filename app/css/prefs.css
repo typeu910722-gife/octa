@@ -1,0 +1,77 @@
+/* OCTA 4.8: your own look (accent, density, chat width, text size down to 65%), resizable sidebar,
+   reordering the sidebar by drag, and cheap, smooth motion (transform/opacity only; none with reduced motion). */
+
+/* ---------- text size: the two smallest steps keep things legible and in place ---------- */
+html[data-fs="xs"]{--fz:.75}
+html[data-fs="xs"] .item{gap:9px}
+html[data-fs="xs"] .item .av:not(.xs):not(.sm){width:30px;height:30px}
+html[data-fs="xs"] .tm,html[data-fs="xs"] .ub,html[data-fs="xs"] .sect .cnt,html[data-fs="xs"] .wtt time{font-size:10.5px}
+html[data-fs="xs"] .ph .t small,html[data-fs="xs"] .status,html[data-fs="xs"] .sfbtn{font-size:11.5px}
+html[data-fs="xs"] .ib{width:32px;height:32px}
+html[data-fs="xs"] .composer textarea{min-height:36px}
+
+/* ---------- density: 緊湊 shows more rows and messages ---------- */
+html[data-density="compact"]{--row-h:44px;--row-py:4px}
+html[data-density="compact"] .l2 small.pv{-webkit-line-clamp:1;white-space:nowrap;display:block;text-overflow:ellipsis}
+html[data-density="compact"] .item{gap:9px}
+html[data-density="compact"] .item .av:not(.xs):not(.sm){width:30px;height:30px}
+html[data-density="compact"] .fold{margin-top:4px}
+html[data-density="compact"] .msgs{gap:2px}
+html[data-density="compact"] .m{margin-top:4px}
+html[data-density="compact"] .wi{padding:5px 2px}
+html[data-density="compact"] .wsec{margin-top:10px}
+
+/* ---------- chat width ---------- */
+html[data-cw="narrow"] .pane{--col:660px}
+html[data-cw="wide"] .pane{--col:1120px}
+
+/* ---------- settings controls ---------- */
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.sw0{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;border:2px solid transparent;transition:transform var(--t-fast) var(--ease),border-color var(--t-fast)}
+.sw0>span{width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+.sw0:hover{transform:scale(1.08)}
+.sw0.on{border-color:var(--ink)}
+.fsrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fsq{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+.prow{display:grid;grid-template-columns:120px minmax(0,1fr);align-items:center;gap:8px 12px;padding:6px 0}
+.prow+.prow{border-top:1px solid var(--line)}
+.prow .plab{color:var(--ink2);font-weight:600;font-size:calc(13px * var(--fz))}
+.prow .pnote{color:var(--mute);font-size:calc(12.5px * var(--fz))}
+.prow>button{grid-column:2;justify-self:start}
+.seg.pref{flex-wrap:wrap;justify-self:start}
+.seg.pref>button{display:grid;gap:0;text-align:left;padding:6px 12px}
+.pnote{color:var(--mute);font-size:calc(12.5px * var(--fz))}
+.saved{display:inline-flex;align-items:center;gap:4px;color:var(--ok);font-size:12.5px;font-weight:600;animation:fadein .2s var(--ease)}
+.saved .icon{width:14px;height:14px}
+kbd{font-family:var(--mono);font-size:.85em;padding:1px 6px;border-radius:5px;background:var(--sunk);border:1px solid var(--line);border-bottom-width:2px;color:var(--ink2)}
+dl.keys{display:grid;gap:0;margin:4px 0 0}
+dl.keys>div{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+dl.keys>div:last-child{border-bottom:0}
+dl.keys dt{display:flex;gap:4px;align-items:center;flex-wrap:wrap;color:var(--mute)}
+dl.keys dd{margin:0;color:var(--ink)}
+@media (max-width:760px){.prow{grid-template-columns:1fr}.prow>button{grid-column:1}dl.keys>div{grid-template-columns:1fr}}
+
+/* ---------- the sidebar's edge: drag to resize ---------- */
+.side{position:relative}
+.side-grip{position:absolute;right:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:5}
+.side-grip::after{content:"";position:absolute;left:3px;top:50%;width:2px;height:40px;margin-top:-20px;border-radius:2px;background:var(--line2);opacity:0;transition:opacity var(--t-fast)}
+.side-grip:hover::after,.side-grip:focus-visible::after,.app.side-drag .side-grip::after{opacity:1}
+.app.side-drag{cursor:col-resize;user-select:none}
+.app.side-drag iframe,.app.side-drag .web-stage{pointer-events:none}
+.app.rail-collapsed .side-grip{display:none}
+@media (max-width:760px){.side-grip{display:none}}
+
+/* ---------- reorder: a line shows where the row lands ---------- */
+.iw.drop-before::before,.iw.drop-after::after{content:"";position:absolute;left:8px;right:8px;height:2px;border-radius:2px;background:var(--accent);z-index:3;pointer-events:none}
+.iw.drop-before::before{top:-1px}
+.iw.drop-after::after{bottom:-1px}
+
+/* ---------- motion: cheap and calm ---------- */
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes slidein{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+.m.fresh{animation:rise .22s var(--ease) both}
+.app.wp-on .wp.opening{animation:slidein .2s var(--ease) both}
+.wi.fresh{animation:fadein .25s var(--ease) both}
+.need,.ub{transition:background-color var(--t),color var(--t)}
+.app.wp-drag *,.app.side-drag *{transition:none!important}

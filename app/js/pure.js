@@ -215,3 +215,90 @@ function collabWait(items,ids,now){const open=collabItems(items,now).filter(x=>(
   const x=open[0];return x?{from:x.from,to:x.to,since:x.at,dur:x.dur,kind:x.kind,n:open.length}:null}
 // whole minutes for 「等 研究員 回覆 3 分鐘」
 const minsOf=ms=>Math.max(0,Math.floor((+ms||0)/60000));
+
+/* ---------- 4.8: what really happened, one line for it, the queue, the quota ---------- */
+/* a finished job's real outcome (評論：「沒做成的被標成完成」). j: a /api/logs row {status, err_kind, err_msg};
+   r: its reply's result {ok, text} when known; text: the reply's text. ok only when nothing says otherwise.
+   tone: ok (green 完成) · warn (amber 未完成: it waits for you) · err (red 未完成) · stop (you pressed 停止) */
+const WAITS_YOU=['handed','not_logged_in','logout','need_user'];
+const OUT_LABEL={handed:'等你接手',not_logged_in:'需要登入',logout:'被登出',need_user:'需要你提供資料',api:'API 出錯',missing:'資料沒出現',site_changed:'網頁變了',quota:'額度用完',interrupted:'中斷',timeout:'逾時',tool_error:'工具出錯',unknown:'其他錯誤'};
+function jobOutcome(j,r,text){j=j||{};const k=j.err_kind||'',t=String(text||'');
+  if(k==='stopped'||(j.status==='error'&&!k&&/已停止|使用者按了停止/.test(String(j.err_msg||'')+t)))return {tone:'stop',label:'已停止',why:''};
+  if(k)return {tone:WAITS_YOU.includes(k)?'warn':'err',label:'未完成',why:OUT_LABEL[k]||OUT_LABEL.unknown,msg:String(j.err_msg||'').replace(/^⚠\s*/,'')};
+  if(j.status==='error')return {tone:'err',label:'未完成',why:'',msg:String(j.err_msg||'').replace(/^⚠\s*/,'')};
+  if(r&&r.ok===false)return {tone:'warn',label:'未完成',why:'',msg:String(r.text||'')};
+  if(/^\s*⚠|⚠\s*沒做成|需要使用者在電腦上登入/m.test(t))return {tone:'warn',label:'未完成',why:'',msg:firstSent(t,80)};
+  return {tone:'ok',label:'完成',why:''}}
+/* the reply's first sentence without markers or Markdown, cut where a phrase ends (the sidebar, notifications) */
+function plainOf(text){return String(text??'').replace(/\r/g,'').replace(/```[\s\S]*?```/g,' ').replace(/【派瀏覽】[\s\S]*?(?:【派完】|$)/g,'')
+  .replace(/^\s*(📌|📇|📘|🧩|🗺️?|⏰|📍|🧭|📝|📛|【[^】]*】).*$/gmu,'').replace(/^\s*(✅\s*完成|⚠️?\s*沒做成)\s*[:：]?\s*/gmu,'')
+  .replace(/^#{1,4}\s+|^\s*[-*•>]\s+|^\s*\d+[.)]\s+|\*\*|__|`|~~/gm,'').replace(/\|/g,' ')}
+function firstSent(text,n){n=n||60;const t=plainOf(text).split('\n').map(l=>l.trim()).filter(Boolean)[0]||'';
+  const m=t.match(/^.+?[。！？!?](?=\s|$|[^。！？!?」』)])/u);let s=(m?m[0]:t).trim();
+  if(s.length>n){const c=s.slice(0,n-1),at=Math.max(c.lastIndexOf('，'),c.lastIndexOf('、'),c.lastIndexOf('；'),c.lastIndexOf(','),c.lastIndexOf(' '));s=(at>=n*.55?c.slice(0,at):c)+'…'}
+  return s}
+// what happened, in one line: an approval's what, else the result, else the first sentence (desktop/api/reply-meta.mjs gist)
+function gistOf(text,result,approval,n){n=n||60;const a=approval||(String(text||'').match(/✅\s*待確認[:：]\s*(.+)/)||[])[1];
+  if(a)return I18N_T('要你核准：')+firstSent(a,n-6);
+  if(result&&result.text)return (result.ok===false?I18N_T('沒做成：'):'')+firstSent(result.text,n);
+  return firstSent(text,n)||(result?I18N_T(result.ok===false?'沒做成':'完成'):'')}
+const I18N_T=s=>typeof I18N!=='undefined'&&I18N.t?I18N.t(s):s;
+/* the ✅／⚠ line restates the reply's opening: show it once (評論：「標題下面內文又講一遍」).
+   → {text: the body to show, pill: show the result line} */
+function sameText(a,b){const nz=s=>plainOf(s).replace(/[\s\p{P}\p{S}]+/gu,'').slice(0,300),x=nz(a),y=nz(b);if(!x||!y)return false;
+  if(x===y||x.includes(y)||y.includes(x))return true;
+  const pr=s=>{const m=new Map();for(let i=0;i<s.length-1;i++){const k=s.slice(i,i+2);m.set(k,(m.get(k)||0)+1)}return m},p=pr(x),q=pr(y);let both=0;for(const [k,v] of p)both+=Math.min(v,q.get(k)||0);
+  return 2*both/(x.length+y.length-2)>=.55}
+function resultBody(text,result,whole){const t=String(text||'').trim();if(!result)return {text:t,pill:false};
+  if(whole||!t)return {text:'',pill:true};
+  if(!result.text)return {text:t,pill:true};
+  const L=t.split('\n'),i=L.findIndex(l=>l.trim());
+  if(i>=0&&sameText(L[i],result.text)){const rest=L.slice(i+1).join('\n').trim();return {text:rest,pill:true}}
+  return {text:t,pill:true}}
+/* a conversation that needs you: the prominent tag in the sidebar (and on the overview card).
+   last: /api/state last row {by, text, ask, rok, rtext, awhat} · job: /api/state lastJob[conv] {ok, kind, at} · lastTs: newest message
+   → {k:'ap'|'login'|'ask'|'fail'|'', label} */
+function needTag(last,job){const l=last||{},t=String(l.ask||l.text||''),bot=l.by&&l.by!=='me'&&l.by!=='sys';
+  if(bot&&(l.awhat||/✅\s*待確認/.test(t)))return {k:'ap',label:'待你核准'};
+  if(bot&&/需要使用者在電腦上登入|需要.{0,6}登入|要先登入/.test(t))return {k:'login',label:'要你登入'};
+  if(job&&!job.ok&&['handed','not_logged_in','logout'].includes(job.kind)&&(!l.ts||!job.at||job.at>=l.ts-120000))return {k:'login',label:job.kind==='handed'?'等你接手':'要你登入'};
+  if(bot&&/❓/.test(t))return {k:'ask',label:'待你回答'};
+  if(job&&!job.ok&&job.kind&&job.kind!=='stopped'&&(!l.ts||!job.at||job.at>=l.ts-120000||l.by!=='me'))return {k:'fail',label:'未完成'};
+  if(bot&&+l.rok===0&&l.rok!==null&&l.rok!==undefined)return {k:'fail',label:'未完成'};
+  return {k:'',label:''}}
+/* the queue in the 工作 panel: where a queued job stands, who is ahead and about how long.
+   busy: /api/state busy rows (running and pending, every chat) · q: {avg (ms a run takes lately), slots}
+   The runner takes 'open' first, then the highest prio, then the oldest; one job per bot at a time. */
+function queueOrder(busy){return (busy||[]).filter(x=>x.status==='pending').slice().sort((a,b)=>(b.kind==='open')-(a.kind==='open')||(+b.prio||0)-(+a.prio||0)||a.job-b.job)}
+function queueView(job,busy,q,now){now=now||Date.now();const avg=+(q&&q.avg)||180000,slots=Math.max(1,+(q&&q.slots)||3);
+  const order=queueOrder(busy),i=order.findIndex(x=>x.job===job);if(i<0)return null;
+  const running=(busy||[]).filter(x=>x.status==='running'&&x.kind!=='open');
+  // a small simulation: each slot frees when its job is done; a bot does one job at a time
+  const free=running.map(x=>({at:now+Math.max(avg*.15,avg-(now-(+x.started||now))),bot:x.bot_id}));
+  while(free.length<slots)free.push({at:now,bot:null});
+  free.sort((a,b)=>a.at-b.at);free.length=Math.max(slots,Math.min(free.length,slots));
+  const busyUntil={};for(const x of running){const f=now+Math.max(avg*.15,avg-(now-(+x.started||now)));busyUntil[x.bot_id]=Math.max(busyUntil[x.bot_id]||0,f)}
+  let start=now;
+  for(let k=0;k<=i;k++){const x=order[k];free.sort((a,b)=>a.at-b.at);const s=free[0];
+    const at=Math.max(s.at,busyUntil[x.bot_id]||0);if(k===i){start=at;break}
+    s.at=at+avg;s.bot=x.bot_id;busyUntil[x.bot_id]=at+avg}
+  const sameBot=running.some(x=>x.bot_id===(order[i]||{}).bot_id);
+  return {pos:i+1,total:order.length,ahead:[...(running.length>=slots||sameBot?running:[]),...order.slice(0,i)],eta:Math.max(0,start-now),
+    why:sameBot?'own':running.length>=slots?'full':i>0?'queue':'soon',known:!!(q&&q.avg)}}
+// 「約 3 分鐘」
+function etaText(ms){const m=Math.round((+ms||0)/60000);return m<1?I18N_T('不到 1 分鐘'):m<60?I18N_T('約')+' '+m+' '+I18N_T('分鐘'):I18N_T('約')+' '+(Math.round(m/6)/10)+' '+I18N_T('小時')}
+/* 額度: each AI in use with its 5-hour and weekly windows, left %. usage: /api/ai-usage usage · used: engines the bots use */
+const QWIN={'5h':'5 小時','7d':'本週','30d':'本月'};
+function quotaWins(usage,used){const out=[];
+  for(const [k,v] of Object.entries(usage||{})){if(!v||!Array.isArray(v.windows)||!v.windows.length||(used&&used.size&&!used.has(k)))continue;
+    const wins=v.windows.filter(w=>QWIN[w.k]).map(w=>({k:w.k,left:Math.max(0,Math.min(100,Math.round(100-(+w.used||0)))),reset:w.reset||null}))
+      .sort((a,b)=>['5h','7d','30d'].indexOf(a.k)-['5h','7d','30d'].indexOf(b.k));
+    if(wins.length)out.push({eng:k,plan:v.plan||'',wins,min:Math.min(...wins.map(w=>w.left))})}
+  return out.sort((a,b)=>a.min-b.min)}
+const quotaTone=left=>left<=10?'err':left<=25?'warn':'ok';
+/* what one run used: 「這一輪用了約 2% 額度（5 小時）· 12k tokens」 */
+const tokK=n=>n>=1e6?(Math.round(n/1e5)/10)+'M':n>=1000?Math.round(n/1000)+'k':String(n);
+function runUse(j){if(!j)return '';const parts=[],q=j.quse;
+  if(q&&Number.isFinite(+q.before)&&Number.isFinite(+q.after)){const d=Math.max(0,+q.after-(+q.before));parts.push(d<1?I18N_T('這一輪用了不到 1% 額度'):I18N_T('這一輪用了約')+' '+d+'% '+I18N_T('額度'))}
+  if(+j.tokens>0)parts.push(tokK(+j.tokens)+' tokens');
+  return parts.join(' · ')}

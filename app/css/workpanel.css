@@ -19,6 +19,8 @@
 @keyframes wpulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 45%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 0%,transparent)}}
 .wpbtn{position:relative}
 .wbadge{position:absolute;top:6px;right:6px;width:8px;height:8px;box-shadow:0 0 0 2px var(--panel)}
+/* 4.8: folded while it works, the toggle shows the step (1/3) */
+.wbadge.num{width:auto;height:15px;min-width:15px;top:1px;right:-3px;padding:0 4px;border-radius:8px;font-size:9.5px;font-weight:750;line-height:15px;color:#fff;font-variant-numeric:tabular-nums;animation:none;text-align:center}
 .wbadge.run{box-shadow:0 0 0 2px var(--panel)}
 .wp-pane{flex:1;min-height:0;display:flex;flex-direction:column}
 .wp-pane.wk{overflow:auto;padding:14px 14px 28px;display:block;overscroll-behavior:contain}
@@ -46,11 +48,36 @@
 .wsteps li.now{color:var(--ink);font-weight:550}
 .wsteps li.now::before{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .wcur .link{justify-self:start;font-size:13px}
-.wq{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border-radius:var(--r);background:var(--warn-soft);color:var(--ink2);font-size:calc(12.5px * var(--fz))}
-.wq .icon{color:var(--warn);width:16px;height:16px}
 .wsec{margin-top:16px}
-.wsh{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:calc(12px * var(--fz));font-weight:650;letter-spacing:.02em;margin:0 2px 8px}
+/* 4.8: section heads fold their section (remembered) */
+.wsh{display:flex;align-items:center;gap:6px;width:calc(100% - 4px);text-align:left;color:var(--mute);font-size:calc(12px * var(--fz));font-weight:650;letter-spacing:.02em;margin:0 2px 8px;padding:2px 4px 2px 0;border-radius:var(--r-xs)}
+button.wsh:hover{color:var(--ink2);background:var(--hover)}
 .wsh .icon{width:14px;height:14px}
+.wsh .wchv{width:12px;height:12px;transform:rotate(90deg);transition:transform .16s var(--ease)}
+.wsec[data-folded] .wchv{transform:none}
+.wsec[data-folded]>:not(.wsh){display:none}
+.wn2{font-weight:600;color:var(--faint);font-variant-numeric:tabular-nums}
+/* 4.8 the queue: position, who is ahead, about how long, 插隊 */
+.wqs{margin-top:12px}
+.wq{display:grid;gap:6px;margin:0 0 8px;padding:10px 12px;border-radius:var(--r);background:var(--warn-soft);color:var(--ink2);font-size:calc(12.5px * var(--fz))}
+.wqh{display:flex;align-items:center;gap:7px;min-width:0}
+.wqh b{color:var(--ink);font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wqpos{flex:none;padding:0 8px;border-radius:var(--r-full);background:var(--panel);color:var(--warn);font-weight:650}
+.wqpos b{color:inherit;font-variant-numeric:tabular-nums}
+.wqeta{margin-left:auto;flex:none;font-weight:650;color:var(--ink);font-variant-numeric:tabular-nums}
+.wqwhy{color:var(--ink2)}
+.wqahead{display:flex;flex-wrap:wrap;align-items:center;gap:5px;color:var(--mute)}
+.wqa{display:inline-flex;align-items:center;gap:4px;padding:1px 8px 1px 2px;border-radius:var(--r-full);background:var(--panel);color:var(--ink2)}
+.wqa small{color:var(--faint);font-size:11px}
+.wqa.run small{color:var(--ok)}
+.wq .wact{margin-top:2px}
+/* 4.8: what one run used */
+.wuse{display:flex;align-items:center;gap:5px;color:var(--mute);font-size:calc(11.5px * var(--fz));font-variant-numeric:tabular-nums}
+.wuse .icon{width:13px;height:13px}
+.wtt .wst{font-weight:700}
+.wi.ok .wtt .wst{color:var(--ok)}
+.wi.warn .wtt{color:var(--warn)}
+.wwhy{font-weight:600}
 .wrts{display:grid;gap:4px}
 .wrt{display:grid;gap:1px;text-align:left;padding:8px 12px;border-radius:var(--r);background:var(--sunk);min-width:0}
 .wrt:hover{background:var(--press)}

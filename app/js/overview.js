@@ -89,10 +89,16 @@ async function pollAlerts(){if(!ready())return;
     if(first&&!seen){store.set('octa_alseen',String(AL.top));return}   // a new device starts from now
     for(const a of fresh)showAlert(a);
     if(AL.top>seen)store.set('octa_alseen',String(AL.top))}catch(e){}}
-function ovBadge(n){const b=$('ovBadge');b.dataset.n=String(n);b.hidden=!n;b.textContent=n>9?'9+':String(n||'')}
+// 4.8: the badge says what it counts — 「2 件有問題」 (failed or logged-out work nobody retried yet), with a tooltip
+function ovBadge(n){const b=$('ovBadge');b.dataset.n=String(n);b.hidden=!n;
+  b.innerHTML=n?`<b>${n>9?'9+':n}</b> <span>${esc(I18N.t('件有問題'))}</span>`:'';
+  const tip=n?n+' '+I18N.t('件工作沒做成或被登出，還沒重試。點開看是哪些'):'';b.title=tip;$('ovBtn').title=tip||I18N.t('每個機器人在做什麼、今天做了什麼');b.setAttribute('aria-label',tip)}
 function showAlert(a){const b=bot(a.bot);if(!b)return;
   if(notiOn()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||cur!==a.conv)){
-    try{const n=new Notification('OCTA · '+b.name+' '+I18N.t(a.label),{body:I18N.t('點這裡打開，按「一鍵重試」'),icon:'/icon.png',tag:'octa-al-'+a.id,requireInteraction:true});
+    // 4.8: the body says what it was doing and why it stopped, then what a tap does
+    const line=k=>(String(a.text||'').match(new RegExp('^'+k+'[:：](.+)$','m'))||[])[1]||'';
+    const body=[line('做什麼')&&I18N.t('做什麼：')+line('做什麼').trim(),line('訊息')||line('原因'),I18N.t('點這裡打開，按「一鍵重試」')].filter(Boolean).join('\n');
+    try{const n=new Notification('OCTA · '+b.name+' '+I18N.t(a.label),{body,icon:'/icon.png',tag:'octa-al-'+a.id,requireInteraction:true});
       n.onclick=()=>{window.focus();window.octaDesktop?.show?.();openConv(a.bot);retryBar(a);n.close()}}catch(e){}}
   if(!document.hidden)retryBar(a)}
 // the bar: which bot, what happened, 一鍵重試 (and its browser, to sign in again)
@@ -111,22 +117,31 @@ function retryDeepLink(){let job='',web='';try{job=sessionStorage.getItem('octa_
   api('alerts').then(d=>{const a=(d.alerts||[]).find(x=>x.job===+job&&x.bot===web);if(a&&$('alBar'))retryBar(a)}).catch(()=>{})}   // what happened, when the alert is still there
 setInterval(()=>{if(!ready())return;if(AL.rev===-2)retryDeepLink();if(S.rev!==AL.rev){AL.rev=S.rev;pollAlerts()}},1500);
 
-/* ---------- 額度看得到: Claude 本週剩 62% in the sidebar footer ---------- */
+/* ---------- 額度看得到 (4.8): each AI in use, its 5-hour and weekly windows as two small bars; a tap shows the details ---------- */
 const QW_LAB={'7d':'本週剩','5h':'5 小時內剩','30d':'本月剩'};
-let quotaT=0;
+let quotaT=0,QU=null;
 async function paintQuota(){const q=$('quota');if(!q||!ready())return;
   quotaT=Date.now();let u=null;try{u=await api('ai-usage')}catch(e){return}
-  const used=new Set(S.bots.map(b=>b.engine||'claude'));
-  let best=null;
-  for(const [k,v] of Object.entries(u.usage||{})){if(!v?.windows?.length||(used.size&&!used.has(k)))continue;
-    for(const w of v.windows){if(!QW_LAB[w.k])continue;const left=Math.max(0,Math.min(100,Math.round(100-(+w.used||0))));
-      // the window that runs out first; on a tie, the longer one (本週) is what people plan with
-      if(!best||left<best.left||(left===best.left&&w.k==='7d'))best={k,w,left,plan:v.plan}}}
-  if(!best){q.hidden=true;return}
-  const name=(typeof ENG!=='undefined'&&ENG[best.k]?.n)||best.k;
-  q.hidden=false;q.className='quota'+(best.left<=10?' err':best.left<=25?' warn':'');
-  q.title=Object.entries(u.usage||{}).filter(([,v])=>v?.windows?.length).map(([k,v])=>((typeof ENG!=='undefined'&&ENG[k]?.n)||k)+'：'+v.windows.map(w=>I18N.t(QW_LAB[w.k]||w.k)+' '+Math.round(100-(+w.used||0))+'%').join('、')).join('\n');
-  setHTML(q,`<span class="qbar" aria-hidden="true"><i style="width:${best.left}%"></i></span><span class="qtx"><span data-u>${esc(name)}</span> <span>${QW_LAB[best.w.k]}</span> <b data-u>${best.left}%</b></span>`);
-  q.setAttribute('aria-label',name+' '+I18N.t(QW_LAB[best.w.k])+' '+best.left+'%')}
-$('quota').onclick=()=>openSettings('ai');
+  QU=u;const used=new Set(S.bots.map(b=>b.engine||'claude')),list=quotaWins(u.usage,used);
+  if(!list.length){q.hidden=true;return}
+  const worst=Math.min(...list.map(x=>x.min));
+  q.hidden=false;q.className='quota '+quotaTone(worst);
+  const nm=k=>(typeof ENG!=='undefined'&&ENG[k]?.n)||k;
+  q.title=list.map(x=>nm(x.eng)+'：'+x.wins.map(w=>I18N.t(QW_LAB[w.k]||w.k)+' '+w.left+'%').join('、')).join('\n');
+  setHTML(q,list.slice(0,2).map(x=>`<span class="qrow"><span class="qn" data-u>${esc(nm(x.eng))}</span>${x.wins.map(w=>`<span class="qw ${quotaTone(w.left)}" aria-label="${esc(I18N.t(QWIN[w.k])+' '+w.left+'%')}"><small>${esc(I18N.t(QWIN[w.k]))}</small><span class="qbar"><i style="width:${w.left}%"></i></span><b data-u>${w.left}%</b></span>`).join('')}</span>`).join(''));
+  q.setAttribute('aria-label',I18N.t('AI 剩餘額度')+'：'+q.title.replace(/\n/g,'；'));
+  if($('quotaPop'))quotaPop(true)}
+// the details: plan, each window left and when it resets, today's runs; Settings → AI 連線 for more
+function quotaPop(refresh){const old=$('quotaPop');if(old&&!refresh){old.remove();return}
+  const u=QU||{},used=new Set(S.bots.map(b=>b.engine||'claude')),list=quotaWins(u.usage,used),nm=k=>(typeof ENG!=='undefined'&&ENG[k]?.n)||k;
+  const rs=t=>{if(!t)return '';const d=new Date(t);return Number.isFinite(+d)?`<small>${esc(I18N.t('重置'))} ${esc(when(+d))}</small>`:''};
+  const el=old||document.createElement('div');el.id='quotaPop';el.className='qpop';el.setAttribute('role','dialog');el.setAttribute('aria-label',I18N.t('AI 剩餘額度'));
+  el.innerHTML=`<div class="qph"><b>${esc(I18N.t('AI 剩餘額度'))}</b><button type="button" class="ib sm" data-qx aria-label="${esc(I18N.t('關閉'))}">${ic('x')}</button></div>`+list.map(x=>`<div class="qpe"><div class="qpn"><b data-u>${esc(nm(x.eng))}</b>${x.plan?`<small data-u>${esc(x.plan)}</small>`:''}${u.today?.[x.eng]?`<small>${esc(I18N.t('今天'))} ${u.today[x.eng]} ${esc(I18N.t('次'))}</small>`:''}</div>
+    ${x.wins.map(w=>`<div class="qpw ${quotaTone(w.left)}"><span>${esc(I18N.t(QW_LAB[w.k]||w.k))}</span><span class="qbar"><i style="width:${w.left}%"></i></span><b>${w.left}%</b>${rs(w.reset)}</div>`).join('')}</div>`).join('')+
+    `<p class="qpn2">${esc(I18N.t('每一輪用了多少，在工作面板的紀錄裡。'))}</p><button type="button" class="ghost sm" data-qset>${ic('settings')}<span>${esc(I18N.t('AI 連線設定'))}</span></button>`;
+  if(!old)document.body.appendChild(el);
+  el.onclick=e=>{if(e.target.closest('[data-qx]'))el.remove();else if(e.target.closest('[data-qset]')){el.remove();openSettings('ai')}}}
+document.addEventListener('pointerdown',e=>{const p=$('quotaPop');if(p&&!p.contains(e.target)&&!e.target.closest('#quota'))p.remove()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('quotaPop')?.remove()});
+$('quota').onclick=()=>quotaPop();
 setInterval(()=>{if(ready()&&!document.hidden&&Date.now()-quotaT>5*60000)paintQuota()},3000);

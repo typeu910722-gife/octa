@@ -2,17 +2,19 @@
 'use strict';
 let FOLDED=new Set();try{FOLDED=new Set(JSON.parse(store.get('octa_folded')||'[]'))}catch(e){}
 const gStack=(g,live)=>{const ms=g.members.filter(bot).slice(0,3);return ms.length?`<span class="gst" aria-hidden="true">${ms.map(id=>`<span class="gsa">${avOf(id,live)}</span>`).join('')}</span>`:ic('users')};
-function listTag(id){return apprWait(id)?'<i class="need ap">待你核准</i>':needsYou(id)?'<i class="need">待你處理</i>':cur!==id&&unread(id)?`<i class="ub">${unread(id)}</i>`:''}
-// 4.7: a working bot's row says how far it is (「工作中… 2/5」, 已暫停) with a thin bar along its bottom
-function runLine(id,st){const x=runOf(id),v=x&&progView(x.progress),n=v?.has?` <b class="lstep">${v.step}/${v.total}</b>`:'';
-  return (x&&pauseOf(x)==='paused'?'<span>已暫停</span>':esc(I18N.t(STATE_LABEL[st]))+'…')+n}
-function runBar(id){const x=runOf(id),v=x&&progView(x.progress);return v?.has?`<i class="lbar" aria-hidden="true"><i style="width:${v.pct}%"></i></i>`:''}
+// 4.8 badges say what they are: what needs you is a coloured tag with words (待你核准／要你登入／待你回答／未完成);
+// new messages are a quiet grey count. Both have a tooltip.
+const NEED_TIP={ap:'它擬好了一件事，等你核准才會做',login:'它停在登入畫面，要你在它的瀏覽器登入',ask:'它問了你一個問題',fail:'上次的工作沒有做成，打開看原因或重試'};
+function listTag(id){const n=needOf(id),u=cur!==id?unread(id):0;
+  return (n.k?`<i class="need ${n.k}" title="${esc(I18N.t(NEED_TIP[n.k]))}">${esc(I18N.t(n.label))}</i>`:'')+(u?`<i class="ub" title="${esc(u+' '+I18N.t('則新訊息'))}" aria-label="${esc(u+' '+I18N.t('則新訊息'))}">${u>99?'99+':u}</i>`:'')}
+// a working bot's row says only that it works (「工作中…」, 已暫停); 4.8: how far it is, is shown in the 工作 panel only
+function runLine(id,st){const x=runOf(id);return x&&pauseOf(x)==='paused'?'<span>已暫停</span>':esc(I18N.t(STATE_LABEL[st]))+'…'}
 // a bot's face moves only while it is doing something (many rows: the idle ones stay still)
 function rowHtml(c){const g=isG(c.id),on=cur===c.id,muted=(S.mute||{})[c.id],st=g?'':stateOf(c.id);
-  return `<div class="iw" draggable="true" data-drag="${c.id}" data-dragname="${esc(c.name)}" data-dropbot="${c.id}"><button class="item${on?' on':''}" data-id="${c.id}"${on?' aria-current="true"':''}>
+  return `<div class="iw" draggable="true" data-k="r:${c.id}" data-drag="${c.id}" data-dragname="${esc(c.name)}" data-dropbot="${c.id}"><button class="item${on?' on':''}" data-id="${c.id}"${on?' aria-current="true"':''}>
     <span class="av${g?' grp':''}" data-u${st&&st!=='idle'?` title="${esc(I18N.t(STATE_LABEL[st]))}"`:''}>${g?gStack(c,true):avOf(c.id,true)}</span>
-    <span class="t"><span class="l1"><b data-u>${esc(c.name)}</b>${muted?`<span class="mut" title="已關閉通知">${ic('belloff')}</span>`:''}<span class="tm">${listTime(c.id)}</span></span><span class="l2">${st&&st!=='idle'&&!apprWait(c.id)?`<small class="lw">${runLine(c.id,st)}</small>`:`<small data-u>${esc(preview(c.id))}</small>`}${listTag(c.id)}</span></span>
-  ${st&&st!=='idle'?runBar(c.id):''}</button><button class="more" data-more="${c.id}" aria-label="更多">${ic('more')}</button></div>`}
+    <span class="t"><span class="l1"><b data-u>${esc(c.name)}</b>${muted?`<span class="mut" title="已關閉通知">${ic('belloff')}</span>`:''}<span class="tm">${listTime(c.id)}</span></span><span class="l2">${st&&st!=='idle'&&!apprWait(c.id)?`<small class="lw">${runLine(c.id,st)}</small>`:`<small class="pv" data-u>${esc(preview(c.id))}</small>`}${listTag(c.id)}</span></span>
+</button><button class="more" data-more="${c.id}" aria-label="更多">${ic('more')}</button></div>`}
 function renderList(){
   if(VIA())paintVia();   // a remote control (4.3): which computer it controls, and whether it is connected
   else{$('online').classList.toggle('on',!!S.runnerOnline);
@@ -26,19 +28,19 @@ function renderList(){
   const aps=S.loaded?apprConvs():[];
   if(aps.length&&!q){const go=aps.find(x=>x.id!==cur)||aps[0];
     h+=`<button type="button" class="apbar" data-apgo="${esc(go.id)}"><span class="apn">${aps.length}</span><span class="apl"><b>件待你核准</b><small data-u>${esc(aps.map(x=>x.name).join('、'))}</small></span>${ic('chev','sa')}</button>`}
-  const sect=(f,title)=>{const gs=S.groups.filter(g=>(g.folder||null)===f&&hit(g)&&!pinned(g.id)),bs=S.bots.filter(b=>(b.folder||null)===f&&hit(b)&&!pinned(b.id));
+  const sect=(f,title)=>{const gs=ordered(S.groups.filter(g=>(g.folder||null)===f&&hit(g)&&!pinned(g.id))),bs=ordered(S.bots.filter(b=>(b.folder||null)===f&&hit(b)&&!pinned(b.id)));
     if((!f||q)&&!gs.length&&!bs.length)return '';
     const key=f||'_',closed=!q&&FOLDED.has(key);
-    return `<div class="fold${closed?' closed':''}" data-drop="${f||''}"><div class="sec"><button type="button" class="sect" data-fold="${esc(key)}" aria-expanded="${!closed}">${ic('chev','chv')}<span${f?' data-u':''}>${esc(title)}</span><span class="cnt">${gs.length+bs.length}</span></button>${f?`<button class="more" data-folder="${f}" aria-label="分區選項">${ic('more')}</button>`:''}</div>`+
+    return `<div class="fold${closed?' closed':''}" data-drop="${f||''}" data-k="f:${esc(key)}"><div class="sec"><button type="button" class="sect" data-fold="${esc(key)}" aria-expanded="${!closed}">${ic('chev','chv')}<span${f?' data-u':''}>${esc(title)}</span><span class="cnt">${gs.length+bs.length}</span></button>${f?`<button class="more" data-folder="${f}" aria-label="分區選項">${ic('more')}</button>`:''}</div>`+
       (closed?'':gs.length||bs.length?gs.map(rowHtml).join('')+bs.map(rowHtml).join(''):'<div class="empty">這裡還沒有人。把機器人拖進來。</div>')+'</div>'};
-  const pg=S.groups.filter(g=>pinned(g.id)&&hit(g)),pb=S.bots.filter(b=>pinned(b.id)&&hit(b));
-  if(pg.length||pb.length)h+=`<div class="fold"><div class="sec"><span class="sect st">${ic('pin','chv')}<span>置頂</span></span></div>`+pg.map(rowHtml).join('')+pb.map(rowHtml).join('')+'</div>';
+  const pg=ordered(S.groups.filter(g=>pinned(g.id)&&hit(g))),pb=ordered(S.bots.filter(b=>pinned(b.id)&&hit(b)));
+  if(pg.length||pb.length)h+=`<div class="fold" data-k="pins"><div class="sec"><span class="sect st">${ic('pin','chv')}<span>置頂</span></span></div>`+pg.map(rowHtml).join('')+pb.map(rowHtml).join('')+'</div>';
   S.folders.forEach(f=>h+=sect(f.id,f.name));
   h+=sect(null,S.folders.length?'未分區':'機器人');
   if(S.loaded&&!S.bots.length&&!S.groups.length&&!q)h+=`<div class="empty">還沒有機器人。按右上角的 ＋ 建立一個。</div>`;
   if(q&&!h.includes('class="iw"'))h+=`<div class="empty">找不到「${esc(q)}」</div>`;
   if(!q&&(S.codeTasks||[]).length)h+=`<div class="fold"><div class="sec"><span class="sect st">${ic('code','chv')}<span>程式任務</span></span></div>`+(S.codeTasks||[]).map(t=>`<button type="button" class="item" data-code="${esc(t.id)}"><span class="av">${ic('code')}</span><span class="t"><span class="l1"><b data-u>${esc(t.title)}</b></span><span class="l2"><small>${esc(t.status)} · ${esc(t.engine)}${t.model?' / '+esc(t.model):''}</small></span></span></button>`).join('')+'</div>';
-  setHTML($('list'),h);
+  morph($('list'),h);
   const tot=[...S.bots,...S.groups].reduce((a,x)=>a+(x.id===cur&&!document.hidden?0:unread(x.id)),0);document.title=(aps.length?`✅${aps.length} `:'')+(tot?`(${tot}) `:'')+'OCTA 奧克塔'}
 
 $('list').onclick=e=>{
@@ -56,7 +58,12 @@ function focusSearch(){$('app').classList.remove('chat');focusBrowser();$('q').f
 
 /* ---------- drag and drop: a bot into a group or a 分區, a message or files onto another chat ---------- */
 let draggingId='',draggingMsg=null,dragDepth=0;
-function clearDrop(){$('list').querySelectorAll('.dragging,.over').forEach(n=>{n.classList.remove('dragging','over');n.removeAttribute('data-hint')})}
+function clearDrop(){$('list').querySelectorAll('.dragging,.over,.drop-before,.drop-after').forEach(n=>{n.classList.remove('dragging','over','drop-before','drop-after');n.removeAttribute('data-hint')})}
+// 4.8 reorder: a conversation dragged over the upper or lower part of another row lands above or below it
+// (over the middle of a group it still joins the group; over a 分區 heading it still moves there)
+function reorderAt(e,botEl){if(!draggingId||!botEl||botEl.dataset.dropbot===draggingId)return null;
+  const r=botEl.getBoundingClientRect(),y=(e.clientY-r.top)/r.height,grp=isG(botEl.dataset.dropbot)&&bot(draggingId);
+  if(grp&&y>.3&&y<.7)return null;return y<.5?'before':'after'}
 document.addEventListener('dragstart',e=>{
   if(e.target.closest?.('.more')||lpHit){e.preventDefault();return}
   const row=e.target.closest?.('[data-drag]');
@@ -83,6 +90,10 @@ $('list').addEventListener('dragover',e=>{
     e.preventDefault();e.dataTransfer.dropEffect='copy';
     $('list').querySelectorAll('.iw.over').forEach(n=>{if(n!==botEl){n.classList.remove('over');n.removeAttribute('data-hint')}});
     markRow(botEl,'複製到這裡');return}
+  const ro=reorderAt(e,botEl);
+  $('list').querySelectorAll('.drop-before,.drop-after').forEach(n=>{if(n!==botEl||!ro)n.classList.remove('drop-before','drop-after')});
+  if(ro){e.preventDefault();e.dataTransfer.dropEffect='move';botEl.classList.remove('over','drop-before','drop-after');botEl.removeAttribute('data-hint');botEl.classList.add('drop-'+ro);
+    (e.target.closest('.fold'))?.classList.remove('over');return}
   if(draggingId&&botEl&&isG(botEl.dataset.dropbot)&&bot(draggingId)){
     e.preventDefault();e.dataTransfer.dropEffect='copy';
     markRow(botEl,'加入群組');return}
@@ -100,8 +111,13 @@ $('list').addEventListener('dragleave',e=>{
 $('list').addEventListener('drop',async e=>{
   const botEl=e.target.closest('[data-dropbot]');
   const target=botEl?.dataset.dropbot||'';
-  const msg=draggingMsg;
+  const msg=draggingMsg,ro=!msg&&reorderAt(e,botEl);
   clearDrop();
+  if(ro){e.preventDefault();const id=draggingId,tc=conv(target),c=conv(id);
+    // dropped beside a row in another 分區 (or pinned): it moves there too
+    const pinT=(S.pins||[]).includes(target),pinC=(S.pins||[]).includes(id);
+    if(pinT!==pinC)await togglePin(id);else if(tc&&c&&(tc.folder||null)!==(c.folder||null)&&!pinT){try{await api('move','POST',{id,folder:tc.folder||null});await refresh()}catch(err){toast(err.message)}}
+    moveRow(id,target,ro==='after');return}
   if(msg&&target&&target!==msg.conv){e.preventDefault();askCopy(target,{...msg,files:(msg.files||[]).map(f=>({...f}))});return}
   if(draggingId&&target&&isG(target)&&bot(draggingId)){e.preventDefault();joinGroup(draggingId,target);return}
   const files=[...e.dataTransfer.files];

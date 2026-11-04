@@ -44,8 +44,9 @@ $('wp').querySelector('.wp-tabs').addEventListener('keydown',e=>{const k={ArrowR
 
 /* ---------- drawing ---------- */
 function renderPanel(force){
-  const on=panelOn(),app=$('app');
-  $('wp').hidden=!on;app.classList.toggle('wp-on',on);app.classList.toggle('wp-web',on&&WP.tab==='web');
+  const on=panelOn(),app=$('app'),was=!$('wp').hidden;
+  $('wp').hidden=!on;
+  if(on&&!was&&!phoneUI()){const w=$('wp');w.classList.add('opening');clearTimeout(w._op);w._op=setTimeout(()=>{w.classList.remove('opening');dockSync()},240)}   // 4.8: it slides inapp.classList.toggle('wp-on',on);app.classList.toggle('wp-web',on&&WP.tab==='web');
   $('panelBtn').setAttribute('aria-expanded',String(on));$('panelBtn').setAttribute('aria-pressed',String(on));
   $('browser').setAttribute('aria-pressed',String(on&&WP.tab==='web'));
   trackJobs();
@@ -87,13 +88,16 @@ function workItems(id){const out=[],bs=BS[id],keys=bgKeysFor(id),since=Date.now(
   for(const j of WP.logs[id]||[]){if(j.status==='pending'||j.status==='running'||bgIds.has(j.id)||j.kind==='open')continue;
     const at=j.finished||j.created;
     if(j.status==='error'&&ms.some(m=>(m.kind==='fail'||/^⚠/.test(m.text||''))&&Math.abs(m.ts-at)<180000))continue;   // the failure note says it better
-    out.push({t:at,k:j.status==='error'?'jobfail':'job',j,key:'j'+j.id})}
+    // 4.8: the real outcome — a reply that says ⚠ 沒做成, a reason on the job, 接手, an error: never a green 完成
+    const rm=chatMsgs(id).find(m=>m.by===j.bot_id&&m.ts>=at-5000&&m.ts<=at+180000);
+    const rv=rm?msgView(rm):null,o=jobOutcome(j,rv?.result,rv?.text);
+    out.push({t:at,k:o.tone==='ok'?'job':o.tone==='stop'?'jobstop':o.tone==='warn'?'jobwarn':'jobfail',j,o,key:'j'+j.id})}
   return out.sort((a,b)=>b.t-a.t)}
-const WI={fail:['x','err','沒有完成'],jobfail:['x','err','失敗'],warn:['info','warn','注意'],job:['check','ok','完成'],bg:['users','bg','幕後'],ask:['users','bg','幕後'],
+const WI={fail:['x','err','未完成'],jobfail:['x','err','未完成'],jobwarn:['info','warn','未完成'],jobstop:['stop','','已停止'],warn:['info','warn','注意'],job:['check','ok','完成'],bg:['users','bg','幕後'],ask:['users','bg','幕後'],
   note:['note','','紀錄'],event:['zap','','事件'],routine:['clock','','例行任務'],mem:['brain','','記住'],sys:['info','','系統']};
 const durTxt=ms=>ms==null?'':ms<60000?Math.max(1,Math.round(ms/1000))+' '+I18N.t('秒'):Math.round(ms/60000)+' '+I18N.t('分鐘');
 // one entry: an icon, what happened, the details folded when long
-function wiHtml(it){const [icon,tone,lab]=WI[it.k]||WI.sys,open=WP.keep.has(it.key);let title='',body='',more='',acts='';
+function wiHtml(it){const [icon,tone,lab]=WI[it.k]||WI.sys,open=WP.keep.has(it.key);let title='',body='',more='',acts='',extra='';
   if(it.m){const t=String(it.m.text||'').replace(/^⚠\s*/,'');
     title=it.m.by==='sys'?I18N.t(lab):`<span data-u>${esc(nameOf(it.m.by))}</span> · <span>${I18N.t(lab)}</span>`;
     const first=t.split('\n')[0];body=first.length>140?first.slice(0,138)+'…':first;if(t.length>body.length)more=t;
@@ -102,11 +106,13 @@ function wiHtml(it){const [icon,tone,lab]=WI[it.k]||WI.sys,open=WP.keep.has(it.k
     title=`<span data-u>${esc(nameOf(x.from))}</span> → <span data-u>${esc(nameOf(x.to))}</span> · <span>${x.kind==='give'?'交辦':'詢問'}</span>${st?` · <span>${st}</span>`:''}${x.ms!=null&&!st?` · <span>${durTxt(x.ms)}</span>`:''}`;
     body=x.what||'';if(x.reply)more='↳ '+x.reply}
   else if(it.j){const j=it.j,d=j.finished&&j.started?j.finished-j.started:null;
-    title=`<span>${I18N.t(lab)}</span>${d!=null?` · <span>${durTxt(d)}</span>`:''}${j.routine?' · <span>例行任務</span>':''}${j.conv!==cur&&j.convName?` · <span data-u>${esc(j.convName)}</span>`:''}`;
-    body=j.prompt||'';if(j.status==='error'&&j.err_msg)more=j.err_msg;
-    if(j.status==='error'&&!j.retried)acts=`<button type="button" class="ghost sm" data-wlretry="${j.id}">${ic('refresh')}<span>重試</span></button>`}
+    const o=it.o||{},why=o.why?` · <span class="wwhy">${esc(I18N.t(o.why))}</span>`:'';
+    title=`<span class="wst">${I18N.t(o.label||lab)}</span>${why}${d!=null?` · <span>${durTxt(d)}</span>`:''}${j.routine?' · <span>例行任務</span>':''}${j.conv!==cur&&j.convName?` · <span data-u>${esc(j.convName)}</span>`:''}`;
+    body=j.prompt||'';if(o.tone!=='ok'&&(o.msg||j.err_msg))more=o.msg||j.err_msg;
+    const use=runUse(j);if(use)extra=`<div class="wuse">${ic('gauge')}<span>${esc(use)}</span></div>`;
+    if((o.tone==='err'||o.tone==='warn')&&!j.retried&&(j.kind||'chat')==='chat')acts=`<button type="button" class="ghost sm" data-wlretry="${j.id}">${ic('refresh')}<span>重試</span></button>`}
   const bodyHtml=more?`<details class="wmore" data-wk="${esc(it.key)}"${open?' open':''}><summary data-u>${esc(body||more.slice(0,120))}</summary><div class="wfull" data-u>${esc(more)}</div></details>`:`<div class="wtx" data-u>${esc(body)}</div>`;
-  return `<li class="wi ${tone}"><span class="wic" aria-hidden="true">${ic(icon)}</span><div class="wb"><div class="wtt">${title}<time>${hm(it.t)}</time></div>${body||more?bodyHtml:''}${acts?`<div class="wact">${acts}</div>`:''}</div></li>`}
+  return `<li class="wi ${tone}"><span class="wic" aria-hidden="true">${ic(icon)}</span><div class="wb"><div class="wtt">${title}<time>${hm(it.t)}</time></div>${body||more?bodyHtml:''}${extra}${acts?`<div class="wact">${acts}</div>`:''}</div></li>`}
 // what is running now: its face, what it is doing, how long, its last steps, 停止
 // 4.7: the bot's own step list (done ✓ / now / next) with 「步驟 2/5」 and a bar; an older runner: the lines it reported
 function curCard(x){const st=stateOf(x.bot_id),steps=(WP.steps[x.job]||[]).slice(-5),c=conv(cur),v=progView(x.progress),ps=pauseOf(x);
@@ -120,11 +126,24 @@ function curCard(x){const st=stateOf(x.bot_id),steps=(WP.steps[x.job]||[]).slice
     ${head}${plan}
     ${ps==='pausing'?`<p class="wnote">${I18N.t('它會做完目前這一步再暫停。')}</p>`:''}
     ${st==='browsing'&&WP.tab!=='web'?`<button type="button" class="link" data-wt="web">${ic('globe')}<span>在瀏覽器分頁看它操作</span></button>`:''}</div>`}
+/* 4.8: each section of 工作 folds (remembered on this device) */
+let WSF=new Set();try{WSF=new Set(JSON.parse(store.get('octa_wsfold')||'[]'))}catch(e){}
+const wsAttr=k=>` data-ws="${k}"${WSF.has(k)?' data-folded="1"':''}`;
+const wsHead=(k,icon,t,n)=>`<button type="button" class="wsh" data-wsfold="${k}" aria-expanded="${!WSF.has(k)}">${ic('chev','wchv')}${ic(icon)}<span>${t}</span>${n?` <b class="wn2">${n}</b>`:''}</button>`;
+/* 4.8 排隊: where each queued job of this chat stands, who is ahead, about how long, and 插隊 (評論：「看不出為什麼在排隊」) */
+function queueHtml(q){return `<div class="wsec wqs"${wsAttr('queue')}>${wsHead('queue','clock','排隊中',q.length)}${q.map(x=>{
+  const v=queueView(x.job,S.busy,S.queue);if(!v)return '';
+  const ahead=v.ahead.filter(a=>a.job!==x.job),names=[...new Set(ahead.map(a=>nameOf(a.bot_id)))];
+  const why=v.why==='own'?`<span>它手上還有一件在做，做完就輪到這件</span>`:v.why==='full'?`<span>同時最多</span> ${S.queue?.slots||3} <span>個機器人工作，現在都在忙</span>`:v.why==='queue'?'<span>前面還有排隊的工作</span>':'<span>馬上開始</span>';
+  return `<div class="wq" data-qjob="${x.job}"><div class="wqh"><span class="av xs" data-u>${avOf(x.bot_id)}</span><b data-u>${esc(nameOf(x.bot_id))}</b><span class="wqpos"><span>第</span> <b>${v.pos}</b> <span>位</span></span><span class="wqeta">${v.known?'':'<span>估計</span> '}${esc(etaText(v.eta))}</span></div>
+    <div class="wqwhy">${why}</div>
+    ${names.length?`<div class="wqahead"><span>前面：</span>${ahead.slice(0,6).map(a=>`<span class="wqa ${a.status==='running'?'run':''}"><span class="av xs" data-u>${avOf(a.bot_id,a.status==='running')}</span><span data-u>${esc(nameOf(a.bot_id))}</span><small>${I18N.t(a.status==='running'?'工作中':'排隊中')}</small></span>`).join('')}${ahead.length>6?`<span class="wqa">+${ahead.length-6}</span>`:''}</div>`:''}
+    ${v.pos>1||v.why!=='soon'?`<div class="wact"><button type="button" class="ghost sm" data-qbump="${x.job}"${v.pos===1?' disabled title="'+esc(I18N.t('已經在最前面'))+'"':''}>${ic('up')}<span>插隊</span></button><button type="button" class="ghost sm" data-wstop>${ic('x')}<span>取消</span></button></div>`:''}</div>`}).join('')}</div>`}
 /* 同事協作: who asked whom, what, waiting / answered / failed, and how long; an open one waiting > 2 minutes stands out */
 const collabTop=id=>collabItems(BS[id]?.items).sort((a,b)=>(b.st==='wait'||b.st==='run')-(a.st==='wait'||a.st==='run')||b.at-a.at).slice(0,8);
 function collabHtml(id){const xs=collabTop(id);if(!xs.length)return '';
   const ST={wait:['排隊中','wait'],run:['回覆中','run'],ok:['已回覆','ok'],fail:['沒有完成','fail']};
-  return `<div class="wsec"><div class="wsh">${ic('users')}<span>同事協作</span></div><ol class="cl">${xs.map(x=>{const [lab,cls]=ST[x.st],open=x.st==='wait'||x.st==='run',stuck=open&&x.dur>120000,k='c'+x.id,kp=WP.keep.has(k);
+  return `<div class="wsec"${wsAttr('collab')}>${wsHead('collab','users','同事協作',xs.length)}<ol class="cl">${xs.map(x=>{const [lab,cls]=ST[x.st],open=x.st==='wait'||x.st==='run',stuck=open&&x.dur>120000,k='c'+x.id,kp=WP.keep.has(k);
     const dur=stuck?`<span class="cld stuck"><span>在等</span> <b data-u>${esc(nameOf(x.to))}</b> <span>回覆，已等</span> <span data-wsince="${x.at}">${minTxt(x.at)}</span> <span>分鐘</span></span>`
       :open?`<span class="cld"><span>已等</span> ${durTxt(x.dur)}</span>`:x.dur!=null?`<span class="cld"><span>花了</span> ${durTxt(x.dur)}</span>`:'';
     return `<li class="ci ${cls}${stuck?' stuck':''}"><div class="cwho"><span class="av xs" data-u>${avOf(x.from)}</span><span data-u>${esc(nameOf(x.from))}</span><span class="car" aria-hidden="true">→</span><span class="av xs" data-u>${avOf(x.to,open)}</span><span data-u>${esc(nameOf(x.to))}</span><span class="ck">${x.kind==='give'?'交辦':'詢問'}</span><time>${hm(x.at)}</time></div>
@@ -132,20 +151,20 @@ function collabHtml(id){const xs=collabTop(id);if(!xs.length)return '';
       <div class="cst"><span class="cpill ${cls}">${lab}</span>${dur}</div>
       ${x.reply?`<details class="wmore" data-wk="${k}"${kp?' open':''}><summary data-u>↳ ${esc(x.reply.replace(/\s+/g,' ').slice(0,120))}</summary><div class="wfull" data-u>${esc(x.reply)}</div></details>`:''}</li>`}).join('')}</ol></div>`}
 function routinesHtml(id){const rs=S.routines.filter(r=>r.conv===id&&r.name!=='外部交接');if(!rs.length)return '';
-  return `<div class="wsec"><div class="wsh">${ic('clock')}<span>例行任務</span></div><div class="wrts">${rs.map(r=>{const s=rtStatus(r);
+  return `<div class="wsec"${wsAttr('rt')}>${wsHead('rt','clock','例行任務',rs.length)}<div class="wrts">${rs.map(r=>{const s=rtStatus(r);
     return `<button type="button" class="wrt${r.enabled?'':' off'}" data-wt="info"><b data-u>${esc(r.name)}</b><small>${!r.enabled?I18N.t('已暫停'):s.next?`<span>下次</span> ${when(s.next)}`:''}${s.last?` · <span>上次</span> ${when(s.last)} ${s.st==='err'?`<i class="bad">${I18N.t('失敗')}</i>`:s.st==='ok'?`<i class="good">${I18N.t('完成')}</i>`:''}`:''}</small></button>`}).join('')}</div></div>`}
 function paintWork(){const id=cur,c=conv(id);if(!c)return;loadLogs(id);loadBack(id);
   const bz=busyIn(id),run=bz.filter(x=>x.status==='running'),q=bz.filter(x=>x.status==='pending');
   let h='';
   if(run.length)h+=run.map(curCard).join('');
   else h+=`<div class="wcur idle"><div class="wch"><span class="av" data-u>${isG(id)?gStack(c):avOf(id,'always')}</span><div class="t"><b>${I18N.t('目前沒有工作')}</b><small>${I18N.t(S.runnerOnline?'交代的事、背景工作和例行任務都會出現在這裡':'電腦上的 OCTA 沒有在執行，訊息會先排著')}</small></div></div></div>`;
-  if(q.length)h+=`<div class="wq">${ic('clock')}<span><span>排隊中</span> ${q.length} <span>件</span>：<span data-u>${esc([...new Set(q.map(x=>nameOf(x.bot_id)))].join('、'))}</span></span></div>`;
+  if(q.length)h+=queueHtml(q);
   h+=collabHtml(id);
   h+=routinesHtml(id);
   const items=workItems(id);let day='';
-  h+=`<div class="wsec"><div class="wsh">${ic('list')}<span>紀錄</span></div>`+(items.length?'<ol class="tl">'+items.slice(0,80).map(it=>{const d=dayLabel(it.t);const sep=d!==day?`<li class="wday">${esc(day=d)}</li>`:'';return sep+wiHtml(it)}).join('')+'</ol>'
+  h+=`<div class="wsec"${wsAttr('log')}>${wsHead('log','list','紀錄',0)}`+(items.length?'<ol class="tl">'+items.slice(0,80).map(it=>{const d=dayLabel(it.t);const sep=d!==day?`<li class="wday">${esc(day=d)}</li>`:'';return sep+wiHtml(it)}).join('')+'</ol>'
     :`<p class="wempty">${I18N.t('還沒有紀錄。它在背景問其他機器人、例行任務的執行、失敗和重試，都會記在這裡，不會塞進對話。')}</p>`)+'</div>';
-  if(setHTML($('wpWork'),h))paintIcons($('wpWork'));
+  if(morph($('wpWork'),h))paintIcons($('wpWork'));
   // seen: the toggle's dot goes away
   const top=items[0]?.t||0;if(top>(WP.seen[id]||0)){WP.seen[id]=top;store.set('octa_wseen',JSON.stringify(WP.seen))}}
 $('wpWork').addEventListener('toggle',e=>{const d=e.target;if(d.dataset?.wk)d.open?WP.keep.add(d.dataset.wk):WP.keep.delete(d.dataset.wk)},true);
@@ -153,6 +172,9 @@ $('wpWork').addEventListener('click',e=>{const t=e.target;
   if(t.closest('[data-wstop]')){t.closest('[data-wstop]').disabled=true;api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()}).catch(err=>toast(err.message));return}
   const jp=t.closest('[data-jpause]');if(jp){jobPause(+jp.dataset.jpause,jp.dataset.on==='1',jp);return}
   const r=t.closest('[data-wretry]');if(r){retryFrom(r.dataset.wretry,r);return}
+  const wf=t.closest('[data-wsfold]');if(wf){const k=wf.dataset.wsfold;WSF.has(k)?WSF.delete(k):WSF.add(k);store.set('octa_wsfold',JSON.stringify([...WSF]));
+    const sec=wf.closest('.wsec');sec.toggleAttribute('data-folded',WSF.has(k));wf.setAttribute('aria-expanded',String(!WSF.has(k)));return}
+  const qb=t.closest('[data-qbump]');if(qb){qb.disabled=true;api('job/'+qb.dataset.qbump+'/bump','POST',{}).then(()=>{toast(I18N.t('已插隊，下一個就做這件'));refresh()}).catch(err=>{qb.disabled=false;toast(err.message)});return}
   const lr=t.closest('[data-wlretry]');if(lr){lr.disabled=true;api('logs/retry','POST',{id:+lr.dataset.wlretry}).then(()=>{toast(I18N.t('已重新排入，會照原本的指示再做一次'));refresh()}).catch(err=>{lr.disabled=false;toast(err.message)});return}});
 // 重試: your last instruction before the failure, sent again
 function retryFrom(mid,btn){const ms=convMsgs(cur),i=ms.findIndex(x=>String(x.id)===String(mid));
@@ -168,6 +190,11 @@ function paintBadge(){const b=$('wpBadge');if(!b)return;const id=cur;if(!id||!co
   const on=panelOn(),workShown=on&&WP.tab==='work';
   const kind=workShown?'':fail?'err':run?'run':fresh?'new':'';
   b.hidden=on||!kind;b.className='wbadge'+(kind?' '+kind:'');
+  // 4.8: folded, the toggle carries the step (「1/3」) — the same panel's progress, not a second copy — and says what the dot means
+  const rj=run&&!on?runOf(id):null,rv=rj&&progView(rj.progress);
+  b.textContent=rv?.has?rv.step+'/'+rv.total:'';b.classList.toggle('num',!!rv?.has);
+  const tip=I18N.t(kind==='err'?'上次的工作沒有做成':kind==='run'?'正在工作':kind==='new'?'工作面板有新紀錄':'工作面板')+(rv?.has?' · '+I18N.t('步驟')+' '+rv.step+'/'+rv.total:'');
+  $('panelBtn').title=tip+'（Ctrl+I）';
   const td=$('wtWork')?.querySelector('.tdot');if(td){td.hidden=!on||workShown||!kind;td.className='tdot'+(kind?' '+kind:'')}
   const ids=isG(id)?conv(id).members:[id],browsing=ids.some(x=>stateOf(x)==='browsing');
   const wd=$('wtWeb')?.querySelector('.tdot');if(wd){wd.hidden=!on||WP.tab==='web'||!browsing;wd.className='tdot run'}}
