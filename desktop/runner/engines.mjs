@@ -112,7 +112,14 @@ export async function spawnCli(bin, args, dir, input, opts = {}) {
       part += d.toString('utf8');
       let i; while ((i = part.indexOf('\n')) >= 0) { const l = part.slice(0, i); part = part.slice(i + 1); try { opts.onLine(l); } catch { } }
     });
-    child.stderr.on('data', d => err.push(d));
+    let epart = '';
+    child.stderr.on('data', d => {
+      err.push(d);
+      if (!opts.onErrLine) return;
+      quiet();
+      epart += d.toString('utf8');
+      let i; while ((i = epart.indexOf('\n')) >= 0) { const l = epart.slice(0, i); epart = epart.slice(i + 1); try { opts.onErrLine(l); } catch { } }
+    });
     child.on('error', e => finish({ code: -1, out: decode(out), err: e.message, missing: e.code === 'ENOENT' }));
     child.on('close', code => finish({ code: killed ? (code || 1) : code, out: decode(out), err: decode(err) + (killed ? '\n' + killed : '') }));
     // the shell ended but something it started still holds the pipe: don't wait on it
@@ -127,6 +134,13 @@ const toml = v => (Array.isArray(v) ? '[' + v.map(x => JSON.stringify(String(x))
 const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep';
 const WORKER_TOOLS = 'mcp__browser,Read';
 export const PARENT_ALLOWED = PARENT_TOOLS + ',Bash';   // Bash: call a site's API (curl / node fetch) and compute lists from record files
+// 4.7 瀏覽器同一輪直接操作: the main turn also gets the bot's own browser (Playwright MCP on its CDP port)
+export const DIRECT_ALLOWED = PARENT_ALLOWED + ',mcp__browser';
+// which AI tools work the browser themselves in the main turn, and which still hand it to a separate round (【派瀏覽】):
+// Ollama/OpenCode: a small local model can't carry the tool list in its context — browser-use (or an OpenCode MCP round) does the page;
+// Grok Bot works on xAI's cloud computer, not this computer's browser.
+export const DIRECT_BROWSE = ['claude', 'codex', 'gemini', 'qwen', 'copilot', 'cursor', 'grok'];
+export const browseKind = engine => (DIRECT_BROWSE.includes(engine || 'claude') ? 'direct' : engine === 'grokbot' ? 'none' : 'relay');
 // 省 token: --allowedTools only pre-approves; every built-in tool (Agent, TodoWrite, NotebookEdit…) and every installed
 // skill / slash command is still described to the model on each request. When this Claude Code supports them, load only
 // the tools a bot can use (Bash stays: bots compute lists from their record files) and skip skills and slash commands.
@@ -158,18 +172,39 @@ export function describeTool(name, input = {}) {
     Glob: '找檔案', Grep: '搜尋檔案內容', WebSearch: `上網搜尋「${short(input.query)}」`, WebFetch: `讀取網頁 ${host(input.url)}`
   })[n] || (n.startsWith('browser_') ? '操作瀏覽器' : `使用 ${n}`);
 }
+// one Claude Code stream-json event → progress (tool in words, 🧭 steps from its text), what tools returned, and 暫停:
+// a tool's result just came back, so the last action is finished and the next one hasn't started — the step boundary
+export function claudeEvent(e, live, stopHere) {
+  if (e.type === 'assistant') for (const c of e.message?.content || []) {
+    if (c.type === 'tool_use') { live.tool?.(c.name, c.input); live.progress?.(describeTool(c.name, c.input), toolKindOf(c.name)); }
+    else if (c.type === 'text' && c.text?.trim()) { live.say?.(c.text); live.progress?.('整理回覆中', 'think'); }
+  }
+  if (e.type === 'user') {
+    for (const c of e.message?.content || []) if (c.type === 'tool_result') {
+      const t = Array.isArray(c.content) ? c.content.map(x => x.text || '').join('\n') : String(c.content || '');
+      if (t) live.seen?.(t);
+    }
+    if (live.pauseNow?.()) stopHere();
+  }
+}
+const toolKindOf = name => (/^(mcp__browser__)?browser_/.test(String(name)) ? 'browse' : 'tool');
 // bots without a chosen model run on Sonnet: the CLI default on Max is Opus, which burns the shared Claude quota several times faster
 const CLAUDE_DEFAULT_MODEL = 'sonnet';
+// live: { browser (the bot's browser server goes to this run), worker (a 【派瀏覽】 round: only the browser and Read), files,
+//   port, progress(text, kind), say(text) (the AI's own words, for 🧭 steps), tool(name, input), seen(text) (what a tool returned),
+//   pauseNow() (暫停 was pressed: stop at the next step boundary), session ({ id, resume }: Claude's session, so a pause can go on), ctl }
 export async function runEngine(engine, prompt, b, model, live = {}) {
   let tokens = null;
-  const useBrowser = live.browser === true, { dir } = b, server = b.serverFor ? b.serverFor(useBrowser && live.files) : b.server;
+  const useBrowser = live.browser === true, worker = useBrowser && live.worker === true, { dir } = b, server = b.serverFor ? b.serverFor(useBrowser && live.files) : b.server;
+  // the AI's printed lines (CLIs without an event stream): only the 🧭 step marks are read from them
+  const lines = live.say ? { onLine: l => live.say(l), onErrLine: l => live.say(l) } : {};
   if (b.applyBrowser) b.applyBrowser(useBrowser, live.files);
   const store = storeDir();
   const m = (flag) => (model ? [flag, model] : []);
   writeFileSync(join(dir, 'octa-task.md'), prompt);
   // some CLIs treat another folder as "current" (agy: the store): always give the full path
   const FILE_INSTR = BASE_INSTR.replace('目前資料夾裡的 octa-task.md', `檔案 ${join(dir, 'octa-task.md')}（用讀檔工具讀這個完整路徑）`);   // for CLIs that take the prompt as an argument (avoids Windows length limits)
-  let r, text;
+  let r, text, paused = false;
   switch (engine) {
     case 'codex': {
       const last = join(dir, '.codex-last.txt');
@@ -179,7 +214,7 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
           'mcp_servers.browser.startup_timeout_sec=60', 'mcp_servers.browser.default_tools_approval_mode="approve"',
           ...Object.entries(server.env || {}).map(([k, v]) => `mcp_servers.browser.env.${k}=${toml(v)}`)] : [])];
       const codex = sandbox => spawnCli('codex', ['exec', '--skip-git-repo-check', '--sandbox', sandbox, '-C', dir, '-o', last,
-        ...m('-m'), ...c.flatMap(x => ['-c', x]), '-'], dir, prompt, { ctl: live.ctl });
+        ...m('-m'), ...c.flatMap(x => ['-c', x]), '-'], dir, prompt, { ctl: live.ctl, ...lines });
       r = await codex('workspace-write');
       // Codex's sandbox isn't available on every Windows setup: run without it rather than not at all (other engines run unsandboxed too)
       if (r.code !== 0 && /sandbox/i.test(r.err || '')) r = await codex('danger-full-access');
@@ -187,13 +222,13 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
       break;
     }
     case 'gemini': r = await spawnCli('agy', ['-p', FILE_INSTR, '--dangerously-skip-permissions', '--output-format', 'text',
-      '--print-timeout', Math.round((live.ctl?.maxMs || JOB_TIMEOUT_MS) / 60000) + 'm', '--add-dir', store, ...m('--model')], dir, '', { ctl: live.ctl }); break;
-    case 'qwen': r = await spawnCli('qwen', ['--yolo', '--include-directories', store, ...m('-m'), '-p', STDIN_INSTR], dir, prompt, { ctl: live.ctl }); break;
+      '--print-timeout', Math.round((live.ctl?.maxMs || JOB_TIMEOUT_MS) / 60000) + 'm', '--add-dir', store, ...m('--model')], dir, '', { ctl: live.ctl, ...lines }); break;
+    case 'qwen': r = await spawnCli('qwen', ['--yolo', '--include-directories', store, ...m('-m'), '-p', STDIN_INSTR], dir, prompt, { ctl: live.ctl, ...lines }); break;
     case 'copilot': r = await spawnCli('copilot', ['-p', FILE_INSTR, '-s', '--allow-all-tools', '--allow-all-paths', '--no-color',
-      '--additional-mcp-config', '@' + join(dir, 'copilot-mcp.json'), ...m('--model')], dir, '', { ctl: live.ctl }); break;
+      '--additional-mcp-config', '@' + join(dir, 'copilot-mcp.json'), ...m('--model')], dir, '', { ctl: live.ctl, ...lines }); break;
     case 'grok': r = await spawnCli('grok', ['--no-auto-update', '--no-alt-screen', '--always-approve', '--cwd', dir,
-      '--output-format', 'plain', ...m('-m'), '-p', FILE_INSTR], dir, '', { ctl: live.ctl }); break;
-    case 'cursor': r = await spawnCli('agent', ['-p', '--force', '--approve-mcps', '--output-format', 'text', ...m('--model'), FILE_INSTR], dir, '', { ctl: live.ctl }); break;
+      '--output-format', 'plain', ...m('-m'), '-p', FILE_INSTR], dir, '', { ctl: live.ctl, ...lines }); break;
+    case 'cursor': r = await spawnCli('agent', ['-p', '--force', '--approve-mcps', '--output-format', 'text', ...m('--model'), FILE_INSTR], dir, '', { ctl: live.ctl, ...lines }); break;
     case 'opencode': {
       if (!(await has('ollama'))) { r = { missing: true }; break; }
       const name = ollamaModel(model);
@@ -228,20 +263,22 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
     default: {
       // stream-json: lets OCTA show what the bot is doing while it works
       let result = null;
+      const ses = live.session;
+      let sesSeen = '';
       r = await spawnCli('claude', ['-p', '--output-format', 'stream-json', '--verbose',
         '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config',
         '--add-dir', store, '--model', model || CLAUDE_DEFAULT_MODEL,
-        '--allowedTools', useBrowser ? WORKER_TOOLS : PARENT_ALLOWED, ...(await claudeLean(useBrowser))], dir, prompt, {
+        ...(ses?.id ? (ses.resume ? ['--resume', ses.id] : ['--session-id', ses.id]) : []),
+        '--allowedTools', worker ? WORKER_TOOLS : useBrowser ? DIRECT_ALLOWED : PARENT_ALLOWED, ...(await claudeLean(worker))], dir, prompt, {
         ctl: live.ctl, quietMs: QUIET_MS,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
-          if (e.type === 'result') { result = e; return; }
-          if (e.type === 'assistant') for (const c of e.message?.content || []) {
-            if (c.type === 'tool_use') live.progress?.(describeTool(c.name, c.input));
-            else if (c.type === 'text' && c.text?.trim()) live.progress?.('整理回覆中');
-          }
+          if (e.type === 'system' && e.session_id) sesSeen = e.session_id;   // (a resumed session may get a new id)
+          claudeEvent(e, live, () => { paused = true; live.ctl?.kill?.(); });
+          if (e.type === 'result') result = e;
         }
       });
+      if (paused) return { ok: false, paused: true, session: sesSeen || ses?.id, text: '', tokens: result ? claudeTokens(result.usage) : null };
       if (result) { text = String(result.result || '').trim(); if (result.is_error && r.code === 0) r.code = 1; tokens = claudeTokens(result.usage); }
       else if (r.out && r.out.trim().startsWith('{')) text = '';   // stream with no result: fall back to the error output
     }

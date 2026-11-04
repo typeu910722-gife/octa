@@ -8,7 +8,7 @@ import { clean, err, now } from './util.mjs';
 const KINDS = ['browse', 'think', 'tool', 'ask'];
 // what the runner sent → the stored object (at: when it was reported). Unknown fields are dropped.
 export function progressOf(body) {
-  const p = { text: clean(body?.text, 120) };
+  const p = { text: clean(body?.text, 200) };
   const total = Math.floor(+body?.total || 0);
   if (Array.isArray(body?.steps) && body.steps.length) {
     p.steps = body.steps.slice(0, 7).map(s => clean(s, 40)).filter(Boolean);

@@ -1,9 +1,10 @@
 // OCTA runner: AI 待機 — a Claude Code session kept running between messages; connection tests.
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { api } from './api-client.mjs';
 import {
-  ENGINES, PARENT_ALLOWED, claudeFlags, claudeLean, claudeTokens, decode, describeTool, has, leanFlags,
+  DIRECT_ALLOWED, ENGINES, PARENT_ALLOWED, claudeEvent, claudeFlags, claudeLean, claudeTokens, decode, has, leanFlags,
   runEngine
 } from './engines.mjs';
 import { botDir, storeDir } from './files.mjs';
@@ -19,22 +20,26 @@ import { JOB_TIMEOUT_MS, VERSION, WIN, log, q } from './state.mjs';
 // The first message sends everything; while the session waits, the next message only sends what's new,
 // so there is no restart and nothing to re-read. job.warm: seconds to keep waiting (-1: always).
 export const sessions = new Map();   // bot id → { child, fp, lastId, turn, timer }
-export function closeSession(id, why) {
+// now: 暫停 — end it right away (a polite close lets it start the next action in the meantime)
+export function closeSession(id, why, now) {
   const s = sessions.get(id);
   if (!s) return;
   sessions.delete(id);
   clearTimeout(s.timer);
-  try { s.child.stdin.end(); } catch { }
-  setTimeout(() => { try { WIN ? spawn('taskkill', ['/pid', String(s.child.pid), '/t', '/f'], { windowsHide: true }) : s.child.kill(); } catch { } }, 4000);
+  const kill = () => { try { WIN ? spawn('taskkill', ['/pid', String(s.child.pid), '/t', '/f'], { windowsHide: true }) : s.child.kill(); } catch { } };
+  if (now) kill();
+  else { try { s.child.stdin.end(); } catch { } setTimeout(kill, 4000); }
   if (why) log(`💤 ${why}`);
 }
 function startSession(job, b) {
   const { dir } = b, m = job.bot.model ? ['--model', job.bot.model] : [];
+  const direct = job.browse === 'direct', sid = randomUUID();   // 4.7: the browser is in the session itself; its id lets a pause go on with --resume
+  if (b.applyBrowser) b.applyBrowser(direct, direct);
   const child = spawn('claude', (WIN ? a => a.map(q) : a => a)(['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
-    '--mcp-config', join(dir, 'mcp.json'), '--strict-mcp-config', '--add-dir', storeDir(), ...m,
-    '--allowedTools', PARENT_ALLOWED, ...leanFlags(claudeFlags || '', false)]), { cwd: dir, shell: WIN, windowsHide: true });
+    '--mcp-config', join(dir, direct ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', storeDir(), ...m, '--session-id', sid,
+    '--allowedTools', direct ? DIRECT_ALLOWED : PARENT_ALLOWED, ...leanFlags(claudeFlags || '', false)]), { cwd: dir, shell: WIN, windowsHide: true });
   if (claudeFlags === null) claudeLean(false);   // known from the next session on
-  const s = { child, turn: null, err: [] };
+  const s = { child, turn: null, err: [], sid, botId: job.bot.id };
   let part = '';
   child.stdout.on('data', d => {
     s.seenAt = Date.now();
@@ -45,10 +50,10 @@ function startSession(job, b) {
       let e; try { e = JSON.parse(l); } catch { continue; }
       if (!s.turn) continue;
       s.turn.heard = true;
-      if (e.type === 'assistant') for (const c of e.message?.content || []) {
-        if (c.type === 'tool_use') s.turn.progress?.(describeTool(c.name, c.input));
-        else if (c.type === 'text' && c.text?.trim()) { s.turn.progress?.('整理回覆中'); (s.turn.parts = s.turn.parts || []).push(c.text.trim()); }
-      }
+      const t0 = s.turn;
+      claudeEvent(e, t0.live || {}, () => { t0.paused = true; closeSession(s.botId, null, true); });
+      if (e.type === 'assistant') for (const c of e.message?.content || []) if (c.type === 'text' && c.text?.trim()) (t0.parts = t0.parts || []).push(c.text.trim());
+      if (!s.turn) continue;
       if (e.type === 'result') {
         const t = s.turn; s.turn = null;
         const raw = String(e.result || '').trim();
@@ -61,7 +66,11 @@ function startSession(job, b) {
   const gone = msg => {
     for (const [k, v] of sessions) if (v === s) sessions.delete(k);
     clearTimeout(s.timer);
-    if (s.turn) { const t = s.turn; s.turn = null; t.done({ ok: false, text: '⚠ Claude Code 執行失敗：' + (decode(s.err).trim().slice(-1200) || msg) }); }
+    if (s.turn) {
+      const t = s.turn; s.turn = null;
+      if (t.paused) return t.done({ ok: false, paused: true, session: s.sid, text: '' });   // 暫停: the runner goes on later with --resume
+      t.done({ ok: false, text: '⚠ Claude Code 執行失敗：' + (decode(s.err).trim().slice(-1200) || msg) });
+    }
   };
   child.on('error', e => gone(e.message));
   child.on('exit', code => gone('結束碼 ' + code));
@@ -86,7 +95,7 @@ function turnWithWatch(job, s, text, live) {
     const started = Date.now();
     s.seenAt = started;
     const end = r => { clearInterval(dog); done(r); };
-    s.turn = { done: end, progress: live.progress, heard: false };
+    s.turn = { done: end, progress: live.progress, live, heard: false };
     const dog = setInterval(() => {
       if (!s.turn) return clearInterval(dog);
       const quiet = Date.now() - (s.seenAt || started), limit = job.maxMin ? job.maxMin * 60000 : JOB_TIMEOUT_MS;
@@ -110,7 +119,7 @@ export async function warmClaude(job, b, here, live) {
   // anything that changes the bot's standing instructions starts a fresh session
   const fp = JSON.stringify([
     VERSION, job.memory, job.facts, (job.skills || []).map(k => k.name + k.steps), job.bot.task, job.bot.model, job.bot.browser,
-    job.bot.livePort, job.notes, job.folderNotes, job.group, (job.colleagues || []).map(c => c.name + c.task), job.allowed, job.lang,
+    job.bot.livePort, job.browse, job.notes, job.folderNotes, job.group, (job.colleagues || []).map(c => c.name + c.task), job.allowed, job.lang,
     storeDir(), job.conv?.id, job.nick
   ]);
   let s = sessions.get(job.bot.id), text;
@@ -124,7 +133,7 @@ export async function warmClaude(job, b, here, live) {
     const fresh = job.history.filter(h => (h.id || 0) > s.lastId && !(h.who === '使用者' && h.text === job.prompt));
     text = [fresh.length ? '（上次之後的新對話）\n' + fresh.map(h => `【${h.who}】${h.text}` + (h.paths?.length ? `\n（附件，可直接讀取這些檔案：${h.paths.join('、')}）` : '')).join('\n') : '',
       dayInfo(job).join('\n'), workNotes(job).join('\n'), records(job).join('\n'), tabsNow(job).join('\n'), seeNow(job).join('\n'),
-      workLoop().join('\n'), studioAim().join('\n'), turnGuide(), routineLines(job).join('\n'), mustMarkLines(job).join('\n'),
+      workLoop(job).join('\n'), studioAim(job).join('\n'), turnGuide(job), routineLines(job).join('\n'), mustMarkLines(job).join('\n'),
       whoAmI(job), manualLines(job).join('\n').trim(), '現在請處理這則指示：', job.prompt].filter(Boolean).join('\n\n');
     log(`⚡ ${job.bot.name}：AI 待機中，直接接續`);
   } else {

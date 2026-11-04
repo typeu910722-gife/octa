@@ -11,12 +11,13 @@ export {
   autonomyRules, SAFE_WORK_RULES, memoryLines, manualLines, memoryHowTo, routineLines, mustMarkLines, sideNote,
   GROUP_HISTORY, buildPrompt, fitLocal, buildLocalPrompt, taskPrompt, evidenceText, scrubNotes, takeBrowserTask,
   stripBrowserTask, keepBrowserTask, needsPage, forcedBrowseTask, planBrowserRound, buildBrowserPrompt,
-  loginHints, hideSecrets, findUploads
+  loginHints, hideSecrets, findUploads, browseMode, browseRules
 } from './prompts.mjs';
-export { ENGINES, has, spawnCli, leanFlags } from './engines.mjs';
+export { ENGINES, has, spawnCli, leanFlags, DIRECT_BROWSE, browseKind, claudeEvent } from './engines.mjs';
+export { parsePlan, parseStep, stripStepMarks, stepTracker } from './steps.mjs';
 export { ollamaContextTag, ollamaContextModelfile, parseOllamaCaps, ollamaChoices, NO_TOOLS_TEXT, browserUseReady } from './ollama.mjs';
 export { PARTIAL_TAG, partialNote } from './warm.mjs';
-export { triedText } from './chat.mjs';
+export { triedText, RESUME_PROMPT } from './chat.mjs';
 export { pickLivePage, ensureBrowser, closeAllBrowsers, livePortOf } from './browser.mjs';
 export { googleSignInUrl, googleSignedIn, googleLoginMark, googleLoginDone, returnToEmbed } from './google.mjs';
 export { browserWindowAsk, takeWindowMarks } from './live.mjs';

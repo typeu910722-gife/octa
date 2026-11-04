@@ -95,8 +95,10 @@ test('旁聊: a message while the bot works gets its own quick job; the work kee
   const p = await t.progress(main.id, '整理回覆中');
   assert.ok(!p.data.stop, 'the work was not asked to stop');
   await t.done(main.id, '房號整理好了。\n✅ 完成：已傳給 Fongting');
-  const said = (await t.msgs(a)).filter(m => m.by === a).map(m => m.text);
-  assert.deepEqual(said, ['我正在讀 eroom 的房況，大概再兩分鐘。', '整理完就跟你說。', '房號整理好了。\n✅ 完成：已傳給 Fongting']);
+  const mine = (await t.msgs(a)).filter(m => m.by === a);
+  // 4.7: the ✅ 完成 line leaves the text and becomes meta.result (the app shows it as the first line's ✅)
+  assert.deepEqual(mine.map(m => m.text), ['我正在讀 eroom 的房況，大概再兩分鐘。', '整理完就跟你說。', '房號整理好了。']);
+  assert.deepEqual(mine[2].meta, { result: { ok: true, text: '已傳給 Fongting' } });
   assert.equal(t.open().length, 0);
 });
 
@@ -186,7 +188,7 @@ test('prompt rules: API first, log back in, look before asking, files, result li
   assert.match(p, /能用 API、公開資料或連接器做到的先用/);
   assert.match(p, /Bash 跑 curl 或 node fetch/);
   assert.match(p, /帳密、API 金鑰從共用資料、分區資料或連接器拿，不要寫進回覆/);
-  assert.match(p, /會先自己登回去/);
+  assert.match(p, /先自己登回去/);
   assert.match(p, /卡住或缺資料.*不要乾等：先查共用資料、分區資料、工作筆記、紀錄檔/);
   assert.match(p, /先用 Glob 在這個對話的資料夾/);
   assert.match(p, /不要叫使用者把檔案放到指定位置/);

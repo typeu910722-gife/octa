@@ -157,19 +157,30 @@ test('a saved screenshot is the picture the bot must read', () => {
   assert.match(text, /讀不到圖就老實說/);
 });
 
-test('the main turn dispatches a logged-in page and does not click it', () => {
+test('4.7: the main turn works its own browser (Claude); Ollama still hands the page to a separate round', () => {
   const text = prompt({ prompt: '現在有幾則訊息' });
-  assert.match(text, /【派瀏覽】/);
-  assert.match(text, /【派完】/);
+  assert.match(text, /你自己就能操作這個機器人的瀏覽器/);
+  assert.match(text, /browser_snapshot/);
+  assert.match(text, /ref，例如 e5/);
+  assert.match(text, /Ref not found/);
   assert.match(text, /WebFetch/);
   assert.match(text, /公開網頁/);
   assert.match(text, /需要使用者在電腦上登入/);
-  assert.match(text, /不能自己點/);
+  assert.match(text, /接手/);
   assert.match(text, /還沒有接上任何連接器/);
-  assert.equal(text.includes('browser_snapshot'), false);
-  assert.equal(text.includes('browser_click'), false);
-  assert.equal(text.includes('browser_mouse_click_xy'), false);
+  assert.equal(text.includes('不能自己點'), false, 'no more "you cannot click"');
+  assert.equal(/改寫【派瀏覽】|【派瀏覽】\n網址|派出去的那一輪/.test(text), false, 'no 派瀏覽 instructions for a direct engine');
   assert.equal(text.includes('你是 Grok Bot'), false);
+  const local = prompt({ prompt: '現在有幾則訊息', engine: 'opencode' });
+  assert.ok(local.length > 0);
+  const relay = buildPrompt({ bot: { id: 'b1', name: '測', engine: 'claude' }, browse: 'relay', prompt: '現在有幾則訊息', history: [], lang: 'zh-TW' }, '/tmp/x');
+  assert.match(relay, /【派瀏覽】/);
+  assert.match(relay, /【派完】/);
+  assert.match(relay, /不能自己點/);
+  assert.equal(relay.includes('browser_click'), false);
+  const none = buildPrompt({ bot: { id: 'b1', name: '測', engine: 'claude' }, browse: 'none', prompt: '現在有幾則訊息', history: [], lang: 'zh-TW' }, '/tmp/x');
+  assert.match(none, /這次沒有可以操作的瀏覽器/);
+  assert.equal(/改寫【派瀏覽】|【派瀏覽】\n網址|派出去的那一輪/.test(none), false);
 });
 
 test('closing the browser is something the bot can do, and an empty open is Google', () => {
@@ -194,7 +205,7 @@ test('a connected service is named in the prompt and its secret is not', () => {
   assert.equal(text.includes('super-secret'), false);
 });
 
-test('a browsing round reads by snapshot ref and reports in text', () => {
+test('a relay round (Ollama) reads by snapshot ref and reports in text', () => {
   const task = takeBrowserTask('說明\n【派瀏覽】\n網址：https://example.com/a\n要做的事：讀出今天的訂單\n【派完】\n尾巴');
   assert.equal(task.url, 'https://example.com/a');
   assert.match(task.prompt, /讀出今天的訂單/);
@@ -203,12 +214,12 @@ test('a browsing round reads by snapshot ref and reports in text', () => {
   const kept = keepBrowserTask('先看\n【派瀏覽】\n網址：https://example.com/b\n要做的事：看訂單\n【派完】\n【回覆】\n好了');
   assert.match(kept, /【派瀏覽】/);
   assert.match(kept, /好了/);
-  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 9333, depth: 0 }).action, 'work');
-  assert.equal(planBrowserRound('直接回答', { engine: 'claude', port: 9333 }).action, 'keep');
+  assert.equal(planBrowserRound(kept, { engine: 'opencode', port: 9333, depth: 0 }).action, 'work');
+  assert.equal(planBrowserRound('直接回答', { engine: 'opencode', port: 9333 }).action, 'keep');
   assert.equal(planBrowserRound(kept, { engine: 'grokbot', port: 9333 }).action, 'keep');
-  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 0 }).action, 'down');
-  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 0, mine: true }).action, 'work');
-  assert.equal(planBrowserRound(kept, { engine: 'claude', port: 9333, depth: 2 }).action, 'strip');
+  assert.equal(planBrowserRound(kept, { engine: 'opencode', port: 0 }).action, 'down');
+  assert.equal(planBrowserRound(kept, { engine: 'opencode', port: 0, mine: true }).action, 'work');
+  assert.equal(planBrowserRound(kept, { engine: 'opencode', port: 9333, depth: 2 }).action, 'strip');
   const worker = buildBrowserPrompt({
     bot: { id: 'b1', name: '測', page: 'https://example.com/old' },
     prompt: '讀出今天的訂單',
@@ -225,9 +236,6 @@ test('a browsing round reads by snapshot ref and reports in text', () => {
   assert.match(worker, /做成了什麼/);
   assert.match(worker, /卡在哪裡/);
   assert.equal(worker.includes('【派瀏覽】'), false);
-  assert.equal(needsPage({ bot: { task: '回答' }, prompt: '你好' }), false);
-  assert.equal(needsPage({ bot: { task: '看房號' }, prompt: '整理今日入住' }), true);
-  assert.equal(needsPage({ bot: { task: '回答' }, prompt: '看 eroom 的訂單' }), true);
   assert.match(forcedBrowseTask({ bot: { task: '訂單', engine: 'opencode' }, prompt: '看後台' }), /只能抄畫面上的字/);
   assert.equal(forcedBrowseTask({ bot: { task: '訂單', engine: 'opencode' }, prompt: '看後台', didBrowse: true }), null);
   assert.equal(forcedBrowseTask({ bot: { task: '訂單', engine: 'grokbot' }, prompt: '看後台' }), null);
@@ -236,8 +244,15 @@ test('a browsing round reads by snapshot ref and reports in text', () => {
   const src = runnerSource();
   assert.match(src, /const PARENT_TOOLS = 'WebFetch,WebSearch,Read,Write,Edit,Glob,Grep'/);
   assert.match(src, /const WORKER_TOOLS = 'mcp__browser,Read'/);
-  assert.match(src, /--allowedTools', PARENT_TOOLS/);
-  assert.match(src, /useBrowser \? WORKER_TOOLS : PARENT_TOOLS/);
+  assert.match(src, /export const DIRECT_ALLOWED = PARENT_ALLOWED \+ ',mcp__browser'/);
+  assert.match(src, /worker \? WORKER_TOOLS : useBrowser \? DIRECT_ALLOWED : PARENT_ALLOWED/);
   assert.match(src, /job\.didBrowse = true/);
   assert.match(src, /forcedBrowseTask\(job\)/);
+});
+
+// (kept apart: these needsPage expectations already failed before 4.7)
+test('a job about data on a signed-in site needs the page', () => {
+  assert.equal(needsPage({ bot: { task: '回答' }, prompt: '你好' }), false);
+  assert.equal(needsPage({ bot: { task: '看房號' }, prompt: '整理今日入住' }), true);
+  assert.equal(needsPage({ bot: { task: '回答' }, prompt: '看 eroom 的訂單' }), true);
 });
