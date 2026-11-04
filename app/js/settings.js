@@ -2,7 +2,7 @@
    外觀與語言 · AI 連線 · 瀏覽器 · 通知 · 手機遠端 · 電腦（4.3, link.js） · 工作與排程 · 進階 */
 'use strict';
 const SECTIONS=[
-  ['look','外觀與語言','palette','配色、字體大小、語言、稱呼'],
+  ['look','外觀與語言','palette','配色、主題色、字體大小、版面、快捷鍵、語言'],
   ['ai','AI 連線','plug','連接 AI、剩餘流量、待機'],
   ['browser','瀏覽器','globe','共用登入、使用我的 Chrome'],
   ['noti','通知','bell','這個裝置、Telegram、LINE'],
@@ -42,42 +42,7 @@ const copyRow=(v,id)=>`<div class="row2"><input readonly class="mono grow" value
 document.addEventListener('click',e=>{const b=e.target.closest('#veil [data-copy]');if(!b)return;navigator.clipboard?.writeText(b.dataset.copy).then(()=>{b.textContent=I18N.t('已複製 ✓')}).catch(()=>{})});
 
 /* ---------- 外觀與語言 ---------- */
-SEC.look=()=>{
-  // 4.8: everything here applies the moment you pick it (no 儲存); it is kept on this device
-  const theme=themeChoice(),fs=currentFsPercent();
-  block('sLook','配色').innerHTML=`<div class="theme-pick" role="radiogroup" aria-label="配色">
-    ${[['system','跟隨系統','monitor'],['light','淺色','sun'],['dark','深色','moon']].map(([k,t,i])=>`<button type="button" role="radio" data-set-theme="${k}" class="${theme===k?'on':''}" aria-checked="${theme===k}"><span class="swatch ${k}"></span><span class="tp">${ic(i)}<b>${t}</b></span></button>`).join('')}</div>`;
-  const acc=prefOf('accent');
-  block('sAccent','主題色','按鈕、連結和你的對話泡泡用的顏色。').innerHTML=`<div class="swatches" role="radiogroup" aria-label="主題色">
-    <button type="button" role="radio" class="sw0${acc?'':' on'}" data-accent="" aria-checked="${!acc}" title="${esc(I18N.t('預設（金色）'))}"><span style="background:#b8862e"></span></button>
-    ${PALETTE.map(([h,n])=>`<button type="button" role="radio" class="sw0${acc.toLowerCase()===h.toLowerCase()?' on':''}" data-accent="${h}" aria-checked="${acc.toLowerCase()===h.toLowerCase()}" title="${esc(I18N.t(n))}" aria-label="${esc(I18N.t(n))}"><span style="background:${h}"></span></button>`).join('')}</div>`;
-  block('sSize','字體大小').innerHTML=`<div class="fslide"><span class="a1">A</span><input id="fsRange" type="range" min="65" max="200" step="5" value="${fs}" aria-label="字體大小" list="fsMarks"><datalist id="fsMarks"><option value="70"></option><option value="100"></option><option value="150"></option></datalist><span class="a2">A</span></div>
-    <div class="fsrow"><div class="fslab" id="fsLab">${fsName(fs)} · ${fs}%</div><div class="fsq">${[70,85,100,115].map(v=>`<button type="button" class="ghost sm" data-fs="${v}">${v}%</button>`).join('')}</div></div>
-    <div class="sample" aria-hidden="true"><div class="sb me2">幫我整理這週的進度</div><div class="sb">好，整理好了，重點有三項。</div></div>`;
-  const seg=(id,label,cur,opts)=>`<div class="seg pref" id="${id}" role="radiogroup" aria-label="${esc(I18N.t(label))}">${opts.map(([k,t,d])=>`<button type="button" role="radio" data-v="${k}" class="${cur===k?'on':''}" aria-checked="${cur===k}"><b>${t}</b>${d?`<small>${d}</small>`:''}</button>`).join('')}</div>`;
-  block('sDensity','版面').innerHTML=`<div class="prow"><span class="plab">密度</span>${seg('pDensity','密度',prefOf('density'),[['comfy','舒適','留白多、預覽兩行'],['compact','緊湊','一眼看到更多']])}</div>
-    <div class="prow"><span class="plab">對話寬度</span>${seg('pCw','對話寬度',prefOf('cw'),[['narrow','窄',''],['normal','標準',''],['wide','寬','']])}</div>
-    <div class="prow"><span class="plab">側邊欄與工作面板</span><span class="pnote">拖它們的邊緣就能調整寬度，會記在這台裝置。</span><button type="button" class="ghost sm" id="pReset">${ic('refresh')}<span>恢復預設寬度與排序</span></button></div>`;
-  block('sKeys','鍵盤快捷鍵').innerHTML=`<div class="row2"><span class="pnote">在任何畫面按 <kbd>?</kbd> 也能叫出來。</span><button type="button" class="ghost sm" id="pKeys">${ic('keyboard')}<span>看全部快捷鍵</span></button></div>`;
-  block('sLang','語言','介面文字和機器人回覆用的語言。').innerHTML=`<div class="row2">${I18N.select('sLangSel')}</div>`;
-  const nick=block('sNick','怎麼稱呼你','沒填的話，機器人會直接用「你」稱呼你。規則或資料裡寫的「老闆」，機器人也會當成是你。');
-  nick.innerHTML=`<div class="row2"><input id="nick" maxlength="20" class="grow" value="${esc(S.nick||'')}" placeholder="例如：Yz、阿哲"><span class="saved" id="nickOk" hidden>${ic('check')}<span>已儲存</span></span></div>`;
-  paintIcons($('sblocks'));
-  document.querySelectorAll('[data-set-theme]').forEach(x=>x.addEventListener('click',()=>x.parentNode.querySelectorAll('[role=radio]').forEach(r=>r.setAttribute('aria-checked',String(r===x)))));
-  $('sLangSel').onchange=e=>setLang(e.target.value);
-  $('fsRange').oninput=e=>applyFs(e.target.value);
-  $('sSize').querySelectorAll('[data-fs]').forEach(b=>b.onclick=()=>{$('fsRange').value=b.dataset.fs;applyFs(b.dataset.fs)});
-  const pick=(box,fn)=>box.onclick=e=>{const b=e.target.closest('[role=radio]');if(!b)return;box.querySelectorAll('[role=radio]').forEach(r=>{const on=r===b;r.classList.toggle('on',on);r.setAttribute('aria-checked',String(on))});fn(b.dataset.v??b.dataset.accent)};
-  pick($('sAccent').querySelector('.swatches'),applyAccent);
-  pick($('pDensity'),applyDensity);
-  pick($('pCw'),applyChatWidth);
-  $('pReset').onclick=()=>{document.documentElement.style.removeProperty('--side-w');store.set('octa_sidew',null);$('app').style.removeProperty('--wpw');$('app').style.removeProperty('--wpw-web');store.set('octa_wpw',null);store.set('octa_wpw_web',null);resetOrder();toast(I18N.t('已恢復預設寬度與排序'))};
-  $('pKeys').onclick=()=>shortcutSheet();
-  // the name saves itself a moment after you stop typing
-  let t=0;const save=async()=>{const v=$('nick').value.trim();if(v===(S.nick||''))return;try{await api('settings','PUT',{nick:v});S.nick=v;const ok=$('nickOk');if(ok){ok.hidden=false;clearTimeout(save.t);save.t=setTimeout(()=>{ok.hidden=true},1600)}}catch(e){toast(e.message)}};
-  $('nick').oninput=()=>{clearTimeout(t);t=setTimeout(save,700)};$('nick').onblur=()=>{clearTimeout(t);save()};
-  $('nick').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();clearTimeout(t);save()}};
-};
+// SEC.look (外觀與語言) is in prefs.js, next to what it sets
 
 /* ---------- 瀏覽器 ---------- */
 SEC.browser=async()=>{

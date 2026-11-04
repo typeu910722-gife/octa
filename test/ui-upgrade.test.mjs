@@ -114,7 +114,9 @@ test('one 儲存 saves the inner forms, flags unsaved edits and asks before clos
   assert.match(panel, /已儲存 ✓/);
   assert.match(fnSrc('renderRoutines'), /f\._save=async quiet=>/);
   assert.match(fnSrc('folderSheet'), /trackDirty\(/, 'folderSheet tracks edits');
-  for (const k of ['adv', 'noti', 'look']) assert.match(secSrc(k), /trackDirty\(/, k + ' tracks edits');
+  for (const k of ['adv', 'noti']) assert.match(secSrc(k), /trackDirty\(/, k + ' tracks edits');
+  // 4.8: 外觀與語言 has nothing to save — every choice applies at once, the name saves itself
+  assert.doesNotMatch(secSrc('look'), /trackDirty\(|nickGo/, 'look applies live');
   assert.match(fnSrc('subPage'), /SUB\.back=back/);
   assert.match(fnSrc('leaveInfo'), /leaveOk\(/, 'closing the panel (or leaving 詳細資料) asks first');
   assert.match(fnSrc('closePanel'), /leaveInfo\(/);
@@ -165,7 +167,9 @@ test('the card says what the action touches', () => {
 test('waiting 核准 are counted at the top and noticed again after 15 minutes', () => {
   assert.match(page, /class="apbar" data-apgo=/);
   assert.match(fnSrc('renderList'), /const aps=S\.loaded\?apprConvs\(\):\[\]/);
-  assert.match(page, /<i class="need ap">待你核准<\/i>/);
+  // 4.8: the tag says what it needs, with a tooltip (待你核准 is one of them)
+  assert.match(page, /<i class="need \$\{n\.k\}" title=/);
+  assert.match(fnSrc('needTag'), /k:'ap',label:'待你核准'/);
   const nag = fnSrc('apprNag');
   assert.match(page, /const NAG_MS=15\*60000/);
   assert.match(nag, /new Notification\(/);

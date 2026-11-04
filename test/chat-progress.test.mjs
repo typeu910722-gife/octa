@@ -132,9 +132,13 @@ test('the chat, panel and sidebar use them (and stay readable for old data)', ()
   assert.match(row, /const v=msgView\(m\)/, 'bot messages go through msgView');
   assert.match(row, /foldReply\(body\)/);
   assert.match(row, /notesHtml\(m,v\.notes\)/);
-  assert.match(row, /typing\.map\(jobChip\)/, 'a running job is one line with steps, 暫停 and 停止');
-  assert.match(fnSrc('jobChip'), /data-jpause|pauseBtn\(x\)/);
-  assert.match(fnSrc('jobChip'), /data-jstop/);
+  // 4.8: progress is shown once, in the 工作 panel — the chat keeps only 「…」 (a tap opens 工作); no step count in the header
+  assert.match(row, /typing\.map\(typingDots\)/, 'a running job is only 「…」 in the chat');
+  assert.match(fnSrc('typingDots'), /data-wgo="work"/);
+  assert.doesNotMatch(fnSrc('typingDots'), /jstep|jbar|data-jstop/);
+  assert.doesNotMatch(row, /pstep|rv\.step/, 'no 1/3 in the header');
+  assert.match(fnSrc('curCard'), /pauseBtn\(x\)/, '暫停 is in the work panel');
+  assert.match(fnSrc('curCard'), /data-wstop/, '停止 is in the work panel');
   assert.match(fnSrc('pauseBtn'), /data-on="\$\{resume\?0:1\}"/);
   assert.match(fnSrc('jobPause'), /api\('job\/'\+job\+'\/pause','POST',\{on\}\)/, 'contract §2');
   assert.match(fnSrc('pauseOf'), /x\.paused/);
@@ -146,10 +150,12 @@ test('the chat, panel and sidebar use them (and stay readable for old data)', ()
   assert.match(fnSrc('curCard'), /WP\.steps\[x\.job\]/, 'older runners: the reported lines');
   assert.match(fnSrc('paintWork'), /collabHtml\(id\)/);
   assert.match(fnSrc('paintCollab'), /collabWait\(BS\[c\.id\]\?\.items/);
-  assert.match(fnSrc('rowHtml'), /runLine\(c\.id,st\)/, 'the sidebar row shows 2/5');
+  assert.match(fnSrc('rowHtml'), /runLine\(c\.id,st\)/, 'the sidebar row says it works');
+  assert.doesNotMatch(fnSrc('runLine'), /step|total/, 'no step count in the sidebar (4.8)');
+  assert.doesNotMatch(fnSrc('rowHtml'), /runBar|lbar/, 'no step bar in the sidebar (4.8)');
   assert.match(html, /id="cwait"/);
   assert.match(fnSrc('trackJobs'), /progOf\(x\.progress\)\.text/);
-  for (const sel of ['.jchip', '.jbar', '.nchip', '.nfull', '.rres', '.apbody', '.aped', '.cwait', '.lbar']) assert.ok(css.includes(sel + '{'), sel + ' styled');
+  for (const sel of ['.tdots', '.jbar', '.nchip', '.nfull', '.rres', '.apbody', '.aped', '.cwait']) assert.ok(css.includes(sel + '{'), sel + ' styled');
+  for (const sel of ['.jchip', '.lbar>i', '#psub .pstep']) assert.ok(!css.includes(sel + '{'), sel + ' is gone');
   assert.ok(read('app/css/workpanel.css').includes('.wsteps.plan li.done .wck'), 'done steps get a check');
-  assert.match(css, /@media \(max-width:760px\)\{\n {2}\.jchip\{/, 'the phone layout of the chip');
 });

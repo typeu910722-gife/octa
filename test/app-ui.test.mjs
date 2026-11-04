@@ -99,7 +99,7 @@ test('looks: tokens for light and dark, the system decides unless you choose, re
 
 test('text size applies to the whole interface and is remembered on the device', () => {
   assert.match(fnSrc('applyFs'), /store\.set\('octa_fs',String\(p\)\)/);
-  assert.match(js, /type="range" min="80" max="200"/);
+  assert.match(js, /type="range" min="70" max="200"/, '4.8: smaller sizes too');
   assert.match(html, /var f=localStorage\.getItem\('octa_fs'\);var map=\{s:\.93,m:1,l:1\.12,xl:2\}/);
   assert.match(css, /html\[data-fs="s"\]\{--fz:\.93\}html\[data-fs="l"\]\{--fz:1\.12\}html\[data-fs="xl"\]\{--fz:2\}/);
   assert.match(css, /body\{[^}]*font-size:calc\(14\.5px \* var\(--fz\)\)/);
@@ -168,7 +168,7 @@ test('features stay reachable', () => {
   assert.match(js, /if\(mod&&e\.key===','&&app\)\{e\.preventDefault\(\);openSettings\(\)\}/, 'Ctrl+, settings');
   for (const c of ['/瀏覽器', '/停止', '/歷史畫面', '/詳細資料', '/壓縮對話', '/清空對話', '/網址']) assert.ok(fnSrc('slashItems').includes(c), c);
   assert.match(fnSrc('renderList'), /class="apbar" data-apgo=/);
-  assert.match(fnSrc('listTag'), /<i class="ub">\$\{unread\(id\)\}<\/i>/, 'unread badges');
+  assert.match(fnSrc('listTag'), /<i class="ub" title=/, 'unread badges (4.8: with a tooltip)');
   assert.match(fnSrc('itemMenu'), /pin.*mute.*dup.*cmp.*clr.*del/s);
 });
 

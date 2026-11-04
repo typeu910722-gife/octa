@@ -104,12 +104,15 @@ function applyTheme(t,persist){
 document.addEventListener('click',e=>{const set=e.target.closest('[data-set-theme]');if(set)applyTheme(set.dataset.setTheme)});
 
 /* text size for the whole interface (kept on this device). 80–200, and 200 is twice the standard size. */
-// 4.8: smaller sizes too (65%–80%: 極小／很小) for people who want more on the screen
-const FS_MIN=65,FS_MAX=200;
+// 4.8: smaller sizes too (down to 70%: 極小／很小). Below 100% the whole interface is zoomed as one (text, icons,
+// spacing and the panels stay in proportion and nothing overflows); above 100% the text grows and the layout makes room
+const FS_MIN=70,FS_MAX=200;
 function fsName(p){return p<=72?'極小':p<=82?'很小':p<=92?'小':p<=105?'標準':p<150?'大':'特大'}
 function currentFsPercent(){const f=store.get('octa_fs');const map={s:93,m:100,l:112,xl:200};if(map[f])return map[f];const n=Math.round(Number(f));return n>=FS_MIN&&n<=FS_MAX?n:100}
-function applyFs(raw){let p=Math.round(Number(raw));if(!Number.isFinite(p))p=100;p=Math.min(FS_MAX,Math.max(FS_MIN,p));const z=p/100;const root=document.documentElement;root.style.setProperty('--fz',String(z));
+function applyFs(raw){let p=Math.round(Number(raw));if(!Number.isFinite(p))p=100;p=Math.min(FS_MAX,Math.max(FS_MIN,p));const z=p/100;const root=document.documentElement;
+  if(z<1){root.style.setProperty('--fz','1');root.style.zoom=String(z)}else{root.style.setProperty('--fz',String(z));root.style.zoom=''}
   if(z>=1.6)root.dataset.fs='xl';else if(z>=1.08)root.dataset.fs='l';else if(z<=0.8)root.dataset.fs='xs';else if(z<=0.95)root.dataset.fs='s';else delete root.dataset.fs;
+  if(typeof dockSync==='function')dockSync();
   store.set('octa_fs',String(p));const lab=$('fsLab');if(lab)lab.textContent=I18N.t(fsName(p))+' · '+p+'%';if(typeof grow==='function')grow()}
 
 /* ---------- time ---------- */

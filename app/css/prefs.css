@@ -1,14 +1,8 @@
 /* OCTA 4.8: your own look (accent, density, chat width, text size down to 65%), resizable sidebar,
    reordering the sidebar by drag, and cheap, smooth motion (transform/opacity only; none with reduced motion). */
 
-/* ---------- text size: the two smallest steps keep things legible and in place ---------- */
-html[data-fs="xs"]{--fz:.75}
-html[data-fs="xs"] .item{gap:9px}
-html[data-fs="xs"] .item .av:not(.xs):not(.sm){width:30px;height:30px}
-html[data-fs="xs"] .tm,html[data-fs="xs"] .ub,html[data-fs="xs"] .sect .cnt,html[data-fs="xs"] .wtt time{font-size:10.5px}
-html[data-fs="xs"] .ph .t small,html[data-fs="xs"] .status,html[data-fs="xs"] .sfbtn{font-size:11.5px}
-html[data-fs="xs"] .ib{width:32px;height:32px}
-html[data-fs="xs"] .composer textarea{min-height:36px}
+/* ---------- text size below 100%: the page is zoomed as a whole (applyFs); only the label hook is kept ---------- */
+html[data-fs="xs"]{--fz:1}
 
 /* ---------- density: 緊湊 shows more rows and messages ---------- */
 html[data-density="compact"]{--row-h:44px;--row-py:4px}

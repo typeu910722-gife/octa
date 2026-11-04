@@ -2,13 +2,12 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
+<!-- look, text size, density, chat width, sidebar width and accent before first paint (data-theme only when the person picked one) -->
 <script>
-/* look and text size before first paint: data-theme is set only when the person picked one (otherwise the system decides) */
-(function(){try{var d=document.documentElement,q=new URLSearchParams(location.search).get('theme'),s=localStorage.getItem('octa_theme');var t=(q==='light'||q==='dark')?q:s;if(t==='light'||t==='dark')d.setAttribute('data-theme',t);if(window.octaDesktop)d.classList.add('desk');
-var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=65&&n<=200)z=n/100}if(z){d.style.setProperty('--fz',String(z));if(z>=1.6)d.setAttribute('data-fs','xl');else if(z>=1.08)d.setAttribute('data-fs','l');else if(z<=.8)d.setAttribute('data-fs','xs');else if(z<=.95)d.setAttribute('data-fs','s')}
-var dn=localStorage.getItem('octa_density');if(dn==='compact')d.setAttribute('data-density','compact');var cw=localStorage.getItem('octa_cw');if(cw==='narrow'||cw==='wide')d.setAttribute('data-cw',cw);
-var sw=+localStorage.getItem('octa_sidew');if(sw>=220&&sw<=440)d.style.setProperty('--side-w',sw+'px');
-var ac=localStorage.getItem('octa_accent_css');if(ac){var st=document.createElement('style');st.id='accentCss';st.textContent=ac;document.head.appendChild(st)}}catch(e){}})();
+(function(){try{var d=document.documentElement,L=localStorage,q=new URLSearchParams(location.search).get('theme'),s=localStorage.getItem('octa_theme');var t=q==='light'||q==='dark'?q:s;if(t==='light'||t==='dark')d.setAttribute('data-theme',t);if(window.octaDesktop)d.classList.add('desk');
+var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=70&&n<=200)z=n/100}if(z){d.style.setProperty('--fz',z<1?1:z);if(z<1)d.style.zoom=z;var a=z>=1.6?'xl':z>=1.08?'l':z<=.8?'xs':z<=.95?'s':'';a&&d.setAttribute('data-fs',a)}
+L.octa_density=='compact'&&d.setAttribute('data-density','compact');(a=L.octa_cw)&&d.setAttribute('data-cw',a);(a=+L.octa_sidew)>=220&&d.style.setProperty('--side-w',a+'px');
+if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e.textContent=a;document.head.appendChild(e)}}catch(e){}})();
 </script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
 <meta name="theme-color" content="#f7f6f3" media="(prefers-color-scheme: light)">
@@ -172,7 +171,6 @@ var ac=localStorage.getItem('octa_accent_css');if(ac){var st=document.createElem
 <div class="veil" id="veil" hidden></div>
 
 <script defer src="/js/util.js"></script>
-<script defer src="/js/prefs.js"></script>
 <script defer src="/js/pure.js"></script>
 <script defer src="/js/api.js"></script>
 <script defer src="/js/avatar.js"></script>
@@ -189,6 +187,7 @@ var ac=localStorage.getItem('octa_accent_css');if(ac){var st=document.createElem
 <script defer src="/js/bots.js"></script>
 <script defer src="/js/panel.js"></script>
 <script defer src="/js/settings.js"></script>
+<script defer src="/js/prefs.js"></script>
 <script defer src="/js/wipe.js"></script>
 <script defer src="/js/mail.js"></script>
 <script defer src="/js/link.js"></script>

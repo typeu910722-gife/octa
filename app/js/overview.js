@@ -96,8 +96,8 @@ function ovBadge(n){const b=$('ovBadge');b.dataset.n=String(n);b.hidden=!n;
 function showAlert(a){const b=bot(a.bot);if(!b)return;
   if(notiOn()&&'Notification' in window&&Notification.permission==='granted'&&(document.hidden||cur!==a.conv)){
     // 4.8: the body says what it was doing and why it stopped, then what a tap does
-    const line=k=>(String(a.text||'').match(new RegExp('^'+k+'[:：](.+)$','m'))||[])[1]||'';
-    const body=[line('做什麼')&&I18N.t('做什麼：')+line('做什麼').trim(),line('訊息')||line('原因'),I18N.t('點這裡打開，按「一鍵重試」')].filter(Boolean).join('\n');
+    const t=String(a.text||''),what=(t.match(/^做什麼[:：](.+)$/m)||[])[1],why=(t.match(/^訊息[:：](.+)$/m)||t.match(/^原因[:：](.+)$/m)||[])[1];
+    const body=[what&&I18N.t('做什麼：')+what.trim(),why,I18N.t('點這裡打開，按「一鍵重試」')].filter(Boolean).join('\n');
     try{const n=new Notification('OCTA · '+b.name+' '+I18N.t(a.label),{body,icon:'/icon.png',tag:'octa-al-'+a.id,requireInteraction:true});
       n.onclick=()=>{window.focus();window.octaDesktop?.show?.();openConv(a.bot);retryBar(a);n.close()}}catch(e){}}
   if(!document.hidden)retryBar(a)}
@@ -128,7 +128,7 @@ async function paintQuota(){const q=$('quota');if(!q||!ready())return;
   q.hidden=false;q.className='quota '+quotaTone(worst);
   const nm=k=>(typeof ENG!=='undefined'&&ENG[k]?.n)||k;
   q.title=list.map(x=>nm(x.eng)+'：'+x.wins.map(w=>I18N.t(QW_LAB[w.k]||w.k)+' '+w.left+'%').join('、')).join('\n');
-  setHTML(q,list.slice(0,2).map(x=>`<span class="qrow"><span class="qn" data-u>${esc(nm(x.eng))}</span>${x.wins.map(w=>`<span class="qw ${quotaTone(w.left)}" aria-label="${esc(I18N.t(QWIN[w.k])+' '+w.left+'%')}"><small>${esc(I18N.t(QWIN[w.k]))}</small><span class="qbar"><i style="width:${w.left}%"></i></span><b data-u>${w.left}%</b></span>`).join('')}</span>`).join(''));
+  setHTML(q,list.slice(0,2).map(x=>`<span class="qrow"><span class="qn" data-u>${esc(nm(x.eng))}</span>${x.wins.map(w=>`<span class="qwn ${quotaTone(w.left)}" aria-label="${esc(I18N.t(QWIN[w.k])+' '+w.left+'%')}"><small>${esc(I18N.t(QWIN[w.k]))}</small><span class="qbar"><i style="width:${w.left}%"></i></span><b data-u>${w.left}%</b></span>`).join('')}</span>`).join(''));
   q.setAttribute('aria-label',I18N.t('AI 剩餘額度')+'：'+q.title.replace(/\n/g,'；'));
   if($('quotaPop'))quotaPop(true)}
 // the details: plan, each window left and when it resets, today's runs; Settings → AI 連線 for more

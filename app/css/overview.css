@@ -12,16 +12,17 @@
 .quota{order:-1;flex-basis:100%;display:grid;gap:3px;padding:6px 10px;border-radius:var(--r-sm);color:var(--ink2);font-size:calc(11.5px * var(--fz));line-height:1.2;min-width:0;text-align:left}
 .quota[hidden]{display:none}
 .quota:hover{background:var(--hover);color:var(--ink)}
-.qrow{display:grid;grid-template-columns:minmax(0,auto) 1fr 1fr;align-items:center;gap:8px;min-width:0}
+.qrow{display:grid;grid-template-columns:58px minmax(0,1fr) minmax(0,1fr);align-items:center;gap:8px;min-width:0}
 .qn{font-weight:650;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px}
-.qw{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:4px;min-width:0}
-.qw small{color:var(--mute);font-size:.92em;white-space:nowrap}
-.qw b{font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+.qwn{display:grid;grid-template-columns:max-content minmax(16px,1fr) max-content;align-items:center;gap:4px;min-width:0}
+.qwn b{text-align:right}
+.qwn small{color:var(--mute);font-size:.92em;white-space:nowrap}
+.qwn b{font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
 .qbar{display:block;min-width:18px;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
 .qbar i{display:block;height:100%;border-radius:2px;background:var(--ok);transition:width .5s var(--ease)}
-.warn>.qbar i,.qw.warn .qbar i{background:var(--warn)}.qw.warn b{color:var(--warn)}
-.err>.qbar i,.qw.err .qbar i{background:var(--err)}.qw.err b{color:var(--err)}
-.qpop{position:fixed;left:12px;bottom:calc(64px + var(--safe-b));z-index:80;width:min(320px,calc(100vw - 24px));background:var(--raised);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-3);padding:12px 14px;display:grid;gap:10px;animation:qpin .16s var(--ease)}
+.warn>.qbar i,.qwn.warn .qbar i{background:var(--warn)}.qwn.warn b{color:var(--warn)}
+.err>.qbar i,.qwn.err .qbar i{background:var(--err)}.qwn.err b{color:var(--err)}
+.qpop{position:fixed;left:12px;bottom:calc(108px + var(--safe-b));z-index:80;width:min(320px,calc(100vw - 24px));background:var(--raised);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-3);padding:12px 14px;display:grid;gap:10px;animation:qpin .16s var(--ease)}
 @keyframes qpin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .qph{display:flex;align-items:center;justify-content:space-between}
 .qpe{display:grid;gap:6px;padding-top:8px;border-top:1px solid var(--line)}

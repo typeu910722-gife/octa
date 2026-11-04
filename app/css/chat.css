@@ -275,7 +275,7 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}
 .followbar #followBit b{flex:none;font-weight:650}
 .followbar .fw{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)}
 .followbar .fav{flex:none}
-.followbar.need{border-color:color-mix(in srgb,var(--warn) 35%,var(--line))}
+.followbar.needs{border-color:color-mix(in srgb,var(--warn) 35%,var(--line))}
 .rrt code{font-size:.9em}
 .more3.fold{display:inline-flex;align-items:center;gap:4px;padding:3px 10px 3px 6px;margin-top:-2px;border-radius:var(--r-full);background:var(--sunk);color:var(--ink2);font-weight:600;font-size:calc(12.5px * var(--fz))}
 .more3.fold:hover{background:var(--press);color:var(--ink)}

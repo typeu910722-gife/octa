@@ -204,7 +204,7 @@ function hideFollow(){const bar=$('followbar');if(bar)bar.hidden=true;HINT.key='
 const composing=()=>!!((($('msg')&&$('msg').value)||'').trim()||pending.length||replyTo);
 // 4.8: the hint says what happened (the reply's first sentence, the approval's what, why it did not work out), not just 「有新動態」
 function showHint(id,kind,key,what,need){const c=conv(id),bar=$('followbar');if(!c||!bar||id===cur||HINT.gone.has(key))return;
-  HINT.key=key;bar.dataset.conv=id;bar.dataset.key=key;bar.hidden=false;bar.classList.toggle('need',!!need?.k);
+  HINT.key=key;bar.dataset.conv=id;bar.dataset.key=key;bar.hidden=false;bar.classList.toggle('needs',!!need?.k);
   setHTML($('followBit'),kind==='remote'?`<span>另一台裝置正在看</span> <b data-u>「${esc(c.name)}」</b>`
     :`<span class="fav av xs" data-u>${isG(id)?gStack(c):avOf(id)}</span><b data-u>${esc(c.name)}</b>${need?.k?`<i class="need ${need.k}">${esc(I18N.t(need.label))}</i>`:''}<span class="fw" data-u>${esc(what||I18N.t(kind==='ask'?'在等你核准':'有新動態'))}</span>`)
   $('followGo').textContent=I18N.t(need?.k==='ap'?'去核准':need?.k==='login'?'去登入':'打開')}

@@ -46,7 +46,8 @@ $('wp').querySelector('.wp-tabs').addEventListener('keydown',e=>{const k={ArrowR
 function renderPanel(force){
   const on=panelOn(),app=$('app'),was=!$('wp').hidden;
   $('wp').hidden=!on;
-  if(on&&!was&&!phoneUI()){const w=$('wp');w.classList.add('opening');clearTimeout(w._op);w._op=setTimeout(()=>{w.classList.remove('opening');dockSync()},240)}   // 4.8: it slides inapp.classList.toggle('wp-on',on);app.classList.toggle('wp-web',on&&WP.tab==='web');
+  if(on&&!was&&!phoneUI()){const w=$('wp');w.classList.add('opening');clearTimeout(w._op);w._op=setTimeout(()=>{w.classList.remove('opening');dockSync()},240)}   // 4.8: it slides in
+  app.classList.toggle('wp-on',on);app.classList.toggle('wp-web',on&&WP.tab==='web');
   $('panelBtn').setAttribute('aria-expanded',String(on));$('panelBtn').setAttribute('aria-pressed',String(on));
   $('browser').setAttribute('aria-pressed',String(on&&WP.tab==='web'));
   trackJobs();
@@ -194,7 +195,7 @@ function paintBadge(){const b=$('wpBadge');if(!b)return;const id=cur;if(!id||!co
   const rj=run&&!on?runOf(id):null,rv=rj&&progView(rj.progress);
   b.textContent=rv?.has?rv.step+'/'+rv.total:'';b.classList.toggle('num',!!rv?.has);
   const tip=I18N.t(kind==='err'?'上次的工作沒有做成':kind==='run'?'正在工作':kind==='new'?'工作面板有新紀錄':'工作面板')+(rv?.has?' · '+I18N.t('步驟')+' '+rv.step+'/'+rv.total:'');
-  $('panelBtn').title=tip+'（Ctrl+I）';
+  $('panelBtn').title=tip+' · Ctrl+I';
   const td=$('wtWork')?.querySelector('.tdot');if(td){td.hidden=!on||workShown||!kind;td.className='tdot'+(kind?' '+kind:'')}
   const ids=isG(id)?conv(id).members:[id],browsing=ids.some(x=>stateOf(x)==='browsing');
   const wd=$('wtWeb')?.querySelector('.tdot');if(wd){wd.hidden=!on||WP.tab==='web'||!browsing;wd.className='tdot run'}}
@@ -265,7 +266,7 @@ window.octaDesktop?.onStage?.(d=>{if(d?.act==='shown'&&d.bot&&cur&&webIds().incl
   for(const [k,v] of [['octa_wpw','--wpw'],['octa_wpw_web','--wpw-web']]){const n=+store.get(k);if(n>=320)app.style.setProperty(v,n+'px')}
   let x0=0,w0=0,on=false;
   g.addEventListener('pointerdown',e=>{if(phoneUI()||e.button!==0)return;on=true;x0=e.clientX;w0=$('wp').offsetWidth;g.setPointerCapture(e.pointerId);app.classList.add('wp-drag');e.preventDefault()});
-  g.addEventListener('pointermove',e=>{if(on)set(w0+(x0-e.clientX),false)});
+  g.addEventListener('pointermove',e=>{if(on)set(w0+(x0-e.clientX)/(parseFloat(document.documentElement.style.zoom)||1),false)});
   const end=()=>{if(!on)return;on=false;app.classList.remove('wp-drag');set($('wp').offsetWidth,true)};
   g.addEventListener('pointerup',end);g.addEventListener('pointercancel',end);
   g.addEventListener('dblclick',()=>{app.style.removeProperty(vr());store.set(key(),null);dockSync()});
