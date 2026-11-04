@@ -248,3 +248,28 @@ CREATE TABLE IF NOT EXISTS code_events (
   data TEXT
 );
 CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id);
+-- 4.7「它記得什麼」: who set each remembered item (rules, facts, manuals, skills, 一律允許, site notes). The items themselves
+-- stay in users.settings; kind='_base' marks when this started (older items are 'old': 來源不明). desktop/api/memory-edit.mjs
+CREATE TABLE IF NOT EXISTS mem_src (
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL,            -- rule | fact | manual | skill | allow | site | _base
+  owner TEXT NOT NULL,           -- bot id (site: the domain)
+  k TEXT NOT NULL,               -- the item's text (manual / skill: its name)
+  by_ TEXT NOT NULL,             -- user | bot | hook | fix | review | tpl | old
+  ts INTEGER NOT NULL,
+  PRIMARY KEY (user_id, kind, owner, k)
+);
+-- 4.7 異常主動推播: one row per failed job that was logged out / hit a broken API / missed its data (desktop/api/notify.mjs)
+CREATE TABLE IF NOT EXISTS alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  bot_id TEXT NOT NULL,
+  conv TEXT NOT NULL,
+  kind TEXT NOT NULL,            -- logout | api | missing
+  job INTEGER NOT NULL UNIQUE,   -- the failed job (一鍵重試 runs it again)
+  text TEXT,                     -- what was sent
+  ts INTEGER NOT NULL,
+  pushed INTEGER NOT NULL DEFAULT 0, -- 0: the same bot and kind was pushed in the last 30 minutes
+  retried INTEGER
+);
+CREATE INDEX IF NOT EXISTS alert_user ON alerts(user_id, id);

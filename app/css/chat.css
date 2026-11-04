@@ -255,3 +255,102 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}
   .askp{right:8px;left:8px;width:auto;bottom:calc(var(--compH,110px) + 8px)}
   .apkv,.apwho,.apcard .appr{padding-left:0}
 }
+
+/* ---------- 4.7: a reply's result line, its fold, the bot's markers as chips ---------- */
+.bub.hasres{display:grid;gap:8px}
+.rres{display:flex;align-items:flex-start;gap:9px;padding:8px 12px 8px 9px;border-radius:12px;background:var(--ok-soft);color:var(--ink);font-weight:600;line-height:1.5;width:fit-content;max-width:100%}
+.rres.bad{background:var(--warn-soft)}
+.rri{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;display:grid;place-items:center;background:var(--ok);color:#fff;font-weight:800;font-size:13px}
+:root[data-theme="dark"] .rri{color:#10170f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .rri{color:#10170f}}
+.rres.bad .rri{background:var(--warn)}
+.rri .icon{width:14px;height:14px;stroke-width:2.6}
+.rrt{min-width:0;overflow-wrap:anywhere}
+.rrt code{font-size:.9em}
+.more3.fold{display:inline-flex;align-items:center;gap:4px;padding:3px 10px 3px 6px;margin-top:-2px;border-radius:var(--r-full);background:var(--sunk);color:var(--ink2);font-weight:600;font-size:calc(12.5px * var(--fz))}
+.more3.fold:hover{background:var(--press);color:var(--ink)}
+.more3.fold .fch{width:14px;height:14px;transition:transform .15s var(--ease)}
+.more3.fold[aria-expanded="true"] .fch{transform:rotate(90deg)}
+.nchips{display:flex;flex-wrap:wrap;gap:6px;max-width:100%}
+.nchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:26px;padding:2px 11px 2px 8px;border:1px solid var(--line);border-radius:var(--r-full);background:var(--panel);color:var(--ink2);font-size:calc(12.5px * var(--fz));line-height:1.35;transition:background var(--t-fast),border-color var(--t-fast)}
+.nchip:hover{background:var(--hover);color:var(--ink);border-color:var(--line2)}
+.nchip.on{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));color:var(--ink)}
+.nci{font-size:13px;line-height:1}
+.nct{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nchip.routine .nct [data-u]:nth-last-child(2){font-variant-numeric:tabular-nums;font-weight:600}
+.nfull{width:min(100%,560px);background:var(--sunk);border-radius:var(--r);padding:9px 12px;font-size:calc(13px * var(--fz));color:var(--ink2);display:grid;gap:8px;animation:nfin .16s var(--ease)}
+@keyframes nfin{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.nfi{display:grid;gap:3px}
+.nfi b{color:var(--ink);font-weight:600}
+.nbody{white-space:pre-wrap;overflow-wrap:anywhere}
+.nkv{display:grid;grid-template-columns:auto 1fr;gap:10px}
+.nkv>span:first-child{color:var(--mute)}
+.nfull a{overflow-wrap:anywhere}
+
+/* ---------- 4.7: the approval card with 對象／內容／時間 and an editor ---------- */
+.apcard.full .apkv{row-gap:5px}
+.apbody{margin-left:40px;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px 12px 10px;display:grid;gap:4px}
+.apbl{color:var(--mute);font-size:11.5px;font-weight:650;letter-spacing:.02em}
+.apct{white-space:pre-wrap;overflow-wrap:anywhere;font-size:calc(14px * var(--fz));line-height:1.6;color:var(--ink)}
+.apbody.clip .apct{max-height:6.4em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 55%,transparent);mask-image:linear-gradient(#000 55%,transparent)}
+.apbody .more3{justify-self:start}
+.apcard .btn.sm .icon,.apcard .ghost.sm .icon{width:15px;height:15px}
+.aped{display:grid;gap:10px;padding-left:40px}
+.aped textarea{min-height:110px;resize:vertical;font-size:calc(14px * var(--fz));line-height:1.6;font-weight:400;color:var(--ink)}
+.aped input{font-weight:400;color:var(--ink)}
+.aped .apkv{padding-left:0}
+
+/* ---------- 4.7: a running job in the chat — one line, a thin bar, 暫停／繼續, 停止 ---------- */
+.jchip{align-self:stretch;display:flex;align-items:center;gap:6px;margin:10px 0 4px;padding:5px 6px 5px 5px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);box-shadow:var(--sh-1);max-width:min(100%,620px)}
+.jchip.paused,.jchip.pausing{background:color-mix(in srgb,var(--warn-soft) 70%,var(--panel));border-color:color-mix(in srgb,var(--warn) 30%,var(--line))}
+.jmain{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:2px 6px 2px 2px;border-radius:10px;text-align:left}
+.jmain:hover{background:var(--hover)}
+.jmain .av{flex:none}
+.jtx{flex:1;min-width:0;display:grid;gap:5px}
+.jl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:calc(13.5px * var(--fz));color:var(--ink2);line-height:1.35}
+.jstep{color:var(--accent-ink);font-weight:700;font-variant-numeric:tabular-nums}
+.jsep{color:var(--faint)}
+.jcur{color:var(--ink)}
+.jps{display:inline-block;margin-right:6px;padding:0 7px;border-radius:var(--r-full);background:var(--warn-soft);color:var(--warn);font-weight:650;font-size:.92em}
+.jbar{display:block;height:3px;border-radius:3px;background:var(--line);overflow:hidden}
+.jbar>i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--brand));transition:width .5s var(--ease)}
+.jchip.paused .jbar>i{background:var(--warn)}
+.jmain .el{flex:none;color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums}
+.jb{flex:none;display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:9px;color:var(--ink2);font-size:calc(12.5px * var(--fz));font-weight:600}
+.jb:hover:not(:disabled){background:var(--hover);color:var(--ink)}
+.jb .icon{width:15px;height:15px}
+.jb.stop:hover:not(:disabled){background:var(--err-soft);color:var(--err)}
+.jchip:not(.paused):not(.pausing) .jtx .jcur::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:jdots 1.4s steps(4,end) infinite;vertical-align:bottom}
+@keyframes jdots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+
+/* the header: 工作中… 2/5, and a bot waiting on a colleague */
+#psub .pstep{font-variant-numeric:tabular-nums;font-weight:700;margin-left:2px}
+.cwait{flex:none;display:inline-flex;align-items:center;gap:5px;max-width:min(42%,360px);height:30px;padding:0 11px 0 8px;margin-right:4px;border-radius:var(--r-full);background:var(--info-soft);color:var(--ink2);font-size:calc(12.5px * var(--fz));white-space:nowrap;overflow:hidden}
+.cwait:hover{background:color-mix(in srgb,var(--info) 18%,transparent);color:var(--ink)}
+.cwait b{color:var(--ink);font-weight:650;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.cwait .cwi{display:grid;place-items:center;color:var(--info)}
+.cwait .cwi .icon{width:15px;height:15px}
+.cwait .cwf{font-weight:600;color:var(--ink)}
+.cwait .cwf::after{content:"·";margin-left:5px;color:var(--faint)}
+.cwait .cwm{font-variant-numeric:tabular-nums;font-weight:700;color:var(--info)}
+
+/* the sidebar row of a working bot: 2/5 and a thin bar along its bottom */
+.item{position:relative}
+.lw .lstep{font-variant-numeric:tabular-nums;font-weight:700;margin-left:2px}
+.lbar{position:absolute;left:58px;right:12px;bottom:5px;height:2px;border-radius:2px;background:var(--line);overflow:hidden}
+.lbar>i{display:block;height:100%;background:var(--accent);border-radius:2px;transition:width .5s var(--ease)}
+
+@media (max-width:760px){
+  .jchip{margin:8px 0 2px;gap:2px;padding:4px}
+  .jmain{gap:8px}
+  .jmain .el{display:none}
+  .jchip .jb{padding:0 8px}
+  .jchip .jb span{display:none}
+  .apcard.wait .appr{display:grid;grid-template-columns:1fr 1fr}
+  .apcard.wait .appr>button{width:100%}
+  .apbody,.aped{margin-left:0;padding-left:0}
+  .apbody{padding-left:12px}
+  .cwait{max-width:40%;padding:0 9px 0 7px;margin-right:0}
+  .cwait .cwl,.cwait .cwf{display:none}
+  .lbar{left:62px}
+}

@@ -254,7 +254,10 @@ export async function startServer(opts = {}) {
     hostOs: opts.platform || process.platform,
     hookBase,
     hookTunnel: () => (linking?.role() === 'host' ? tunnel.url : ''),
-    hooksChanged: () => { setTimeout(() => { hookKeep().catch(() => { }); }, 0); }
+    hooksChanged: () => { setTimeout(() => { hookKeep().catch(() => { }); }, 0); },
+    // 4.7 郵件連接器: mail attachments go to (and come from) the bot's folder in the file folder
+    getStore: () => hooks.getStore(),
+    mailConnect: opts.mailConnect   // tests only: a plain socket to a fake mail server
   };
   const callApi = async (req, res, env, origin) => {
     const request = await toRequest(req, origin);

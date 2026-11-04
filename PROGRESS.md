@@ -254,3 +254,14 @@
 - [x] 測試 test/hook-api.test.mjs 5 項（Node ↔ WebCrypto、轉送器換新網址／逾時不重送／413／405、五個端點與各種 401、已讀、重做帶前文、教學、群組、暫停 409、經 Pages Function＋假 ntfy＋真主機、刪掉的 token 401、ntfy 掛 503、主機關 503、Windows 判斷與畫面、說明文字）；desktop-server 測試的錯 token 改 401。全套 250 項，失敗只剩原本 4 項
 - [x] 實測（沙箱，**真的 ntfy.sh**，主機 server.mjs 以遠端埠當通道，Pages Function 用 Node 包成 HTTP，假執行器 1 秒回覆）：新增 hook 後 1.8 秒 ntfy.sh 上有加密網址；curl 公開形式的網址：錯 token 401（0.32 秒，含查 ntfy）→ 建立 0.06 秒（第一次含查 ntfy）→ running/queued → 1.3 秒後 done → inbox 拿到、再讀是空的 → feedback 重做（提示含原指示與上次結果，規則已記住）→ teach 寫進記憶；快取後每次 4–6 ms（本機）；主機換埠重開後 2.2 秒內經網站再連上；主機關掉 503
 - 未實測：Windows 實機（Grok Bot 卡片、選單）、真的 Grok Bot 呼叫、真的 trycloudflare 通道經 Cloudflare Pages（部署後 Pages Function 對 ntfy.sh 與 trycloudflare 的延遲、Cloudflare 錯誤頁判斷）、ntfy.sh 匿名發布的每日上限（每個 token 每天約 4 則＋重開次數，hook 很多時可能碰到）
+
+## 4.7 郵件連接器：Gmail 應用程式密碼（IMAP 讀信＋SMTP 寄信，不用瀏覽器登入 Gmail）
+- 問題：Google 拒絕在內嵌瀏覽器登入，機器人沒辦法可靠地用 Gmail。改走連接器：應用程式密碼＋IMAP/SMTP，不用瀏覽器。
+- [x] desktop/lib/mail.mjs：只用 Node 的 tls/net 的小型 IMAP（LOGIN、LIST、STATUS、EXAMINE/SELECT、UID SEARCH（含 CHARSET UTF-8 literal、Gmail X-GM-RAW）、UID FETCH、UID STORE（含 X-GM-LABELS）、UID MOVE/COPY）與 SMTP（465 TLS／587 STARTTLS、AUTH PLAIN/LOGIN、dot-stuffing）；MIME 解析（RFC 2047/2231、base64/QP、multipart、Big5 等字集、HTML 轉文字）與組信（UTF-8 主旨、附件、In-Reply-To）。不加任何套件。非 993/465 一律 STARTTLS，伺服器不支援加密就不連
+- [x] desktop/lib/mail-connector.mjs：設定（Gmail 必須 16 個字母、空格自動拿掉；Yahoo／iCloud／Outlook／自訂主機）、測試連線（IMAP 登入＋收件匣封數，SMTP 只登入不寄）、機器人的動作：/list（未讀、寄件者、主旨、從何時、資料夾／標籤、數量）、/search（Gmail 在「所有郵件」用 X-GM-RAW）、/read（純文字、去掉控制字元與 OCTA 標記如【】✅待確認 核准：，附件列表）、/save 或「存附件」（存到機器人資料夾的「附件」）、/mark /archive /label、/send /reply（附件從機器人資料夾，不能出檔案資料夾）
+- [x] 寄信一律要同意：這一輪的「核准：」（核准裡寫了地址時只能寄給那些地址）或這個機器人的「一律允許」有寄信／信類的項目；沒有時不連 SMTP，回給 AI「✅待確認＋對象／內容／時間」三行（CONTRACT-4.7 §4）。動作寫「寄出」（執行器的「送出」檢查照舊，最後由 API 判斷），寫成「送出」也一樣擋
+- [x] 接進原本的連接器：publicConnectors 多 kind 'mail'（只有名稱與地址），connectorLines 加信箱寫法，takeConnectorTask 認得「寄出／整理」、欄位直接寫在路徑下面也收，toolForBrowse 寄信類優先用信箱。執行器的 runner/connector 先經 desktop/api/mail-routes.mjs（在 runner-routes 前面；不是信箱就交回原本的處理），帶機器人的資料夾（env.getStore）與一律允許清單。沒有改 desktop/runner/**、runner-routes.mjs
+- [x] 設定 → 進階「Gmail（應用程式密碼）」（app/js/mail.js）：電子郵件＋應用程式密碼、四步說明（兩步驟驗證 → myaccount.google.com/apppasswords → 建立 → 貼上，連結用系統瀏覽器開）、測試連線、儲存、更改（密碼留空沿用）、移除、進階欄位。密碼存在設定（跟其他連接器金鑰一樣），之後只回 ••••後四碼；API：POST connectors/mail、connectors/mail-test，GET connectors 多 `mail`
+- [x] 測試 test/mail-connector.test.mjs 8 項（test/mail-fake.mjs 假 IMAP/SMTP 在 127.0.0.1）：MIME、設定驗證、指令解析、登入成功／失敗、列表／搜尋／讀信／存附件／整理、沒加密就拒絕、寄信要核准（沒核准連 SMTP 都不連、核准別人不行、一律允許可以、回信串接、附件、不能跑出資料夾）、經 startServer 的完整 API（密碼遮蔽、執行器拿到的工作沒有密碼、存附件到機器人資料夾、核准後寄出）、設定畫面。全套 268 項，失敗只剩原本 4 項
+- [x] 實測：Chrome 開設定畫面（zh-TW、en）新增、測試連線、已接上列；i18n 0 missing
+- 未實測：真的 Gmail（imap.gmail.com／smtp.gmail.com 的 TLS、X-GM-RAW 與中文標籤、寄出後「寄件備份」由 Gmail 自動存）、Yahoo／iCloud／自訂主機、超大信件與奇怪 MIME、Windows 實機。非 Gmail 寄出的信不會另存到寄件備份
