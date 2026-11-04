@@ -134,6 +134,53 @@
 .scr-keys button{flex:1 0 auto}
 .wp-pane.web.scr-on .web-ph,.wp-pane.web.scr-on .web-ft{display:none}
 
+/* ---------- 4.7 工作: the bot's step plan, 「步驟 2/5」 with a bar, 暫停／繼續 ---------- */
+.wbtns{display:flex;gap:6px;flex:none}
+.wbtns .jb{height:30px;padding:0 10px}
+.wcur.paused,.wcur.pausing{border-color:color-mix(in srgb,var(--warn) 35%,var(--line))}
+.wprog{display:grid;gap:6px;padding:2px 2px 0}
+.wprog .jl{white-space:normal;font-size:calc(13.5px * var(--fz))}
+.wprog .jbar{height:5px;border-radius:5px}
+.wcur.paused .jbar>i{background:var(--warn)}
+.wsteps.plan{padding-left:0;gap:2px}
+.wsteps.plan::before{left:10px;top:12px;bottom:12px}
+.wsteps.plan li{display:grid;grid-template-columns:22px minmax(0,1fr);column-gap:10px;align-items:center;padding:4px 0;white-space:normal;font-size:calc(13px * var(--fz));color:var(--faint)}
+.wsteps.plan li::before{display:none}
+.wsteps.plan li>small{grid-column:2;color:var(--mute);font-weight:400;font-size:calc(12px * var(--fz));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wsteps.plan .wn,.wsteps.plan .wck{position:relative;z-index:1;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--panel);border:2px solid var(--line2);color:var(--faint);font-variant-numeric:tabular-nums}
+.wsteps.plan li.done{color:var(--ink2)}
+.wsteps.plan li.done .wck{background:var(--ok);border-color:var(--ok);color:var(--panel)}
+.wsteps.plan .wck .icon{width:12px;height:12px;stroke-width:3}
+.wsteps.plan li.now{color:var(--ink);font-weight:600}
+.wsteps.plan li.now .wn{border-color:var(--accent);background:var(--accent);color:var(--on-accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.wcur.paused .wsteps.plan li.now .wn{border-color:var(--warn);background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}
+.wnote{color:var(--warn);font-size:12.5px;font-weight:600}
+/* 同事協作 */
+.cl{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.ci{display:grid;gap:4px;padding:9px 11px;border-radius:var(--r);background:var(--sunk);border:1px solid transparent}
+.ci.stuck{background:color-mix(in srgb,var(--warn-soft) 80%,var(--panel));border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+.ci.fail{background:color-mix(in srgb,var(--err-soft) 70%,var(--panel))}
+.cwho{display:flex;align-items:center;gap:5px;min-width:0;font-size:calc(12.5px * var(--fz));font-weight:600;color:var(--ink)}
+.cwho>[data-u]:not(.av){overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cwho .car{color:var(--faint);font-weight:400}
+.cwho .ck{color:var(--mute);font-weight:500}
+.cwho .ck::before{content:"·";margin-right:5px;color:var(--faint)}
+.cwho time{margin-left:auto;color:var(--faint);font-weight:500;font-size:11.5px;font-variant-numeric:tabular-nums;flex:none}
+.cwhat{color:var(--ink2);font-size:calc(13px * var(--fz));line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cwhat:empty{display:none}
+.cst{display:flex;align-items:center;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--mute)}
+.cpill{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:var(--r-full);font-weight:650;font-size:11.5px;background:var(--panel);color:var(--mute)}
+.cpill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.cpill.ok{color:var(--ok);background:var(--ok-soft)}
+.cpill.run{color:var(--info);background:var(--info-soft)}
+.cpill.run::before{animation:wpulse 1.6s ease-in-out infinite}
+.cpill.wait{color:var(--warn);background:var(--warn-soft)}
+.cpill.fail{color:var(--err);background:var(--err-soft)}
+.cld{font-variant-numeric:tabular-nums}
+.cld.stuck{color:var(--warn);font-weight:650}
+.cld.stuck b{color:var(--ink)}
+.ci .wmore{margin-top:2px}
+
 /* ---------- 761–1180px: it floats over the chat ---------- */
 @media (max-width:1180px) and (min-width:761px){
   .wp{position:fixed;top:0;right:0;bottom:0;width:min(var(--wpw),92vw);box-shadow:var(--sh-3);animation:slidein .2s var(--ease)}

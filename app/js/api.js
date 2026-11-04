@@ -115,7 +115,8 @@ const apprWait=id=>{if((S.gask||{})[id])return true;const l=lastOf(id);return !!
 const apprConvs=()=>[...S.bots,...S.groups].filter(x=>apprWait(x.id));
 function preview(id){const ms=convMsgs(id).filter(x=>!x.tmp&&msgPlace(x)==='chat'&&x.by!=='sys'),l=lastOf(id),m=ms.length&&(!l||ms[ms.length-1].id>=l.id)?ms[ms.length-1]:l;
   if(!m)return conv(id).task||'';
-  const plain=m.by==='me'?m.text:m.text.replace(/```[\s\S]*?```/g,' ').replace(/^#{1,4}\s+|^\s*[-*•>]\s+|\*\*|__|`|~~/gm,'').replace(/\|/g,' ').replace(/\s+/g,' ').trim();
+  const v=m.by==='me'?null:msgView(m),said=v?(v.text||(v.result?(v.result.ok?'✅ ':'⚠ ')+v.result.text:'')):'';   // 4.7: the words, not the bot's markers
+  const plain=m.by==='me'?m.text:said.replace(/```[\s\S]*?```/g,' ').replace(/^#{1,4}\s+|^\s*[-*•>]\s+|\*\*|__|`|~~/gm,'').replace(/\|/g,' ').replace(/\s+/g,' ').trim();
   return (m.by==='me'?I18N.t('你：'):isG(id)?nameOf(m.by)+'：':'')+plain}
 function listTime(id){const l=lastOf(id),ms=convMsgs(id).filter(m=>!m.tmp&&msgPlace(m)==='chat'),m=ms[ms.length-1],ts=Math.max(l?.ts||0,m?.ts||0);if(!ts)return '';
   const d=new Date(ts),n=new Date(),y=new Date(n);y.setDate(n.getDate()-1);

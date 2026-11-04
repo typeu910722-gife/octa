@@ -2,6 +2,7 @@
 'use strict';
 const SYSOPEN=new Set(),OPENED=new Set();
 const ENG_NAME=k=>(ENG[k]||{n:k}).n;
+ICONS.pause=ICONS.pause||'<rect x="7" y="5.5" width="3.2" height="13" rx="1"/><rect x="13.8" y="5.5" width="3.2" height="13" rx="1"/>';
 
 function fmt(t){return esc(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/@([^\s@，。、]+)/g,'<span class="at">@$1</span>')}
 /* bot replies: a small, safe Markdown subset (everything is escaped first) */
@@ -55,9 +56,23 @@ function apprHtml(m){if(!APPR.test(m.text||''))return '';
     return `<div class="apcard ${d.state}" data-ap="${m.id}">${head({ok:ic('check'),no:ic('x'),answered:ic('reply'),stale:'–'}[d.state],lab)}<div class="apwho">${line}</div></div>`}
   const btns=d.plan?`<button type="button" class="btn sm" data-approve="${m.id}">照做</button><button type="button" class="ghost sm" data-revise="${m.id}" data-plan="1">修改</button>`   // 📋計畫: run it as written, or say what to change
     :apprOwn(d.act)?`<button type="button" class="btn sm" data-approve="${m.id}">核准</button><button type="button" class="ghost sm" data-deny="${m.id}">不用了</button>`   // OCTA's own: 建立排程／記住規則／整理排程
-    :`<button type="button" class="btn sm" data-approve="${m.id}">核准（只這次）</button><button type="button" class="ghost sm" data-always="${m.id}">一律允許</button><button type="button" class="ghost sm" data-revise="${m.id}">修改</button><button type="button" class="ghost sm danger" data-deny="${m.id}">拒絕</button>`;
-  return `<div class="apcard wait" data-ap="${m.id}" role="group" aria-label="待你核准">${head(ic('shield'),'待你核准')}
-    <div class="apkv"><span>誰要做</span><b data-u>${who}</b><span>會影響</span><span>${esc(apprImpact(d.act,m.text))}</span></div>
+    :`<button type="button" class="btn sm" data-approve="${m.id}">${ic('check')}<span>核准（只這次）</span></button><button type="button" class="ghost sm" data-always="${m.id}">一律允許</button><button type="button" class="ghost sm" data-revise="${m.id}">${ic('edit')}<span>修改</span></button><button type="button" class="ghost sm danger" data-deny="${m.id}">拒絕</button>`;
+  // 4.7: 對象／內容／時間 written under ✅待確認 (contract §4); without them, the one-line card as before
+  const f=apprFields(m.text)||{},full=!d.plan&&!apprOwn(d.act)&&(f.to||f.content||f.when);
+  const impact=`<span>會影響</span><span>${esc(apprImpact(d.act,m.text))}</span>`;
+  if(AED.mid===m.id&&full)return `<div class="apcard wait editing" data-ap="${m.id}" role="group" aria-label="修改後核准">${head(ic('edit'),'修改後核准')}
+    <div class="aped">${f.to?`<div class="apkv"><span>對象</span><b data-u>${esc(f.to)}</b></div>`:''}
+      <label class="field"><span>內容</span><textarea data-aedit="content" rows="5" maxlength="3800">${esc(AED.content)}</textarea></label>
+      ${f.when?`<label class="field"><span>時間</span><input data-aedit="when" maxlength="80" value="${esc(AED.when)}"></label>`:''}
+      <small class="hint2">送出後它會照你改過的版本做，不用再按核准。</small></div>
+    <div class="appr"><button type="button" class="btn sm" data-aesend="${m.id}">${ic('check')}<span>用這個版本核准</span></button><button type="button" class="ghost sm" data-aecancel>取消</button></div></div>`;
+  if(!full)return `<div class="apcard wait" data-ap="${m.id}" role="group" aria-label="待你核准">${head(ic('shield'),'待你核准')}
+    <div class="apkv"><span>誰要做</span><b data-u>${who}</b>${impact}</div>
+    <div class="appr">${btns}</div></div>`;
+  const long=f.content.length>160||f.content.split('\n').length>4,op=APOPEN.has(m.id);
+  return `<div class="apcard wait full" data-ap="${m.id}" role="group" aria-label="待你核准">${head(ic('shield'),'待你核准')}
+    <div class="apkv"><span>誰要做</span><b data-u>${who}</b>${f.to?`<span>對象</span><b data-u>${esc(f.to)}</b>`:''}<span>時間</span><span>${f.when?`<span data-u>${esc(f.when)}</span>`:'<span>核准後馬上做</span>'}</span>${impact}</div>
+    ${f.content?`<div class="apbody${long&&!op?' clip':''}"><div class="apbl">內容</div><div class="apct" data-u>${esc(f.content)}</div>${long?`<button type="button" class="more3" data-apopen="${m.id}">${op?'收合':'展開全文'}</button>`:''}</div>`:''}
     <div class="appr">${btns}</div></div>`}
 // you asked to go there (a tap): open the chat and bring its waiting card into view
 function goAsk(id){if(id!==cur)openConv(id);const show=()=>{const c=[...document.querySelectorAll('#msgs .apcard.wait')].pop();if(c){c.scrollIntoView({block:'center',behavior:'smooth'});c.classList.add('qhit');setTimeout(()=>c.classList.remove('qhit'),1400)}return !!c};
@@ -76,7 +91,7 @@ function quoteHtml(m){if(!m?.reply)return '';
 
 /* ---------- 幕後: what bots asked of / handed to each other. Shown in the work panel (工作), never in the chat ---------- */
 const BS={};
-function loadBack(id){const real=convMsgs(id).filter(m=>!m.tmp),k=(real.length?real[real.length-1].id:0)+':'+busyIn(id).length,b=BS[id];
+function loadBack(id){const real=convMsgs(id).filter(m=>!m.tmp),k=(real.length?real[real.length-1].id:0)+':'+busyIn(id).length+':'+S.busy.filter(x=>+x.bg).map(x=>x.job+x.status).join('.'),b=BS[id];   // 4.7: a colleague's answer finishing elsewhere refreshes it too
   if(b&&(b.k===k||b.busy))return;BS[id]={items:b?.items||[],ok:!!b?.ok,k,busy:true,keys:b?.keys||new Set()};
   api('backstage?conv='+encodeURIComponent(id)).then(d=>{const items=d.items||[];
     BS[id]={items,ok:true,k,busy:false,keys:new Set(items.filter(x=>x.reply).map(x=>bgKey(x.to,x.reply)))};if(cur===id)render(false)}).catch(()=>{BS[id].busy=false})}
@@ -118,14 +133,16 @@ function renderChat(scroll){
   const c=cur&&conv(cur);
   $('app').classList.toggle('has-conv',!!c);$('app').classList.toggle('tour',!c&&tourOn());
   ['ph','msgs','composer'].forEach(k=>$(k).hidden=!c);$('blank').hidden=!!c;
-  if(!c){$('offb').hidden=true;$('gmem').hidden=true;$('jump').hidden=true;$('failbar').hidden=true;renderBlank();$('mention').innerHTML='';setHTML($('quick'),'');paintReply();return}
+  if(!c){$('offb').hidden=true;$('gmem').hidden=true;if($('cwait'))$('cwait').hidden=true;$('jump').hidden=true;$('failbar').hidden=true;renderBlank();$('mention').innerHTML='';setHTML($('quick'),'');paintReply();return}
   const g=isG(cur);
   paintMembers(c,g);
+  paintCollab(c,g);
   const pav=$('pav');pav.className='av'+(g?' grp':'');setHTML(pav,g?gStack(c,true):avOf(c.id,'always'));pav.setAttribute('data-u','');
   $('pname').textContent=c.name;
   // while it works, the line under the name says what it is doing (the details are in the work panel)
   const st=g?(busyIn(cur).some(x=>x.status==='running')?'working':''):stateOf(cur);
-  setHTML($('psub'),st&&st!=='idle'?`<span class="pst">${esc(I18N.t(STATE_LABEL[st]))}…</span> · ${subLine(c)}`:subLine(c));
+  const rj=runOf(cur),rv=rj&&progView(rj.progress),ps=rj&&pauseOf(rj);
+  setHTML($('psub'),st&&st!=='idle'?`<span class="pst">${ps==='paused'?'<span>已暫停</span>':`${esc(I18N.t(STATE_LABEL[st]))}…`}${rv?.has?` <span class="pstep">${rv.step}/${rv.total}</span>`:''}</span> · ${subLine(c)}`:subLine(c));
   const off=!S.runnerOnline;$('offb').hidden=!off;
   if(off)setHTML($('offb'),`${ic('info')}<span>${DESK()?'機器人目前沒有在工作。訊息會先排著，OCTA 準備好就會做。':CFG.via?'主機電腦上的 OCTA 沒有在執行。訊息會先排著，主機電腦開機後就會做。':'電腦上的 OCTA 沒有在執行。訊息會先排著，電腦開機後就會做。'}</span>`);
   $('msg').placeholder=I18N.t(g&&!phoneUI()?'輸入指示，可用 @ 指定誰做':'輸入指示…');
@@ -145,18 +162,26 @@ function renderChat(scroll){
       const head=first.length>48?first.slice(0,46)+'…':first;   // long background notes: one line, the rest on tap
       return `<details class="sys sysd"${SYSOPEN.has(String(m.id))?' open':''} data-sid="${esc(String(m.id))}"><summary><span>${esc(head)}</span><span class="ts">${hm(m.ts)}</span></summary><div class="sysfull">${esc(t)}</div></details>`}
     if(m.by==='me')return `<div class="m me${m.tmp?' tmp':''}${rk}" data-mid="${m.id}"><div class="bx">${quoteHtml(m)}<div class="bub"${m.tmp?'':' data-dragmsg="1"'} data-u>${fmt(m.text)}${filesHtml(m.files)}</div><div class="meta">${m.tmp?'<span>傳送中…</span>':hm(m.ts)}</div></div>${m.tmp?'':acts(m,true)}</div>`;
-    const long=m.text.length>1400||m.text.split('\n').length>30,open=OPENED.has(m.id);
-    const body=APPR.test(m.text)?apprStrip(optText(m)):optText(m);
-    return `<div class="m bot${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx"><div class="mh"><b data-u>${esc(nameOf(m.by))}</b><span class="ts">${hm(m.ts)}</span></div>${quoteHtml(m)}${body||(m.files||[]).length?`<div class="bub md${long&&!open?' long':''}" data-dragmsg="1" data-u>${md(body)}${filesHtml(m.files)}</div>`:''}${long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:''}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}</div>${acts(m,false)}</div>`};
+    // 4.7: only the human words; the bot's markers become chips under it, its ✅ 完成／⚠ 沒做成 line leads, long replies fold
+    const v=msgView(m),open=OPENED.has(m.id),mv={...m,text:v.text};
+    const body=APPR.test(v.text)?apprStrip(optText(mv)):optText(mv),f=foldReply(body);
+    const long=!f.rest&&(body.length>1400||body.split('\n').length>30);
+    const shown=f.rest?f.head+(open?'\n\n'+f.rest:''):body;
+    const res=v.result?`<div class="rres ${v.result.ok?'ok':'bad'}"><span class="rri" aria-hidden="true">${v.result.ok?ic('check'):'!'}</span><span class="rrt">${v.result.text?`<span data-u>${inl(v.result.text)}</span>`:`<span>${v.result.ok?'完成':'沒做成'}</span>`}</span></div>`:'';
+    const more=f.rest?`<button type="button" class="more3 fold" data-expand="${m.id}" aria-expanded="${open}">${ic('chev','fch')}<span>${open?'收合詳細':'展開詳細'}</span></button>`
+      :long?`<button type="button" class="more3" data-expand="${m.id}">${open?'收合':'顯示全部'}</button>`:'';
+    return `<div class="m bot${rk}" data-mid="${m.id}"><span class="av sm" data-u>${avOf(m.by)}</span><div class="bx"><div class="mh"><b data-u>${esc(nameOf(m.by))}</b><span class="ts">${hm(m.ts)}</span></div>${quoteHtml(m)}${res||shown||(m.files||[]).length?`<div class="bub md${long&&!open?' long':''}${res?' hasres':''}" data-dragmsg="1">${res}${shown?`<div data-u>${md(shown)}</div>`:''}${filesHtml(m.files)}</div>`:''}${more}${notesHtml(m,v.notes)}${apprHtml(m)}${loginHtml(m)}${retryHtml(m)}${optsHtml(m)}</div>${acts(m,false)}</div>`};
   loadBack(cur);   // 幕後 (for the work panel, and to tell older background answers apart)
   // the conversation only: what you said, replies, pictures and files, approvals, questions. The rest is in the work panel.
   const shown=chatMsgs(cur),same=(a,b)=>!!a&&!!b&&a.by!=='sys'&&a.by===b.by&&Math.abs((b.ts||0)-(a.ts||0))<5*60000&&new Date(a.ts).toDateString()===new Date(b.ts).toDateString();
   if(mc?.loaded&&!shown.length&&!busyIn(cur).length&&!mc.more)mh+=welcomeHtml(c,g);
   mh+=shown.map((m,i)=>{const k=m.ts?new Date(m.ts).toDateString():'';let sep='';if(k&&k!==prevDay){prevDay=k;sep=`<div class="day"><span>${esc(dayLabel(m.ts))}</span></div>`}return sep+row(m,(same(shown[i-1],m)&&!sep?' cont':'')+(same(m,shown[i+1])?'':' tail'))}).join('');
-  // it is answering you: a small "typing" bubble with its face, nothing more (progress, steps and 停止 are in the work panel)
-  const typing=busyIn(cur).filter(x=>x.status==='running'&&x.kind==='chat'&&!+x.bg&&bot(x.bot_id));
-  if(typing.length)mh+=typing.map(x=>`<button type="button" class="m bot typing" data-wgo="work" aria-label="${esc(nameOf(x.bot_id))} ${esc(I18N.t(STATE_LABEL[stateOf(x.bot_id)]||'工作中'))}"><span class="av sm" data-u>${avOf(x.bot_id,'always')}</span><span class="tdots" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('');
+  // it is answering you: one compact line with its face, 「步驟 2/5：…」 and a thin bar, 暫停／繼續 and 停止 (the step list is in the work panel)
+  const typing=busyIn(cur).filter(x=>x.status==='running'&&(x.kind==='chat'||x.kind==='code')&&!+x.bg&&bot(x.bot_id));
+  if(typing.length)mh+=typing.map(jobChip).join('');
+  const ed=AED.mid!=null&&document.activeElement?.dataset?.aedit,sel=ed?[document.activeElement.selectionStart,document.activeElement.selectionEnd]:null;
   const changed=setHTML(box,mh);if(changed){loadThumbs(box);paintIcons(box)}
+  if(changed&&AED.mid!=null&&(ed||AED.focus)){const el=box.querySelector(`[data-aedit="${ed||AED.focus}"]`);if(el){el.focus({preventScroll:!!ed});if(sel)el.setSelectionRange(...sel);else{el.setSelectionRange(el.value.length,el.value.length);el.scrollIntoView({block:'nearest'})}}AED.focus=null}   // the editor keeps what you type and where
   if(switched||scroll){box.scrollTop=box.scrollHeight;$('jump').hidden=true}
   else if(changed){if(atBottom)box.scrollTo({top:box.scrollHeight,behavior:'smooth'});else $('jump').hidden=false}
   if(atBottom||switched||scroll){markSeen(cur)}
@@ -238,7 +263,18 @@ $('msgs').onclick=e=>{const t=e.target;
   if(ap||rv){const m=msgById((ap||rv).dataset[ap?'approve':'revise']);if(!m)return;
     const at=isG(cur)?'@'+nameOf(m.by)+' ':'';
     if(ap){ap.closest('.apcard')?.querySelectorAll('button').forEach(b=>b.disabled=true);sendMsg(at+'核准：'+m.text.match(APPR)[1])}   // one press: the card turns into 已核准 right away
-    else{$('msg').value=at+(rv.dataset.plan?I18N.t('計畫要改：'):'');grow();$('msg').focus()}}};
+    else{const f=!rv.dataset.plan&&apprFields(m.text);
+      if(f&&(f.to||f.content||f.when)){AED.mid=m.id;AED.content=f.content||f.act;AED.when=f.when;AED.focus='content';renderChat(false);return}   // 4.7: edit the text right in the card
+      $('msg').value=at+(rv.dataset.plan?I18N.t('計畫要改：'):'');grow();$('msg').focus()}
+    return}
+  const nt=t.closest('[data-note]');if(nt){const k=nt.dataset.note;NOTEOPEN.has(k)?NOTEOPEN.delete(k):NOTEOPEN.add(k);renderChat(false);return}
+  const ao=t.closest('[data-apopen]');if(ao){const id=+ao.dataset.apopen;APOPEN.has(id)?APOPEN.delete(id):APOPEN.add(id);renderChat(false);return}
+  if(t.closest('[data-aecancel]')){AED.mid=null;renderChat(false);return}
+  const as=t.closest('[data-aesend]');if(as){const m=msgById(as.dataset.aesend);if(m){as.disabled=true;apprEditSend(m)}return}
+  const jp2=t.closest('[data-jpause]');if(jp2){jobPause(+jp2.dataset.jpause,jp2.dataset.on==='1',jp2);return}
+  if(t.closest('[data-jstop]')){const b=t.closest('[data-jstop]');b.disabled=true;api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()}).catch(err=>{b.disabled=false;toast(err.message)});return}};
+$('msgs').addEventListener('input',e=>{const k=e.target.dataset?.aedit;if(k)AED[k]=e.target.value});
+$('msgs').addEventListener('keydown',e=>{if(e.target.dataset?.aedit&&e.key==='Escape'){AED.mid=null;renderChat(false)}});
 
 /* ---------- reply to one message, copy, send it on ---------- */
 function paintReply(){const bar=$('replybar');if(!bar)return;const on=!!(replyTo&&replyTo.conv===cur);bar.hidden=!on;if(!on)return;

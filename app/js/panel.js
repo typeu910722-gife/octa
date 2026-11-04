@@ -60,7 +60,7 @@ function infoSync(){const box=$('detail');
 
 /* the progress lines a job reported, kept on this device so the panel can list its steps; and when it started */
 function trackJobs(){const now=Date.now(),live=new Set();
-  for(const x of S.busy||[]){if(x.status!=='running'||!x.job)continue;live.add(x.job);const st=WP.steps[x.job]||(WP.steps[x.job]=[]),p=String(x.progress||'').trim();
+  for(const x of S.busy||[]){if(x.status!=='running'||!x.job)continue;live.add(x.job);const st=WP.steps[x.job]||(WP.steps[x.job]=[]),p=progOf(x.progress).text;
     if(p&&(!st.length||st[st.length-1].p!==p))st.push({p,t:now});if(st.length>40)st.splice(0,st.length-40)}
   for(const k of Object.keys(WP.steps))if(!live.has(+k))delete WP.steps[k];
   // a job just started here while the panel shows 詳細資料 (and nothing is being edited): show 工作 instead
@@ -82,6 +82,8 @@ function workItems(id){const out=[],bs=BS[id],keys=bgKeysFor(id),since=Date.now(
     if(m.kind==='bg'&&keys?.has(bgKey(m.by,m.text)))continue;   // its answer is shown under that entry
     out.push({t:m.ts,k:m.kind==='fail'?'fail':m.kind==='bg'?'bg':m.kind==='note'?'note':SYSK(t),m,key:'m'+m.id})}
   for(const x of bs?.items||[])out.push({t:x.created,k:'ask',x,key:'b'+x.id});
+  const inCollab=new Set(collabTop(id).map(x=>x.id));   // 4.7: the newest ones have their own section (同事協作)
+  for(let i=out.length-1;i>=0;i--)if(out[i].k==='ask'&&inCollab.has(out[i].x.id))out.splice(i,1);
   for(const j of WP.logs[id]||[]){if(j.status==='pending'||j.status==='running'||bgIds.has(j.id)||j.kind==='open')continue;
     const at=j.finished||j.created;
     if(j.status==='error'&&ms.some(m=>(m.kind==='fail'||/^⚠/.test(m.text||''))&&Math.abs(m.ts-at)<180000))continue;   // the failure note says it better
@@ -106,13 +108,29 @@ function wiHtml(it){const [icon,tone,lab]=WI[it.k]||WI.sys,open=WP.keep.has(it.k
   const bodyHtml=more?`<details class="wmore" data-wk="${esc(it.key)}"${open?' open':''}><summary data-u>${esc(body||more.slice(0,120))}</summary><div class="wfull" data-u>${esc(more)}</div></details>`:`<div class="wtx" data-u>${esc(body)}</div>`;
   return `<li class="wi ${tone}"><span class="wic" aria-hidden="true">${ic(icon)}</span><div class="wb"><div class="wtt">${title}<time>${hm(it.t)}</time></div>${body||more?bodyHtml:''}${acts?`<div class="wact">${acts}</div>`:''}</div></li>`}
 // what is running now: its face, what it is doing, how long, its last steps, 停止
-function curCard(x){const st=stateOf(x.bot_id),steps=(WP.steps[x.job]||[]).slice(-5),c=conv(cur);
+// 4.7: the bot's own step list (done ✓ / now / next) with 「步驟 2/5」 and a bar; an older runner: the lines it reported
+function curCard(x){const st=stateOf(x.bot_id),steps=(WP.steps[x.job]||[]).slice(-5),c=conv(cur),v=progView(x.progress),ps=pauseOf(x);
   const eng=x.eng&&!isG(cur)&&x.eng.split('|')[0]!==(c?.engine||'claude')?` · <span>備援</span> ${esc(ENG_NAME(x.eng.split('|')[0]))}`:'';
-  return `<div class="wcur"><div class="wch"><span class="av" data-u>${avOf(x.bot_id,'always')}</span><div class="t"><b data-u>${esc(nameOf(x.bot_id))}</b>
-    <small><span class="pst">${x.kind==='open'?I18N.t('打開瀏覽器'):x.kind==='code'?I18N.t('程式任務'):I18N.t(STATE_LABEL[st]||'工作中')}</span>${x.started?` · <span class="el" data-since="${x.started}">${elapsed(x.started)}</span>`:''}${eng}</small></div>
-    <button type="button" class="ghost sm" data-wstop>${ic('stop')}<span>停止</span></button></div>
-    ${steps.length?`<ol class="wsteps">${steps.map((s,i)=>`<li${i===steps.length-1?' class="now"':''}><span data-u>${esc(s.p)}</span></li>`).join('')}</ol>`:`<p class="wsub">${I18N.t('準備中…')}</p>`}
+  const plan=v.list.length?`<ol class="wsteps plan">${v.list.map((s,i)=>`<li class="${s.st}">${s.st==='done'?`<span class="wck" aria-hidden="true">${ic('check')}</span>`:`<span class="wn" aria-hidden="true">${i+1}</span>`}<span data-u>${esc(s.t)}</span>${s.st==='now'&&v.text&&v.text!==s.t?`<small data-u>${esc(v.text)}</small>`:''}</li>`).join('')}</ol>`
+    :steps.length?`<ol class="wsteps">${steps.map((s,i)=>`<li${i===steps.length-1?' class="now"':''}><span data-u>${esc(s.p)}</span></li>`).join('')}</ol>`:`<p class="wsub">${I18N.t('準備中…')}</p>`;
+  const head=v.has||ps?`<div class="wprog"><div class="jl">${progLine(x)}</div>${progBar(x)}</div>`:'';
+  return `<div class="wcur${ps?' '+ps:''}"><div class="wch"><span class="av" data-u>${avOf(x.bot_id,'always')}</span><div class="t"><b data-u>${esc(nameOf(x.bot_id))}</b>
+    <small><span class="pst">${ps==='paused'?I18N.t('已暫停'):x.kind==='open'?I18N.t('打開瀏覽器'):x.kind==='code'?I18N.t('程式任務'):I18N.t(STATE_LABEL[st]||'工作中')}</span>${x.started?` · <span class="el" data-since="${x.started}">${elapsed(x.started)}</span>`:''}${eng}</small></div>
+    <div class="wbtns">${x.kind==='open'?'':pauseBtn(x).replace('class="jb"','class="ghost sm jb"')}<button type="button" class="ghost sm" data-wstop>${ic('stop')}<span>停止</span></button></div></div>
+    ${head}${plan}
+    ${ps==='pausing'?`<p class="wnote">${I18N.t('它會做完目前這一步再暫停。')}</p>`:''}
     ${st==='browsing'&&WP.tab!=='web'?`<button type="button" class="link" data-wt="web">${ic('globe')}<span>在瀏覽器分頁看它操作</span></button>`:''}</div>`}
+/* 同事協作: who asked whom, what, waiting / answered / failed, and how long; an open one waiting > 2 minutes stands out */
+const collabTop=id=>collabItems(BS[id]?.items).sort((a,b)=>(b.st==='wait'||b.st==='run')-(a.st==='wait'||a.st==='run')||b.at-a.at).slice(0,8);
+function collabHtml(id){const xs=collabTop(id);if(!xs.length)return '';
+  const ST={wait:['排隊中','wait'],run:['回覆中','run'],ok:['已回覆','ok'],fail:['沒有完成','fail']};
+  return `<div class="wsec"><div class="wsh">${ic('users')}<span>同事協作</span></div><ol class="cl">${xs.map(x=>{const [lab,cls]=ST[x.st],open=x.st==='wait'||x.st==='run',stuck=open&&x.dur>120000,k='c'+x.id,kp=WP.keep.has(k);
+    const dur=stuck?`<span class="cld stuck"><span>在等</span> <b data-u>${esc(nameOf(x.to))}</b> <span>回覆，已等</span> <span data-wsince="${x.at}">${minTxt(x.at)}</span> <span>分鐘</span></span>`
+      :open?`<span class="cld"><span>已等</span> ${durTxt(x.dur)}</span>`:x.dur!=null?`<span class="cld"><span>花了</span> ${durTxt(x.dur)}</span>`:'';
+    return `<li class="ci ${cls}${stuck?' stuck':''}"><div class="cwho"><span class="av xs" data-u>${avOf(x.from)}</span><span data-u>${esc(nameOf(x.from))}</span><span class="car" aria-hidden="true">→</span><span class="av xs" data-u>${avOf(x.to,open)}</span><span data-u>${esc(nameOf(x.to))}</span><span class="ck">${x.kind==='give'?'交辦':'詢問'}</span><time>${hm(x.at)}</time></div>
+      <div class="cwhat" data-u>${esc(x.what||'')}</div>
+      <div class="cst"><span class="cpill ${cls}">${lab}</span>${dur}</div>
+      ${x.reply?`<details class="wmore" data-wk="${k}"${kp?' open':''}><summary data-u>↳ ${esc(x.reply.replace(/\s+/g,' ').slice(0,120))}</summary><div class="wfull" data-u>${esc(x.reply)}</div></details>`:''}</li>`}).join('')}</ol></div>`}
 function routinesHtml(id){const rs=S.routines.filter(r=>r.conv===id&&r.name!=='外部交接');if(!rs.length)return '';
   return `<div class="wsec"><div class="wsh">${ic('clock')}<span>例行任務</span></div><div class="wrts">${rs.map(r=>{const s=rtStatus(r);
     return `<button type="button" class="wrt${r.enabled?'':' off'}" data-wt="info"><b data-u>${esc(r.name)}</b><small>${!r.enabled?I18N.t('已暫停'):s.next?`<span>下次</span> ${when(s.next)}`:''}${s.last?` · <span>上次</span> ${when(s.last)} ${s.st==='err'?`<i class="bad">${I18N.t('失敗')}</i>`:s.st==='ok'?`<i class="good">${I18N.t('完成')}</i>`:''}`:''}</small></button>`}).join('')}</div></div>`}
@@ -122,6 +140,7 @@ function paintWork(){const id=cur,c=conv(id);if(!c)return;loadLogs(id);loadBack(
   if(run.length)h+=run.map(curCard).join('');
   else h+=`<div class="wcur idle"><div class="wch"><span class="av" data-u>${isG(id)?gStack(c):avOf(id,'always')}</span><div class="t"><b>${I18N.t('目前沒有工作')}</b><small>${I18N.t(S.runnerOnline?'交代的事、背景工作和例行任務都會出現在這裡':'電腦上的 OCTA 沒有在執行，訊息會先排著')}</small></div></div></div>`;
   if(q.length)h+=`<div class="wq">${ic('clock')}<span><span>排隊中</span> ${q.length} <span>件</span>：<span data-u>${esc([...new Set(q.map(x=>nameOf(x.bot_id)))].join('、'))}</span></span></div>`;
+  h+=collabHtml(id);
   h+=routinesHtml(id);
   const items=workItems(id);let day='';
   h+=`<div class="wsec"><div class="wsh">${ic('list')}<span>紀錄</span></div>`+(items.length?'<ol class="tl">'+items.slice(0,80).map(it=>{const d=dayLabel(it.t);const sep=d!==day?`<li class="wday">${esc(day=d)}</li>`:'';return sep+wiHtml(it)}).join('')+'</ol>'
@@ -132,6 +151,7 @@ function paintWork(){const id=cur,c=conv(id);if(!c)return;loadLogs(id);loadBack(
 $('wpWork').addEventListener('toggle',e=>{const d=e.target;if(d.dataset?.wk)d.open?WP.keep.add(d.dataset.wk):WP.keep.delete(d.dataset.wk)},true);
 $('wpWork').addEventListener('click',e=>{const t=e.target;
   if(t.closest('[data-wstop]')){t.closest('[data-wstop]').disabled=true;api('cancel','POST',{conv:cur}).then(()=>{toast(I18N.t('已停止'));refresh()}).catch(err=>toast(err.message));return}
+  const jp=t.closest('[data-jpause]');if(jp){jobPause(+jp.dataset.jpause,jp.dataset.on==='1',jp);return}
   const r=t.closest('[data-wretry]');if(r){retryFrom(r.dataset.wretry,r);return}
   const lr=t.closest('[data-wlretry]');if(lr){lr.disabled=true;api('logs/retry','POST',{id:+lr.dataset.wlretry}).then(()=>{toast(I18N.t('已重新排入，會照原本的指示再做一次'));refresh()}).catch(err=>{lr.disabled=false;toast(err.message)});return}});
 // 重試: your last instruction before the failure, sent again

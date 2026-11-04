@@ -22,13 +22,34 @@ const APPR_IMPACT=[[/^照計畫/,'照計畫開始做，做完會回報'],[/^建�
 function apprImpact(act,text){const own=String(text||'').match(/^\s*(?:會)?影響[:：]\s*(.+)$/m);if(own)return own[1].trim();
   for(const [re,t] of APPR_IMPACT)if(re.test(String(act||'')))return t;return '照上面寫的去做，做完會回報'}
 // the card says it all: take the ✅ line (and an 影響 line) out of the message above it
-const apprStrip=t=>String(t||'').replace(/^✅\s*待確認[:：].*$/gm,'').replace(/^\s*(?:會)?影響[:：].*$/gm,'').replace(/\n{3,}/g,'\n\n').trim();
+// 4.7: also the 對象：／內容：／時間： lines under it (shown on the card instead)
+const APPR_LINE=/^\s*✅\s*待確認[:：]/,APPR_KEY=/^\s*(對象|內容|時間|預計時間|送出時間)\s*[:：]/,MARK_LEAD=/^\s*[✅⚠❓📌⏰🧩📝🗺📍📇📘🧭@]/u;
+const apprStrip=t=>{const L=String(t||'').replace(/\r/g,'').split('\n'),out=[];let inCard=false,inBody=false;
+  for(const l of L){if(APPR_LINE.test(l)){inCard=true;inBody=false;continue}
+    if(/^\s*(?:會)?影響[:：]/.test(l)){inBody=false;continue}
+    if(inCard&&APPR_KEY.test(l)){inBody=/^\s*內容/.test(l);continue}
+    if(inCard&&inBody&&l.trim()&&!MARK_LEAD.test(l))continue;   // the rest of a long 內容
+    if(inCard&&l.trim())inCard=inBody=false;
+    out.push(l)}
+  return out.join('\n').replace(/\n{3,}/g,'\n\n').trim()};
+/* 4.7 the card's fields: what (act), to whom (to), the full text (content), when it goes out (when), what it touches (impact).
+   The bot writes them under ✅待確認 (all optional); 內容 may run over several lines. null: no card in this message */
+function apprFields(t){const L=String(t||'').replace(/\r/g,'').split('\n'),i=L.findIndex(l=>APPR_LINE.test(l));if(i<0)return null;
+  const f={act:L[i].replace(/^\s*✅\s*待確認[:：]\s*/,'').trim(),to:'',content:'',when:'',impact:''};let k=null;
+  const K={對象:'to',內容:'content',時間:'when',預計時間:'when',送出時間:'when',影響:'impact',會影響:'impact'};
+  for(let j=i+1;j<L.length;j++){const l=L[j],m=l.match(/^\s*(對象|內容|時間|預計時間|送出時間|會?影響)\s*[:：]\s*(.*)$/);
+    if(m){k=K[m[1]];f[k]=(f[k]?f[k]+'\n':'')+m[2];continue}
+    if(k==='content'&&!MARK_LEAD.test(l)){f.content+='\n'+l;continue}
+    if(l.trim())k=null}
+  for(const x of ['to','content','when','impact'])f[x]=f[x].trim();
+  f.content=f.content.replace(/^「([\s\S]*)」$/,'$1').trim();
+  return f}
 // a routine's last and next run (fields from the API: last_run, last_status, last_text, next_run)
 function rtStatus(r){if(!r)return null;const st={done:'ok',error:'err',skipped:'skip'}[r.last_status]||(r.last_run?'run':'');
   return {last:+r.last_run||0,st,next:r.enabled!==false&&+r.next_run?+r.next_run:0,text:String(r.last_text||'').slice(0,140),job:r.last_job||null}}
 // a group member right now: working (with its progress line), queued, waiting on you, or free
 function memberState(id,busy,asks){const run=(busy||[]).find(x=>x.bot_id===id&&x.status==='running');
-  if(run)return {k:'run',p:String(run.progress||'').trim()};
+  if(run)return {k:'run',p:progOf(run.progress).text};
   if((asks||[]).includes(id))return {k:'ask'};
   if((busy||[]).some(x=>x.bot_id===id&&x.status==='pending'))return {k:'queue'};
   return {k:'idle'}}
@@ -63,8 +84,9 @@ const BROWSE_RE=/^(第 \d+ 步：|打開 \S|點擊「|在「[^」]*」輸入|填
 function botState(id,busy){const run=(busy||[]).find(x=>x.bot_id===id&&x.status==='running');if(!run)return 'idle';
   if(+run.bg)return 'chatting';
   if(run.kind==='open')return 'browsing';
-  const p=String(run.progress||'').trim();
-  if(!p||/^(開始工作|AI 沒有回應)/.test(p))return 'thinking';
+  const pr=progOf(run.progress),p=pr.text;
+  if(pr.kind==='browse')return 'browsing';
+  if(!p||/^(開始工作|AI 沒有回應)/.test(p))return pr.total?'working':'thinking';
   return BROWSE_RE.test(p)?'browsing':'working'}
 /* what belongs in the conversation and what goes to the work panel (工作) beside it.
    The chat keeps what you said, the bots' replies, pictures, files, approval cards and questions for you.
@@ -106,3 +128,89 @@ function octaFrag(hash){const p=new URLSearchParams(String(hash||'').replace(/^#
   return o}
 // the link that sets up /go on this phone (what it keeps: the relay key, which computer, this phone's token)
 function goLink(base,g,token,url){const p=new URLSearchParams();for(const [k,v] of [['tp',g.tp],['k',g.k],['h',g.h],['n',g.n],['u',url],['t',token]])if(v)p.set(k,v);return base+'#'+p.toString()}
+
+/* ---------- 4.7: live progress, the bots' markers as chips, layered replies, colleagues ---------- */
+/* a running job's progress: jobs.progress is JSON {text, step, total, steps, kind, at} (or already parsed by the API);
+   older runners report one plain line, which is read as {text} */
+function progOf(p){if(p&&typeof p==='object')return progNorm(p);const s=String(p??'').trim();if(!s)return progNorm({});
+  if(s[0]==='{'){try{const o=JSON.parse(s);if(o&&typeof o==='object')return progNorm(o)}catch(e){}}
+  return progNorm({text:s})}
+function progNorm(o){const steps=Array.isArray(o.steps)?o.steps.map(x=>String(x??'').replace(/\s+/g,' ').trim()).filter(Boolean).slice(0,30):[];
+  let total=Math.round(+o.total)>0?Math.round(+o.total):steps.length,step=Math.round(+o.step)>0?Math.round(+o.step):0;
+  if(total&&step>total)step=total;
+  return {text:String(o.text??'').replace(/\s+/g,' ').trim(),step,total,steps,kind:['browse','think','tool','ask'].includes(o.kind)?o.kind:'',at:+o.at||0}}
+/* what the progress line, bar and step list show. step is the one being done now (1-based).
+   has: a known 「步驟 2/5」 · pct: the bar · cur: the words · list: each step done / now / next */
+function progView(raw){const p=progOf(raw),has=p.total>0&&p.step>0;
+  const list=p.steps.map((t,i)=>({t,st:!p.step?'next':i<p.step-1?'done':i===p.step-1?'now':'next'}));
+  const cur=p.text||(has&&p.steps[p.step-1])||'';
+  return {...p,has,pct:has?Math.min(100,Math.max(4,Math.round((p.step-.5)/p.total*100))):0,cur,list}}
+/* the bot's own markers, taken out of the conversation and shown as small chips under the message.
+   notes: [{type: task|memory|skill|routine|site|page, title, body, when?, op?}] · result: the ✅ 完成／⚠ 沒做成 line {ok, text}
+   steps: the 🧭步驟 list (never shown in the chat). The same markers the API takes out of new replies (contract §3). */
+function parseNotes(src){let t=String(src??'').replace(/\r/g,'');const notes=[],steps=[];let result=null;
+  const add=(type,title,body,x)=>notes.push({type,title:String(title||'').trim(),body:String(body||'').trim(),...(x||{})});
+  t=t.replace(/【派瀏覽】[\s\S]*?(?:【派完】|$)/g,'')
+    .replace(/📝\s*任務更新[:：]?[ \t]*([\s\S]*?)(?:📝\s*結束|$)/gu,(_,b)=>{add('task','',b);return ''})
+    .replace(/🧩\s*技能[:：]\s*([^\n]*)\n?([\s\S]*?)(?:🧩\s*結束|$)/gu,(_,n,b)=>{add('skill',n,b);return ''});
+  const out=[];
+  for(const l of t.split('\n')){let m;
+    if((m=l.match(/^\s*📌\s*記住[:：]\s*(.*)$/u))){add('memory','',m[1]);continue}
+    if((m=l.match(/^\s*📇\s*事實[:：]\s*(.*)$/u))){add('memory','',m[1],{fact:true});continue}
+    if((m=l.match(/^\s*📘\s*手冊[:：]\s*([^｜|]*)[｜|]?\s*(.*)$/u))){add('skill',m[1],m[2],{manual:true});continue}
+    if((m=l.match(/^\s*⏰\s*例行任務[:：]\s*(.+?)\s*[｜|]\s*(.+?)\s*[｜|]\s*(.*)$/u))){add('routine',m[1],m[3],{when:m[2]});continue}
+    if((m=l.match(/^\s*⏰\s*(刪除|停用|啟用)(?:例行任務)?[:：]\s*(.*)$/u))){add('routine',m[2],'',{op:m[1]});continue}
+    if((m=l.match(/^\s*⏰\s*例行任務[:：]\s*(.*)$/u))){add('routine',m[1],'');continue}
+    if((m=l.match(/^\s*🗺️?\s*網站筆記[:：]\s*([^｜|]*)[｜|]?\s*(.*)$/u))){add('site',m[1],m[2]);continue}
+    if((m=l.match(/^\s*📍\s*目前頁面[:：]\s*(.*)$/u))){add('page',m[1],'');continue}
+    if((m=l.match(/^\s*🧭\s*步驟[:：]\s*(.*)$/u))){steps.push(...m[1].split(/\s*[｜|]\s*/).map(x=>x.trim()).filter(Boolean));continue}
+    if((m=l.match(/^\s*✅\s*完成[:：]\s*(.*)$/))){result={ok:true,text:m[1].trim()};continue}
+    if((m=l.match(/^\s*⚠️?\s*沒做成[:：]\s*(.*)$/u))){result={ok:false,text:m[1].trim()};continue}
+    if(/^\s*【(開瀏覽器|關瀏覽器|稍後|派完)】/.test(l))continue;
+    out.push(l.replace(/【回覆】\s*/g,''))}
+  return {text:out.join('\n').replace(/\n{3,}/g,'\n\n').trim(),notes,result,steps}}
+// messages.meta (JSON text or an object): {notes, result} the API already took out of the text
+function msgMeta(m){let x=m?.meta;if(typeof x==='string'){try{x=JSON.parse(x)}catch(e){x=null}}return x&&typeof x==='object'&&!Array.isArray(x)?x:null}
+// what a bot's message shows: the human text, its chips and its result (meta first, then whatever is still in the text)
+function msgView(m){const p=parseNotes(m?.text),meta=msgMeta(m),seen=new Set(),notes=[];
+  for(const n of [...(Array.isArray(meta?.notes)?meta.notes:[]),...p.notes]){if(!n||!n.type)continue;
+    const v={...n,type:String(n.type),title:String(n.title??'').trim(),body:String(n.body??'').trim()},k=v.type+'|'+v.title+'|'+v.body;
+    if(seen.has(k))continue;seen.add(k);notes.push(v)}
+  const mr=meta?.result,result=mr&&typeof mr==='object'&&(mr.text||mr.ok!=null)?{ok:mr.ok!==false,text:String(mr.text||'').trim()}:p.result;
+  return {text:p.text,notes,result}}
+/* one chip per kind (several 📌 make one 「已記住 3 條規則」; each ⏰ is its own). daily: the time reads 「每天 09:00」 */
+const NOTE_ORDER=['routine','memory','skill','task','site','page'];
+const NOTE_ICON={task:'📝',memory:'📌',skill:'🧩',routine:'⏰',site:'🗺️',page:'📍'};
+const hostOf=u=>{try{return new URL(u).host||u}catch(e){return u}};
+function noteChips(notes){const by={},out=[];for(const n of notes||[])(by[n.type]||(by[n.type]=[])).push(n);
+  for(const type of [...NOTE_ORDER,...Object.keys(by).filter(k=>!NOTE_ORDER.includes(k))]){const ns=by[type];if(!ns)continue;
+    if(type==='routine'){for(const n of ns){let w=String(n.when||'').trim(),name=n.title,what=n.body;
+        if(!w&&!n.op){const p=[name,what].filter(Boolean).join('｜').split(/\s*[｜|]\s*/);if(p.length>=3)[name,w,what]=[p[0],p[1],p.slice(2).join('｜')]}   // meta may keep 名稱｜時間｜事 in one field
+        const daily=/^\d{1,2}:\d{2}([,，、\s]+\d{1,2}:\d{2})*$/.test(w);
+        out.push({type,icon:NOTE_ICON.routine,label:n.op?{刪除:'已刪除例行任務',停用:'已停用例行任務',啟用:'已啟用例行任務'}[n.op]||'例行任務':'已排程',
+          daily,when:daily?w.split(/[,，、\s]+/).join('、'):w,name,items:[{...n,title:name,body:what,when:w}]})}continue}
+    if(type==='memory')out.push({type,icon:NOTE_ICON.memory,label:'已記住',n:ns.length,items:ns});
+    else if(type==='skill')out.push({type,icon:NOTE_ICON.skill,label:ns.every(n=>n.manual)?'做事手冊':'新技能',name:ns.map(n=>n.title).filter(Boolean).join('、'),items:ns});
+    else if(type==='task')out.push({type,icon:NOTE_ICON.task,label:'已更新指定任務',items:ns});
+    else if(type==='site')out.push({type,icon:NOTE_ICON.site,label:'網站筆記',name:ns.map(n=>n.title).filter(Boolean).join('、'),items:ns});
+    else if(type==='page')out.push({type,icon:NOTE_ICON.page,label:'目前頁面',name:ns.map(n=>hostOf(n.title||n.body)).join('、'),items:ns});
+    else out.push({type,icon:'•',label:'紀錄',name:type,items:ns})}
+  return out}
+/* 回覆分層: a long reply opens with its first paragraph; the rest (tables, lists, details) folds under 「展開詳細」 */
+const FOLD_MIN=260,MD_BLOCK=/^\s*(```|#{1,4}\s|[-*•]\s|\d+[.)]\s|>|\|)/;
+function foldReply(src){const t=String(src??'').trim();if(!t)return {head:'',rest:''};
+  const L=t.split('\n');if(MD_BLOCK.test(L[0]))return {head:t,rest:''};
+  let i=0;while(i<L.length&&L[i].trim()&&!MD_BLOCK.test(L[i]))i++;
+  const head=L.slice(0,i).join('\n').trim(),rest=L.slice(i).join('\n').trim();
+  if(!rest||(t.length<=FOLD_MIN&&L.length<=8&&!/^\s*\|/m.test(rest)))return {head:t,rest:''};
+  return {head,rest}}
+/* 同事協作: the background requests between bots (/api/backstage rows) as a timeline.
+   st: wait (queued) · run (the colleague is on it) · ok (answered) · fail · dur: how long it took, or has been waiting so far */
+function collabItems(items,now){now=now||Date.now();return (items||[]).map(x=>{const st=x.status==='pending'?'wait':x.status==='running'?'run':x.status==='error'?'fail':'ok';
+  return {id:x.id,from:x.from,to:x.to,kind:x.kind==='give'?'give':'ask',what:String(x.what||''),reply:String(x.reply||''),st,at:+x.created||0,
+    dur:st==='wait'||st==='run'?Math.max(0,now-(+x.created||now)):x.ms!=null?+x.ms:null}})}
+// a bot here waiting on a colleague right now: its oldest open request {from, to, since, dur, kind, n} or null
+function collabWait(items,ids,now){const open=collabItems(items,now).filter(x=>(x.st==='wait'||x.st==='run')&&(ids||[]).includes(x.from)).sort((a,b)=>a.at-b.at);
+  const x=open[0];return x?{from:x.from,to:x.to,since:x.at,dur:x.dur,kind:x.kind,n:open.length}:null}
+// whole minutes for 「等 研究員 回覆 3 分鐘」
+const minsOf=ms=>Math.max(0,Math.floor((+ms||0)/60000));

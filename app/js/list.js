@@ -3,12 +3,16 @@
 let FOLDED=new Set();try{FOLDED=new Set(JSON.parse(store.get('octa_folded')||'[]'))}catch(e){}
 const gStack=(g,live)=>{const ms=g.members.filter(bot).slice(0,3);return ms.length?`<span class="gst" aria-hidden="true">${ms.map(id=>`<span class="gsa">${avOf(id,live)}</span>`).join('')}</span>`:ic('users')};
 function listTag(id){return apprWait(id)?'<i class="need ap">待你核准</i>':needsYou(id)?'<i class="need">待你處理</i>':cur!==id&&unread(id)?`<i class="ub">${unread(id)}</i>`:''}
+// 4.7: a working bot's row says how far it is (「工作中… 2/5」, 已暫停) with a thin bar along its bottom
+function runLine(id,st){const x=runOf(id),v=x&&progView(x.progress),n=v?.has?` <b class="lstep">${v.step}/${v.total}</b>`:'';
+  return (x&&pauseOf(x)==='paused'?'<span>已暫停</span>':esc(I18N.t(STATE_LABEL[st]))+'…')+n}
+function runBar(id){const x=runOf(id),v=x&&progView(x.progress);return v?.has?`<i class="lbar" aria-hidden="true"><i style="width:${v.pct}%"></i></i>`:''}
 // a bot's face moves only while it is doing something (many rows: the idle ones stay still)
 function rowHtml(c){const g=isG(c.id),on=cur===c.id,muted=(S.mute||{})[c.id],st=g?'':stateOf(c.id);
   return `<div class="iw" draggable="true" data-drag="${c.id}" data-dragname="${esc(c.name)}" data-dropbot="${c.id}"><button class="item${on?' on':''}" data-id="${c.id}"${on?' aria-current="true"':''}>
     <span class="av${g?' grp':''}" data-u${st&&st!=='idle'?` title="${esc(I18N.t(STATE_LABEL[st]))}"`:''}>${g?gStack(c,true):avOf(c.id,true)}</span>
-    <span class="t"><span class="l1"><b data-u>${esc(c.name)}</b>${muted?`<span class="mut" title="已關閉通知">${ic('belloff')}</span>`:''}<span class="tm">${listTime(c.id)}</span></span><span class="l2">${st&&st!=='idle'&&!apprWait(c.id)?`<small class="lw">${esc(I18N.t(STATE_LABEL[st]))}…</small>`:`<small data-u>${esc(preview(c.id))}</small>`}${listTag(c.id)}</span></span>
-  </button><button class="more" data-more="${c.id}" aria-label="更多">${ic('more')}</button></div>`}
+    <span class="t"><span class="l1"><b data-u>${esc(c.name)}</b>${muted?`<span class="mut" title="已關閉通知">${ic('belloff')}</span>`:''}<span class="tm">${listTime(c.id)}</span></span><span class="l2">${st&&st!=='idle'&&!apprWait(c.id)?`<small class="lw">${runLine(c.id,st)}</small>`:`<small data-u>${esc(preview(c.id))}</small>`}${listTag(c.id)}</span></span>
+  ${st&&st!=='idle'?runBar(c.id):''}</button><button class="more" data-more="${c.id}" aria-label="更多">${ic('more')}</button></div>`}
 function renderList(){
   if(VIA())paintVia();   // a remote control (4.3): which computer it controls, and whether it is connected
   else{$('online').classList.toggle('on',!!S.runnerOnline);
