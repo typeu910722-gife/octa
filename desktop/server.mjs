@@ -371,6 +371,24 @@ export async function startServer(opts = {}) {
     return tunnel.starting;
   }
   function stopTunnel() { const p = tunnel.proc; Object.assign(tunnel, { url: '', proc: null }); p?.kill(); }
+  // A quick tunnel can stay running but stop working (sleep, network change: Cloudflare then answers 1033 for its
+  // address). Check it from outside every minute; two misses in a row → start a new one (new address, published again).
+  let tunnelMiss = 0;
+  async function tunnelCheck(fetchImpl = fetch) {
+    const url = tunnel.url;
+    if (!url || !tunnel.proc || tunnel.starting || !/^https:\/\//.test(url)) { tunnelMiss = 0; return true; }
+    let ok = false;
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000);
+    try { const r = await fetchImpl(url + '/__octa_ping', { signal: ctl.signal, cache: 'no-store' }); ok = r.ok && r.headers.has('x-octa-host'); }
+    catch { ok = false; } finally { clearTimeout(t); }
+    if (ok) { tunnelMiss = 0; return true; }
+    if (++tunnelMiss < 2 || tunnel.url !== url) return false;
+    tunnelMiss = 0;
+    const wasRemote = remote.on;
+    stopTunnel(); Object.assign(remote, { on: false, url: '', code: '' });
+    try { await ensureTunnel(); if (wasRemote) await setRemote(true); } catch { }
+    return false;
+  }
   // the tunnel stays open while computers are linked to this one (4.3), even with the phone remote off
   let keepForLinks = async () => false;
   // (4.4: not while the phone remote is on or turning on — at start the two can overlap)
@@ -684,10 +702,11 @@ export async function startServer(opts = {}) {
   // drop), and its address kept on the relay for the /go page
   phoneKeep().catch(() => { });
   hookKeep().catch(() => { });   // 4.5: the 交接網址 work from the OCTA site after a restart
-  const phoneTimer = setInterval(() => { phoneKeep().catch(() => { }); hookKeep().catch(() => { }); }, opts.watchMs || 60000);
+  const phoneTimer = setInterval(async () => { await tunnelCheck().catch(() => { }); phoneKeep().catch(() => { }); hookKeep().catch(() => { }); }, opts.watchMs || 60000);
   phoneTimer.unref?.();
 
   return {
+    tunnelCheck, tunnelUrl: () => tunnel.url,
     url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
     desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
     cloudImport, link: linking, remotePort,

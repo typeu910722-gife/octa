@@ -1,5 +1,18 @@
 [
  {
+  "v": "4.9.3",
+  "date": "2026-11-04",
+  "notes": [
+   "手機遠端更穩：電腦睡醒或網路換過後，連線工具還在跑卻連不上（手機看到 Cloudflare Error 1033）時，OCTA 會在一兩分鐘內自己換一條新連線，手機從主畫面的 OCTA 捷徑打開就會接上"
+  ],
+  "notes_en": [
+   "Steadier phone remote: when the tunnel is still running but no longer reachable after sleep or a network change (Cloudflare Error 1033 on the phone), OCTA now starts a new one within a minute or two; open OCTA from the home-screen shortcut to reconnect"
+  ],
+  "notes_ja": [
+   "スマホリモートを安定化：スリープ復帰やネットワーク変更でトンネルが動いているのに届かない場合（スマホに Cloudflare Error 1033）、1〜2 分以内に自動で新しい接続に切り替えます。ホーム画面の OCTA ショートカットから開けば再接続されます"
+  ]
+ },
+ {
   "v": "4.9.2",
   "date": "2026-11-04",
   "notes": [

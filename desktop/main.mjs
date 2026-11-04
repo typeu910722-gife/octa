@@ -912,7 +912,11 @@ async function restartRunner(why) {
   finally { restarting = false; }
 }
 setInterval(() => { if (runner && runnerMod?.pollAge && runnerMod.pollAge() > 4 * 60000) restartRunner('超過 4 分鐘沒有收到伺服器回應'); }, 60000);
-app.whenReady().then(() => powerMonitor.on('resume', () => setTimeout(() => restartRunner('電腦從睡眠醒來'), 5000)));
+app.whenReady().then(() => powerMonitor.on('resume', () => {
+  setTimeout(() => restartRunner('電腦從睡眠醒來'), 5000);
+  // after sleep the phone tunnel often stops working while cloudflared still runs: check it twice and renew it
+  setTimeout(async () => { try { if (!(await server?.tunnelCheck())) await server?.tunnelCheck(); } catch { } }, 20000);
+}));
 function stopRunner(opts) { runner?.stop(opts); runner = null; keepAwake(false); }
 async function startLocalRunner() {
   if (runner) return;
