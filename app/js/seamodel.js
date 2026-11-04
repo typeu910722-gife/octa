@@ -156,12 +156,12 @@ function seaRoute(L,fromNode,toNode,a,b){if(fromNode===toNode)return [a,b];
 function seaLoop(o){let id=0,tm=0,last=0,on=false,dirty=0,frames=0;
   const later=o.later||((f,ms)=>setTimeout(f,ms)),clear=o.clear||(x=>clearTimeout(x));
   const rate=()=>o.rate?o.rate():o.animate()?(o.fps||30):0;
-  const tick=()=>{id=0;if(!on||o.hidden())return;const t=o.now(),r=rate(),gap=r?1000/r-(r<20?40:2):0;
+  const tick=()=>{id=0;if(!on||o.hidden())return;const t=o.now(),r=rate(),gap=r?1000/r-(r<20?25:2):0;
     if(!last||t-last>=gap||(dirty>0&&!r)){const dt=last?Math.min(.1,(t-last)/1000):1/30;last=t;frames++;o.frame(dt,t);if(dirty>0)dirty--}
     sched()};
   const sched=()=>{if(id||tm||!on||o.hidden())return;const r=rate();
     if(r>=20||dirty>0)id=o.raf(tick);
-    else if(r>0)tm=later(()=>{tm=0;if(on&&!o.hidden()&&!id)id=o.raf(tick)},Math.max(0,1000/r-36))};
+    else if(r>0)tm=later(()=>{tm=0;if(on&&!o.hidden()&&!id)id=o.raf(tick)},Math.max(0,1000/r-20))};
   const kick=n=>{dirty=Math.max(dirty,n||1);if(tm){clear(tm);tm=0}sched()};
   return {start(){on=true;last=0;kick(2)},stop(){on=false;if(id)o.caf(id);if(tm)clear(tm);id=tm=0},kick,
     get running(){return !!(id||tm)},get on(){return on},get frames(){return frames}}}

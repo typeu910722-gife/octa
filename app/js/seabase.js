@@ -195,7 +195,7 @@ function seaInit(T){const st=SEA.st;
   document.addEventListener('keydown',seaKey,sig);
   if(window.ResizeObserver){G.ro=new ResizeObserver(()=>seaResize());G.ro.observe(st)}
   st.classList.add('ready');G.loop.start()}
-function seaFree(G){G.alive=false;G.loop.stop();SEA.ac?.abort();SEA.ac=null;G.ro?.disconnect();
+function seaFree(G){G.alive=false;G.loop.stop();SEA.ac?.abort();SEA.ac=null;if(G.ro&&SEA.st)G.ro.unobserve(SEA.st);
   for(const id in G.labels)G.labels[id].el.remove();
   const n=seaDispose(G.scene,[...Object.values(G.tex),G.glow,...(G.extra||[])]);
   G.r.renderLists?.dispose();G.r.dispose();try{G.r.forceContextLoss()}catch(e){}G.cv.remove();G.scene.clear();G.tex={};G.bots={};G.labels={};
