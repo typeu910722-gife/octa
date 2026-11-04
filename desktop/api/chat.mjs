@@ -143,20 +143,24 @@ const parallelGroup = g => /同時做|同時回|並行|各自處理|各自回/.t
 export const turnsOf = g => !parallelGroup(g);
 export const LOGIN_WAIT = /需要使用者在電腦上登入/;
 // Drop a stuck model's repeated lines before they are saved or used to start another round.
+// 4.7 回覆分層: one blank line the bot left (the result, then the details after it) stays, so the app can fold the details
 export function calmReply(text) {
-  let t = String(text || '').replace(/【派瀏覽】[\s\S]*?【派完】/g, '\n');
-  t = t.replace(/^\s*【派瀏覽】.*$/gm, '').replace(/^\s*【派完】.*$/gm, '');
+  let t = String(text || '').replace(/[ \t]*【派瀏覽】[\s\S]*?【派完】[ \t]*\n?/g, '');
+  t = t.replace(/^[ \t]*【(派瀏覽|派完)】.*(\n|$)/gm, '');
   const out = [];
   const seen = new Set();
   for (const line of t.split('\n')) {
     const v = line.trim();
-    if (!v) continue;
+    if (!v) {
+      if (out.length && out.at(-1) !== '') out.push('');
+      continue;
+    }
     const key = v.replace(/\s+/g, '');
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(v);
   }
-  return out.join('\n').trim();
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 // "@名字" in a message. Names may have spaces, emoji or mixed scripts; where names overlap ("claude" / "claude 測試用") the longest one wins.
 const nameEnds = (s, i) =>
