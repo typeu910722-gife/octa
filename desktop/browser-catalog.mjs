@@ -143,6 +143,22 @@ export function googleSignInPage(url) {
   return u.hostname === 'accounts.google.com' && /signin|ServiceLogin|AddSession|InteractiveLogin|AccountChooser|identifier|challenge/i.test(u.pathname + u.search);
 }
 
+// 4.8.1: Google's signed-in apps (Gmail, Drive, Docs, Calendar…). Inside the embedded browser they hang on their loading
+// screen even when the account is signed in there (Google ties the session to a real Chrome), so OCTA opens them in the
+// bot's own Chrome window — the same window its Google sign-in lives in.
+const GOOGLE_APPS = /^(mail|inbox|drive|docs|sheets|slides|forms|calendar|meet|chat|contacts|keep|photos|admin|business|ads|analytics|tagmanager|search|myaccount|takeout|voice|sites|jamboard|classroom|groups|lookerstudio|datastudio)\.google\.com$/i;
+export function googleWorkspacePage(url) {
+  let u; try { u = new URL(url); } catch { return false; }
+  if (!/^https?:$/.test(u.protocol)) return false;
+  const host = u.hostname.toLowerCase();
+  if (host === 'gmail.com' || host === 'www.gmail.com') return true;
+  if (host === 'search.google.com') return /^\/search-console/i.test(u.pathname);
+  if (host === 'business.google.com' || host === 'ads.google.com' || host === 'analytics.google.com') return true;
+  if (GOOGLE_APPS.test(host)) return true;
+  // www.google.com/drive, /calendar… are marketing pages; the apps themselves live on their own hosts
+  return false;
+}
+
 export function pageUnsupported(text) {
   return String(text || '').includes('不支援此瀏覽器');
 }

@@ -21,12 +21,12 @@ function encodeFrame(text, opcode = 0x81) {
 }
 
 function createParser(onText, onControl) {
-  let buf = Buffer.alloc(0);
+  let buf = Buffer.alloc(0), parts = null;
   return chunk => {
     buf = Buffer.concat([buf, chunk]);
     for (;;) {
       if (buf.length < 2) return;
-      const opcode = buf[0] & 0x0f;
+      const opcode = buf[0] & 0x0f, chunkFin = (buf[0] & 0x80) !== 0;
       const masked = (buf[1] & 0x80) !== 0;
       let len = buf[1] & 0x7f, off = 2;
       if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
@@ -40,19 +40,68 @@ function createParser(onText, onControl) {
         for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i & 3];
       }
       buf = buf.subarray(off + maskLen + len);
+      const fin = chunkFin;
       if (opcode === 8) return 'close';
       if (opcode === 9) { onControl?.('pong', payload); continue; }
-      if (opcode === 10 || opcode === 0) continue;
+      if (opcode === 10) continue;
+      // a long message can come in pieces (text frame without FIN, then continuation frames)
+      if (opcode === 1 && !fin) { parts = [payload]; continue; }
+      if (opcode === 0) {
+        if (!parts) continue;
+        parts.push(payload);
+        if (!fin) continue;
+        payload = Buffer.concat(parts); parts = null;
+        onText(payload.toString('utf8'));
+        continue;
+      }
       if (opcode === 1) onText(payload.toString('utf8'));
     }
   };
 }
+
+// sent to a page whenever a client attaches to it or brings it to the front: the page acts as the focused, active tab
+// even when OCTA's window is in the tray, folded away or showing another bot (no frozen loaders, no stalled waits)
+export const WAKE_COMMANDS = [
+  ['Emulation.setFocusEmulationEnabled', { enabled: true }],
+  ['Page.setWebLifecycleState', { state: 'active' }]
+];
+// a client turning a domain off would turn it off for every other client of the same page debugger
+const SHARED_DOMAINS_OFF = new Set(['Runtime.disable', 'Page.disable', 'Network.disable', 'Log.disable', 'DOM.disable', 'CSS.disable', 'Inspector.disable']);
 
 export function startCdpBridge(adapter, port = 0) {
   const clients = new Set();
   const sessions = new Map();
   const told = new WeakMap(); // socket → Set of target ids it has already been given
   let seq = 0, autoAttach = false, waitDbg = false;
+  // Electron gives each page ONE debugger, shared by every client. A domain one client turned on stays on after it
+  // leaves, so the next client's Runtime.enable does nothing there and it never hears about the page's scripts: every
+  // evaluate / snapshot then waits until it times out (4.8.1: 「瀏覽器連線一直逾時」 from the second AI turn on).
+  // The bridge keeps the live contexts and replays them to each later client.
+  const contexts = new Map();   // targetId → Map(context id → Runtime.executionContextCreated params)
+  const runtimeOn = new Set();  // targets whose page debugger already has Runtime on
+  const per = new WeakMap();    // socket → Map(targetId → what this client set up on that page)
+  const flags = new WeakMap();  // socket → { discover, auto }
+  const gone = new WeakSet();
+  const woke = new Map();
+  const stateOf = (socket, targetId) => {
+    let m = per.get(socket);
+    if (!m) per.set(socket, m = new Map());
+    let st = m.get(targetId);
+    if (!st) m.set(targetId, st = { tree: false, replay: false, scripts: new Set(), bindings: new Set(), fetch: false });
+    return st;
+  };
+  const flagsOf = socket => { let f = flags.get(socket); if (!f) flags.set(socket, f = { discover: false, auto: false }); return f; };
+  const quiet = p => Promise.resolve().then(p).catch(() => { });
+  function wake(targetId, again) {
+    if (!again && Date.now() - (woke.get(targetId) || 0) < 2000) return;
+    woke.set(targetId, Date.now());
+    for (const [method, params] of WAKE_COMMANDS) quiet(() => adapter.command(targetId, method, params));
+  }
+  async function activate(targetId) {
+    // never let a slow or failing switch take the connection down: the client just gets its answer
+    await Promise.race([quiet(() => adapter.activateTarget?.(targetId)), new Promise(r => setTimeout(r, 3000))]);
+    wake(targetId, true);
+  }
   // what the browser says it is: the page's own identity when the adapter knows it (never "Electron" or "OCTA")
   const version = () => { const v = adapter.version?.() || {}; return { product: v.product || 'Chrome/128.0.6613.186', userAgent: v.userAgent || 'OCTA' }; };
   const sendTo = (socket, obj) => { try { socket.write(encodeFrame(JSON.stringify(obj))); } catch { } };
@@ -71,18 +120,79 @@ export function startCdpBridge(adapter, port = 0) {
       if (seen.has(t.id)) continue;
       seen.add(t.id);
       sendTo(socket, msg);
+      wake(t.id);
     }
     return sessionId;
   }
+  // a client left: take back what it put into the shared page debugger (its scripts for new documents, its bindings,
+  // request interception), or the pages carry dead hooks and, with Fetch on, every request would wait for it forever
   function forget(socket) {
+    if (gone.has(socket)) return;
+    gone.add(socket);
     clients.delete(socket);
+    const mine = per.get(socket);
+    per.delete(socket);
+    const others = [...clients];
+    for (const [targetId, st] of mine || []) {
+      for (const identifier of st.scripts) quiet(() => adapter.command(targetId, 'Page.removeScriptToEvaluateOnNewDocument', { identifier }));
+      for (const name of st.bindings) if (!others.some(c => per.get(c)?.get(targetId)?.bindings.has(name))) quiet(() => adapter.command(targetId, 'Runtime.removeBinding', { name }));
+      if (st.fetch && !others.some(c => per.get(c)?.get(targetId)?.fetch)) quiet(() => adapter.command(targetId, 'Fetch.disable', {}));
+    }
     const seen = told.get(socket);
     told.delete(socket);
     if (!seen) return;
     for (const id of seen) {
-      if ([...clients].some(c => told.get(c)?.has(id))) continue;
+      if (others.some(c => told.get(c)?.has(id))) continue;
       for (const [sid, tid] of [...sessions]) if (tid === id) sessions.delete(sid);
     }
+  }
+  // the page is gone (closed by a client, by the person, or by OCTA): every client that had it hears it detach,
+  // or Playwright's close() waits forever and its tab list keeps a dead page
+  function dropTarget(targetId, stillThere) {
+    const sid = sessionFor(targetId);
+    for (const c of clients) {
+      const seen = told.get(c);
+      if (seen?.has(targetId)) {
+        seen.delete(targetId);
+        if (sid) sendTo(c, { method: 'Target.detachedFromTarget', params: { sessionId: sid, targetId } });
+      }
+      per.get(c)?.delete(targetId);
+    }
+    for (const [s, id] of [...sessions]) if (id === targetId) sessions.delete(s);
+    // a bot's last tab is not closed (it goes back to its start page): its page debugger keeps what it had
+    if (!stillThere) { frames.delete(targetId); contexts.delete(targetId); runtimeOn.delete(targetId); woke.delete(targetId); }
+    sendAll({ method: 'Target.targetDestroyed', params: { targetId } });
+  }
+  // a page that opened without a client asking (the person's new tab): clients that follow targets hear about it
+  function announce(t) {
+    if (!t?.id) return;
+    for (const c of clients) if (flagsOf(c).discover) sendTo(c, { method: 'Target.targetCreated', params: { targetInfo: info(t) } });
+    const auto = [...clients].filter(c => flagsOf(c).auto);
+    if (auto.length) notify(t, auto);
+  }
+  adapter.onTargetAdded?.(t => { try { announce(t); } catch { } });
+  adapter.onTargetGone?.(id => { try { dropTarget(id); } catch { } });
+  // a client that turned Runtime on after another one did: give it the page's contexts once it has the frame tree
+  function replay(socket, targetId, force) {
+    const st = per.get(socket)?.get(targetId);
+    if (!st || !st.replay || (!st.tree && !force) || !clients.has(socket)) return;
+    st.replay = false;
+    const sid = sessionFor(targetId);
+    if (!sid) return;
+    const list = [...(contexts.get(targetId)?.values() || [])].sort((a, b) => (a.context?.id || 0) - (b.context?.id || 0));
+    for (const params of list) {
+      let body;
+      try { body = mapIds(structuredClone(params), id => mapOut(targetId, id)); } catch { body = params; }
+      sendTo(socket, { method: 'Runtime.executionContextCreated', params: body, sessionId: sid });
+    }
+  }
+  function keepContext(targetId, method, params) {
+    if (method === 'Runtime.executionContextCreated' && params?.context?.id != null) {
+      let m = contexts.get(targetId);
+      if (!m) contexts.set(targetId, m = new Map());
+      m.set(params.context.id, params);
+    } else if (method === 'Runtime.executionContextDestroyed') contexts.get(targetId)?.delete(params?.executionContextId);
+    else if (method === 'Runtime.executionContextsCleared') contexts.get(targetId)?.clear();
   }
   // Electron names the main frame with its own id. Playwright looks that frame up under the target
   // id, and anything else throws "Frame has been detached" before the address is even opened.
@@ -181,6 +291,7 @@ export function startCdpBridge(adapter, port = 0) {
   }
   adapter.onEvent?.((targetId, method, params) => {
     const raw = params || {};
+    keepContext(targetId, method, raw);
     const s = track(targetId);
     if (!s.seenTree && PRE_TREE.has(method)) {
       s.pre.push({ method, params: raw });
@@ -211,10 +322,12 @@ export function startCdpBridge(adapter, port = 0) {
       return { targetInfos: list.map(info) };
     }
     if (method === 'Target.setDiscoverTargets') {
+      flagsOf(socket).discover = !!params?.discover;
       if (params?.discover) for (const t of adapter.list()) sendAll({ method: 'Target.targetCreated', params: { targetInfo: info(t) } });
       return {};
     }
     if (method === 'Target.setAutoAttach') {
+      flagsOf(socket).auto = !!params?.autoAttach;
       autoAttach = !!params?.autoAttach;
       waitDbg = !!params?.waitForDebuggerOnStart;
       if (autoAttach) for (const t of adapter.list()) notify(t, [socket]);
@@ -230,19 +343,16 @@ export function startCdpBridge(adapter, port = 0) {
       if (tid && ![...clients].some(c => told.get(c)?.has(tid))) { for (const [sid, id] of [...sessions]) if (id === tid) sessions.delete(sid); }
       return {};
     }
-    if (method === 'Target.activateTarget') { await adapter.activateTarget?.(params.targetId); return {}; }
+    if (method === 'Target.activateTarget') { await activate(params?.targetId); return {}; }
     if (method === 'Target.createTarget') {
       const created = await adapter.createTarget(params || {});
       if (!sessionFor(created.id)) sendAll({ method: 'Target.targetCreated', params: { targetInfo: info(created) } });
-      notify(created, autoAttach ? [...clients] : [socket]);
+      notify(created, [...new Set([socket, ...[...clients].filter(c => flagsOf(c).auto)])]);
       return { targetId: created.id };
     }
     if (method === 'Target.closeTarget') {
-      await adapter.closeTarget?.(params.targetId);
-      for (const c of clients) told.get(c)?.delete(params.targetId);
-      for (const [sid, id] of [...sessions]) if (id === params.targetId) sessions.delete(sid);
-      frames.delete(params.targetId);
-      sendAll({ method: 'Target.targetDestroyed', params: { targetId: params.targetId } });
+      await quiet(() => adapter.closeTarget?.(params.targetId));
+      dropTarget(params.targetId, adapter.list().some(t => t.id === params.targetId));
       return { success: true };
     }
     const err = new Error('OCTA 瀏覽器沒有這個指令：' + method);
@@ -259,8 +369,23 @@ export function startCdpBridge(adapter, port = 0) {
         if (msg.method === 'Target.setAutoAttach' || msg.method === 'Target.setDiscoverTargets') { reply({ result: {} }); return; }
         const targetId = sessions.get(msg.sessionId);
         if (!targetId) throw new Error('分頁連線已結束');
+        // switching tabs is the bridge's job: the page debugger cannot bring a view to the front
+        if (msg.method === 'Page.bringToFront') { await activate(targetId); reply({ result: {} }); return; }
+        if (SHARED_DOMAINS_OFF.has(msg.method)) { reply({ result: {} }); return; }
+        const st = stateOf(socket, targetId);
+        if (msg.method === 'Fetch.disable' && [...clients].some(c => c !== socket && per.get(c)?.get(targetId)?.fetch)) { st.fetch = false; reply({ result: {} }); return; }
         const sent = mapIds(msg.params || {}, id => mapIn(targetId, id));
+        const wasOn = runtimeOn.has(targetId);
         let out = await adapter.command(targetId, msg.method, sent) || {};
+        if (msg.method === 'Runtime.enable') {
+          runtimeOn.add(targetId);
+          if (wasOn) { st.replay = true; setTimeout(() => replay(socket, targetId, true), 1000); }
+        } else if (msg.method === 'Page.addScriptToEvaluateOnNewDocument' && out.identifier) st.scripts.add(out.identifier);
+        else if (msg.method === 'Page.removeScriptToEvaluateOnNewDocument') st.scripts.delete(sent.identifier);
+        else if (msg.method === 'Runtime.addBinding' && sent.name) st.bindings.add(sent.name);
+        else if (msg.method === 'Fetch.enable') st.fetch = true;
+        else if (msg.method === 'Fetch.disable') st.fetch = false;
+        else if (msg.method === 'Page.getFrameTree') st.tree = true;
         try { out = structuredClone(out); } catch { /* already a plain result */ }
         if (msg.method === 'Page.getFrameTree' && out.frameTree) absorbTree(targetId, out.frameTree, true);
         else if (msg.method === 'Page.navigate' && typeof out.frameId === 'string') {
@@ -272,6 +397,7 @@ export function startCdpBridge(adapter, port = 0) {
         // the context can arrive before the frame tree. hold it until Playwright has read the tree
         // and attached its listeners, or the read of the page waits until it times out
         if (msg.method === 'Page.getFrameTree') setTimeout(() => flushPre(targetId), 0);
+        if (msg.method === 'Page.getFrameTree' || msg.method === 'Runtime.enable') setTimeout(() => replay(socket, targetId), 0);
         releaseHeld(targetId);
       } else reply({ result: await browserCommand(msg.method, msg.params || {}, socket) || {} });
     } catch (e) { reply({ error: { code: -32000, message: String(e.message || e) } }); }
@@ -297,7 +423,7 @@ export function startCdpBridge(adapter, port = 0) {
     });
     socket.on('data', chunk => { if (feed(chunk) === 'close') { forget(socket); try { socket.end(); } catch { } } });
     socket.on('close', () => forget(socket));
-    socket.on('error', () => forget(socket));
+    socket.on('error', () => { forget(socket); try { socket.destroy(); } catch { } });
   });
   return new Promise((ok, no) => {
     server.once('error', no);

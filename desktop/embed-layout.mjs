@@ -281,3 +281,21 @@ export function phoneInput(ev) {
   }
   return null;
 }
+
+// 4.8.1: where a bot's pages wait while they are not on screen. The window holding them is SHOWN (a hidden or
+// minimised window stops drawing: the page's animation frames stop, screenshots never come back and loaders such as
+// Gmail's never finish), so it is placed past the top-left corner of every screen, where nobody sees it.
+export const PARK_GAP = 400;
+// One window per page, side by side (slot 0, 1, 2… further left): a page covered by another page or window stops drawing too.
+export function parkSpot(displays, size = PAGE, slot = 0) {
+  const all = (displays || []).map(d => d?.bounds || d).filter(b => b && Number.isFinite(+b.x) && Number.isFinite(+b.y));
+  const minX = all.length ? Math.min(...all.map(b => +b.x)) : 0;
+  const minY = all.length ? Math.min(...all.map(b => +b.y)) : 0;
+  const n = Math.max(0, Math.floor(+slot || 0));
+  return { x: Math.round(minX - size.width - PARK_GAP - n * (size.width + 40)), y: Math.round(minY - size.height - PARK_GAP) };
+}
+// true when a window at `box` would show on any screen (then it is moved back out of sight)
+export function onAnyScreen(box, displays) {
+  if (!box) return false;
+  return (displays || []).map(d => d?.bounds || d).some(b => b && box.x < b.x + b.width && box.x + box.width > b.x && box.y < b.y + b.height && box.y + box.height > b.y);
+}

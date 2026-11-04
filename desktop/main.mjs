@@ -8,10 +8,10 @@ import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, appendFileSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, statSync, createWriteStream } from 'node:fs';
 import { startServer } from './server.mjs';
 import { cloudCaller, importStatus, migrateConfig } from './cloud-import.mjs';
-import { startCdpBridge } from './cdp-bridge.mjs';
+import { WAKE_COMMANDS, startCdpBridge } from './cdp-bridge.mjs';
 import { backupRootFrom, doneText, finishPendingWipe, makeBackup, planWipe, wipeTargets, writeMarker } from './wipe.mjs';
-import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, phoneInput, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
-import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, SAME_TO_CDP, braveDownload, chromeDownload, clientHintHeaders, edgeDownload, electronCookie, firefoxDownload, googleRefused, googleSignInPage, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
+import { PAGE, THUMB_RADIUS, controlStage, embedFrames, freshOpen, isBlankUrl, onAnyScreen, parkSpot, phoneInput, resizeBox, scrollScript, shieldFor, sidebarBox, thumbBox, userFlagScript, wheelDelta } from './embed-layout.mjs';
+import { BRAVE_RELEASE, CHROME_CATALOG, ENGINE_IDS, ENGINE_LABEL, SAME_TO_CDP, braveDownload, chromeDownload, clientHintHeaders, edgeDownload, electronCookie, firefoxDownload, googleRefused, googleSignInPage, googleWorkspacePage, hostPlatform, identity, pageNeedsAttention, pageUnsupported } from './browser-catalog.mjs';
 
 // ---------- updates (GitHub Releases) ----------
 const { autoUpdater } = createRequire(import.meta.url)('electron-updater');
@@ -132,16 +132,20 @@ function createWindow() {
   });
   win.on('close', e => {
     if (quitting) return;
-    e.preventDefault(); win.hide();
+    e.preventDefault(); win.hide(); setAway('hidden', true);   // ('hide' is not emitted everywhere)
     if (!cfg.toldTray) {   // the first time: say the bots keep working in the background
       cfg = { ...cfg, toldTray: true }; writeCfg(cfg);
       new Notification({ title: 'OCTA 還在背景工作', body: '機器人會繼續執行。點右下角章魚圖示可以打開，要完全關閉請在圖示上按右鍵 →「結束」。', icon: icon() }).on('click', showWindow).show();
     }
   });
-  win.on('closed', () => (win = null));
+  // the window is gone: pages that were in it would stop drawing, so they move to their own waiting windows
+  win.on('closed', () => { win = null; for (const bucket of embeds.values()) { bucket.docked = false; stopThumbs(bucket); holdOffscreen(bucket); } });
   win.on('resize', () => { layoutEmbed(); saveWin(); });
   win.on('move', saveWin);
   win.on('maximize', () => { layoutEmbed(); saveWin(); });
+  const away = (k, v) => () => setAway(k, v);
+  win.on('hide', away('hidden', true)); win.on('show', away('hidden', false));
+  win.on('minimize', away('min', true)); win.on('restore', away('min', false));
   win.on('unmaximize', () => { layoutEmbed(); saveWin(); });
   win.once('ready-to-show', () => { if (!hiddenStart) { win.show(); win.focus(); } });
 }
@@ -149,6 +153,7 @@ function showWindow() {
   if (!win) { createWindow(); loadMain(); }
   if (win.isMinimized()) win.restore();
   win.show(); win.focus();
+  setAway('hidden', false);
 }
 const showSplash = () => win.loadFile(join(here, 'splash.html'));
 
@@ -189,23 +194,62 @@ function fitView(view, bounds, visible) {
   try { view.setBounds(bounds); } catch { }
   try { view.setVisible(visible); } catch { }
 }
-function hostOf(bucket) {
-  if (bucket.host && !bucket.host.isDestroyed()) return bucket.host;
-  // the page stays 1280×800 here, so a thumbnail does not shrink what the bot sees
-  bucket.host = new BrowserWindow({
-    show: false, x: -3200, y: -3200, width: PAGE.width, height: PAGE.height,
-    skipTaskbar: true, focusable: false, frame: false, thickFrame: false,
-    minimizable: false, movable: false, resizable: false,
+// 4.8.1: where a bot's pages wait while they are not on screen. It used to be one hidden window per bot: a hidden window
+// does not draw, so its pages got no animation frames (about 1 a second at best), screenshots took seconds or never came
+// back and loaders that wait for a painted frame (Gmail's) never finished; a tab under another tab got none at all.
+// Now every page has its own real, shown window, placed past the top-left corner of every screen (embed-layout parkSpot,
+// side by side so none covers another), without a taskbar button, Alt+Tab entry, focus or mouse.
+const displaysNow = () => { try { return screen.getAllDisplays(); } catch { return []; } };
+const parkSlots = [];   // slot → window
+function parkHost(host) {
+  if (!host || host.isDestroyed()) return;
+  const spot = parkSpot(displaysNow(), PAGE, Math.max(0, parkSlots.indexOf(host)));
+  try {
+    const b = host.getBounds();
+    if (b.x !== spot.x || b.y !== spot.y || b.width !== PAGE.width || b.height !== PAGE.height || onAnyScreen(b, displaysNow())) host.setBounds({ ...spot, width: PAGE.width, height: PAGE.height });
+  } catch { }
+  try { if (host.isMinimized()) host.restore(); } catch { }
+  try { if (!host.isVisible()) host.showInactive(); } catch { }
+}
+function hostFor(bucket, view) {
+  let host = bucket.hosts.get(view);
+  if (host && !host.isDestroyed()) return host;
+  let slot = parkSlots.findIndex(w => !w || w.isDestroyed());
+  if (slot < 0) slot = parkSlots.length;
+  host = new BrowserWindow({
+    show: false, ...parkSpot(displaysNow(), PAGE, slot), width: PAGE.width, height: PAGE.height,
+    skipTaskbar: true, focusable: false, frame: false, thickFrame: false, hasShadow: false,
+    minimizable: false, maximizable: false, movable: false, resizable: false, enableLargerThanScreen: true,
+    ...(process.platform === 'win32' ? { type: 'toolbar' } : {}),   // a tool window: no Alt+Tab entry
+    title: 'OCTA', backgroundColor: '#ffffff',
     webPreferences: { backgroundThrottling: false }
   });
-  try { bucket.host.setMenuBarVisibility(false); } catch { }
-  return bucket.host;
+  parkSlots[slot] = host;
+  bucket.hosts.set(view, host);
+  try { host.setMenuBarVisibility(false); } catch { }
+  try { host.setIgnoreMouseEvents(true); } catch { }
+  try { host.webContents.setBackgroundThrottling(false); } catch { }
+  const again = () => setTimeout(() => { if (embeds.has(bucket.port) && bucket.hosts.get(view) === host) parkHost(host); }, 50);
+  host.on('minimize', again);
+  host.on('hide', again);
+  host.on('closed', () => { const i = parkSlots.indexOf(host); if (i >= 0) parkSlots[i] = null; if (bucket.hosts.get(view) === host) bucket.hosts.delete(view); });
+  parkHost(host);
+  return host;
 }
-function parkView(bucket, view, visible) {
-  const host = hostOf(bucket);
+function unhost(bucket, view) {
+  const host = bucket.hosts.get(view);
+  try { if (host && !host.isDestroyed()) host.contentView.removeChildView(view); } catch { }
+}
+function dropHost(bucket, view) {
+  const host = bucket.hosts.get(view);
+  bucket.hosts.delete(view);
+  try { if (host && !host.isDestroyed()) { host.contentView.removeChildView(view); host.destroy(); } } catch { }
+}
+function parkView(bucket, view) {
+  const host = hostFor(bucket, view);
   try { if (win && !win.isDestroyed()) win.contentView.removeChildView(view); } catch { }
   try { if (!host.contentView.children.includes(view)) host.contentView.addChildView(view); } catch { }
-  fitView(view, { x: 0, y: 0, width: PAGE.width, height: PAGE.height }, visible);
+  fitView(view, { x: 0, y: 0, width: PAGE.width, height: PAGE.height }, true);
 }
 function shownUrl(wc) {
   if (!wc || wc.isDestroyed()) return '';
@@ -328,8 +372,7 @@ function placeBucket(bucket, frames) {
   const page = (frames.mode === 'open' || frames.mode === 'dock') && frames.page ? bucket.active : null;
   for (const v of bucket.tabs) {
     if (v === page) continue;
-    // the active tab stays visible off to the side, so a thumbnail can still photograph it
-    parkView(bucket, v, v === bucket.active);
+    parkView(bucket, v);
   }
   if (frames.chrome && bucket.chrome && win) {
     // put the panel back above the chat every time, so a reload cannot cover it
@@ -339,7 +382,7 @@ function placeBucket(bucket, frames) {
   }
   // the page sits above the panel frame; the frame's edges stay outside the page and can still be grabbed
   if (page && frames.page && win) {
-    try { bucket.host?.contentView.removeChildView(page); } catch { }
+    unhost(bucket, page);
     raiseView(page);
     fitView(page, frames.page, true);
     roundChrome(page, frames.mode === 'dock' ? 8 : 12, true);
@@ -349,7 +392,7 @@ function placeBucket(bucket, frames) {
 }
 function holdOffscreen(bucket) {
   detachChrome(bucket);
-  for (const v of bucket.tabs) parkView(bucket, v, !!bucket.shown && v === bucket.active);
+  for (const v of bucket.tabs) parkView(bucket, v);
 }
 // the chat page keeps its last messages clear of the corner card
 function tellPip(pip) {
@@ -374,8 +417,23 @@ function layoutDocked(w, h) {
   }
   tellPip(null);
 }
+// OCTA's own window is in the tray or minimised: it no longer draws, so a page docked in it would stop too
+// (its own events count first: on some systems isVisible() still says true right after hide())
+let winAway = { hidden: false, min: false };
+function setAway(k, v) {
+  if (!win || win.isDestroyed()) return;
+  winAway = { ...winAway, [k]: v };
+  if (k === 'hidden' && !v) winAway.min = win.isMinimized();
+  layoutEmbed();
+  setTimeout(layoutEmbed, 300);
+}
+const winDrawing = () => !!(win && !win.isDestroyed() && !winAway.hidden && !winAway.min && win.isVisible() && !win.isMinimized());
 function layoutEmbed() {
   if (!win || win.isDestroyed()) return;
+  if (!winDrawing()) {
+    for (const bucket of embeds.values()) { bucket.docked = false; stopThumbs(bucket); holdOffscreen(bucket); }
+    return;
+  }
   const [w, h] = win.getContentSize();
   const main = win.contentView.children.find(v => v.webContents === win.webContents);
   fitView(main, { x: 0, y: 0, width: w, height: h }, true);
@@ -516,14 +574,15 @@ async function notePage(wc, bucket) {
 // refusal), the bot moves to its own real Chrome window (its own profile, driven over CDP) and stays there — no
 // automatic way back, no sign-in loop in here. 「改回內建瀏覽器」 by hand still works (Google's cookies are not copied).
 function googleBlocked(bucket, url, text = '') {
-  if (!googleRefused(url, text) && !googleSignInPage(url)) return;
+  // 4.8.1: also Gmail, Drive, Docs… when already signed in here: they hang on their loading screen in this browser
+  if (!googleRefused(url, text) && !googleSignInPage(url) && !googleWorkspacePage(url)) return;
   if (!bucket.botId || bucket.toChrome || typeof embedApi.onGoogle !== 'function') return;
   bucket.toChrome = true;
   const again = (+cfg.embedBack?.[bucket.botId] || 0) > 0;   // it was in Chrome before and came back by hand
   const stay = true;
   cfg = { ...cfg, realChrome: { ...(cfg.realChrome || {}), [bucket.botId]: { at: Date.now(), why: 'google', stay: true } } };
   writeCfg(cfg);
-  bucket.engineError = 'Google 不讓內嵌瀏覽器登入，正在改用 Chrome 視窗…';
+  bucket.engineError = googleWorkspacePage(url) ? 'Google 的服務（Gmail 等）改在這個機器人的 Chrome 視窗開啟…' : 'Google 不讓內嵌瀏覽器登入，正在改用 Chrome 視窗…';
   sendFrame(bucket, {});
   setTimeout(() => Promise.resolve(embedApi.onGoogle(bucket.botId, url, { again, stay })).catch(e => logError('google-chrome', e)), 300);
 }
@@ -551,9 +610,37 @@ function browserMode(botId) {
   // true: set by 3.0.37–3.3.x, always because of Google's sign-in
   return { chrome: true, why: v === true ? 'google' : (v.why || 'google'), at: v === true ? 0 : (+v.at || 0), stay: !!v?.stay };
 }
+// 4.8.1: the page acts as the active, focused tab whatever the person is looking at (see cdp-bridge WAKE_COMMANDS)
+function wakePage(wc) {
+  if (!wc || wc.isDestroyed()) return;
+  try { wc.setBackgroundThrottling(false); } catch { }
+  try { if (!wc.debugger.isAttached()) return; } catch { return; }
+  for (const [method, params] of WAKE_COMMANDS) wc.debugger.sendCommand(method, params).catch(() => { });
+}
+// the page's debugger is how the bot works the page: if it comes off (the renderer was replaced, DevTools took it), put it
+// back at once — otherwise every command of the bot fails until OCTA restarts
+async function reattach(wc, bucket) {
+  if (!wc || wc.isDestroyed() || !embeds.has(bucket.port)) return false;
+  try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) { logError('debugger', e); return false; } }
+  await applyIdentity(wc, bucket.engine || 'chrome');
+  wakePage(wc);
+  return true;
+}
 async function hookPage(wc, id, bucket) {
   try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) logError('debugger', e); }
   await applyIdentity(wc, bucket.engine || 'chrome');
+  wakePage(wc);
+  wc.debugger.on('detach', (_e, reason) => {
+    logError('debugger-detach', new Error(String(reason || '')));
+    setTimeout(() => void reattach(wc, bucket), 300);
+  });
+  // the page's renderer died (out of memory, a crash): load it again instead of leaving a dead tab under the bot
+  wc.on('render-process-gone', (_e, d) => {
+    if (d?.reason === 'clean-exit') return;
+    logError('page-gone', new Error(String(d?.reason || '')));
+    setTimeout(() => { if (!wc.isDestroyed()) { try { wc.reload(); } catch { } void reattach(wc, bucket); } }, 500);
+  });
+  wc.once('destroyed', () => { bucket.pages.delete(id); try { bucket.onGone?.(id); } catch { } });
   // events of the frames and workers OCTA attached to itself (sessionId set) are not the page's: Playwright never asked for them
   wc.debugger.on('message', (_e, method, params, sessionId) => {
     if (sessionId || method === 'Target.attachedToTarget' || method === 'Target.detachedFromTarget') return;
@@ -590,7 +677,7 @@ function closeEmbedTab(bucket, index) {
   if (id) bucket.pages.delete(id);
   if (bucket.active === tab) bucket.active = bucket.tabs[Math.max(0, index - 1)] || bucket.tabs[0];
   try { win?.contentView.removeChildView(tab); } catch { }
-  try { bucket.host?.contentView.removeChildView(tab); } catch { }
+  dropHost(bucket, tab);
   try { tab.webContents.close(); } catch { }
   layoutEmbed();
   sendFrame(bucket, {});
@@ -633,7 +720,7 @@ async function embedShow(port, show) {
   if (mode && docking) try { win.webContents.send('octa:stage', { bot: bucket.botId, act: 'shown', mode }); } catch { }
   if (!mode) {
     detachChrome(bucket);
-    for (const v of bucket.tabs) parkView(bucket, v, false);
+    for (const v of bucket.tabs) parkView(bucket, v);
   } else if (docking) stopThumbs(bucket);
   else if (mode === 'thumb') startThumbs(bucket);
   else { stopThumbs(bucket); sendFrame(bucket, { mode: 'open' }); }
@@ -649,13 +736,34 @@ async function embedStop(port) {
   try { if (bucket.shield && !bucket.shield.webContents.isDestroyed()) bucket.shield.webContents.close(); } catch { }
   for (const v of bucket.tabs) {
     try { if (win && !win.isDestroyed()) win.contentView.removeChildView(v); } catch { }
-    try { bucket.host?.contentView.removeChildView(v); } catch { }
     try { if (!v.webContents.isDestroyed()) v.webContents.close(); } catch { }
+    dropHost(bucket, v);
   }
-  try { if (bucket.host && !bucket.host.isDestroyed()) bucket.host.destroy(); } catch { }
-  for (const w of bucket.hidden) { try { if (!w.isDestroyed()) w.destroy(); } catch { } }
+  for (const v of [...bucket.hidden]) dropHidden(bucket, v);
+  for (const v of [...bucket.hosts.keys()]) dropHost(bucket, v);
   try { await bucket.bridge?.close(); } catch { }
   layoutEmbed();
+}
+function dropHidden(bucket, v) {
+  bucket.hidden = bucket.hidden.filter(x => x !== v);
+  try { if (!v.webContents.isDestroyed()) v.webContents.close(); } catch { }
+  dropHost(bucket, v);
+}
+// 4.8.1 watchdog (the runner calls it before a job and whenever the bot's browser stops answering): every page drawn,
+// attached and alive, the waiting window shown out of sight, the layout redone. false: no such browser (start it again)
+async function embedRevive(port) {
+  const bucket = embeds.get(port);
+  if (!bucket) return false;
+  for (const host of bucket.hosts.values()) parkHost(host);
+  const all = [...bucket.tabs, ...bucket.hidden];
+  for (const v of all) {
+    const wc = v.webContents;
+    if (!wc || wc.isDestroyed()) continue;
+    try { if (wc.isCrashed()) wc.reload(); } catch { }
+    await reattach(wc, bucket);
+  }
+  layoutEmbed();
+  return true;
 }
 const usedPartitions = new Set();
 async function embedStart(bot, port) {
@@ -669,7 +777,7 @@ async function embedStart(bot, port) {
   const chrome = new WebContentsView({ webPreferences: { preload: join(here, 'browser-preload.cjs'), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
   const place = savedPlace(String(bot.id || ''));
   const engine = ENGINE_IDS.includes(cfg.botEngine?.[String(bot.id || '')]) ? cfg.botEngine[String(bot.id || '')] : 'chrome';
-  const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, host: null, thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null, engine, blocked: false, downloading: '', percent: 0, engineError: '', handed: false, engineJob: null, control: false, shield: null };
+  const bucket = { port, botId: String(bot.id || ''), prefs, tabs: [view], active: view, pages: new Map(), shown: false, onEvent: null, hidden: [], bridge: null, splash: '', chrome, name, hosts: new Map(), thumbTimer: null, thumbAt: place.thumb || savedThumbAt(), openAt: place.open || null, dragging: false, panelBox: null, engine, blocked: false, downloading: '', percent: 0, engineError: '', handed: false, engineJob: null, control: false, shield: null };
   dressSession(view.webContents.session, bucket);
   keepLogins(view.webContents.session);
   roundChrome(chrome, THUMB_RADIUS);
@@ -679,7 +787,7 @@ async function embedStart(bot, port) {
   view.webContents.loadURL(bucket.splash).catch(() => { });
   chrome.webContents.loadFile(join(here, 'browser-chrome.html')).catch(() => { });
   chrome.webContents.on('did-finish-load', () => sendFrame(bucket, {}));
-  parkView(bucket, view, true);
+  parkView(bucket, view);
   const adapter = {
     list: () => [...bucket.pages].filter(([, p]) => !p.wc.isDestroyed()).map(([id, p]) => ({ id, title: p.wc.getTitle(), url: p.wc.getURL() || 'about:blank' })),
     bounds: () => {
@@ -710,9 +818,11 @@ async function embedStart(bot, port) {
     async createTarget(params) {
       const url = params?.url || 'about:blank';
       if (params?.background) {
+        // a page nobody sees (監看網頁): it still lives in the drawing window, under the tabs
         const id = 'p' + (++embedSeq);
-        const hidden = new BrowserWindow({ show: false, width: 1280, height: 800, skipTaskbar: true, parent: win, webPreferences: prefs });
+        const hidden = new WebContentsView({ webPreferences: prefs });
         bucket.hidden.push(hidden);
+        parkView(bucket, hidden);
         await hookPage(hidden.webContents, id, bucket);
         hidden.webContents.loadURL(url).catch(() => { });
         return { id, title: '', url };
@@ -735,15 +845,19 @@ async function embedStart(bot, port) {
       const idx = bucket.tabs.findIndex(v => v.webContents === page.wc);
       if (idx >= 0) { closeEmbedTab(bucket, idx); return; }
       bucket.pages.delete(id);
-      const hw = bucket.hidden.find(w => !w.isDestroyed() && w.webContents === page.wc);
-      try { hw?.destroy(); } catch { }
+      const hv = bucket.hidden.find(v => v.webContents === page.wc);
+      if (hv) dropHidden(bucket, hv);
     },
+    // the bot switched tabs (browser_tabs → bringToFront): the person's view follows it. It does not pop the browser
+    // back up when the person put it away, and never takes the connection down
     activateTarget: async id => {
       const page = bucket.pages.get(id);
       const tab = page && bucket.tabs.find(v => v.webContents === page.wc);
-      if (tab) focusTab(bucket, tab);
-      await embedShow(port, true);
+      if (tab && tab !== bucket.active) focusTab(bucket, tab);
+      wakePage(page?.wc);
     },
+    onTargetAdded: cb => { bucket.onAdded = cb; },
+    onTargetGone: cb => { bucket.onGone = cb; },
     close: () => embedStop(port)
   };
   bucket.bridge = await startCdpBridge(adapter, port);
@@ -752,7 +866,7 @@ async function embedStart(bot, port) {
 
 // ---------- runner ----------
 const embedApi = {
-  start: embedStart, show: embedShow, stop: embedStop, onGoogle: null,
+  start: embedStart, show: embedShow, stop: embedStop, revive: embedRevive, onGoogle: null,
   external: id => !!cfg.realChrome?.[String(id)],
   autoBack: () => false,   // 4.7: a bot in Chrome for Google stays there (its Google sign-in only works in that profile)
   useChrome, useEmbedded, mode: browserMode
@@ -825,7 +939,7 @@ ipcMain.on('octa:browser-tab', e => {
   if (!trusted(e)) return;
   const bucket = chromeBucket(e.sender);
   if (!bucket) return;
-  void addEmbedTab(bucket, 'https://www.google.com/').then(() => embedShow(bucket.port, 'open'));
+  void addEmbedTab(bucket, 'https://www.google.com/').then(made => { try { bucket.onAdded?.(made); } catch { } return embedShow(bucket.port, 'open'); });
 });
 ipcMain.on('octa:browser-pick', (e, index) => {
   if (!trusted(e)) return;
@@ -867,7 +981,7 @@ function placeDrag(bucket) {
   if (bucket.shown !== 'open' || !bucket.active) return;
   const frames = embedFrames(w, h, 'open', { x: box.x, y: box.y, w: box.width, h: box.height }, { tabs: bucket.tabs.length });
   if (!frames.page) return;
-  try { bucket.host?.contentView.removeChildView(bucket.active); } catch { }
+  unhost(bucket, bucket.active);
   try { if (!win.contentView.children.includes(bucket.active)) win.contentView.addChildView(bucket.active); } catch { }
   fitView(bucket.active, frames.page, true);
   const rect = shieldFor('open', frames.page, bucket.control);
@@ -1278,7 +1392,11 @@ app.whenReady().then(start).catch(e => {
   app.exit(1);
 });
 
+// a screen added, removed or moved can put the bots' waiting windows in sight (or Windows moves them back): out again
+function reparkAll() { for (const bucket of embeds.values()) for (const host of bucket.hosts.values()) parkHost(host); }
 async function start() {
+  for (const ev of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(ev, () => setTimeout(reparkAll, 500));
+  setInterval(reparkAll, 30000).unref?.();
   createWindow();
   await showSplash();   // the YZ progress bar shows right away while things load
   progress(10, '啟動 OCTA…');

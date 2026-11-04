@@ -56,7 +56,10 @@ test('foreground tabs are the on-screen view', () => {
   const src = readFileSync(new URL('../desktop/main.mjs', import.meta.url), 'utf8');
   const fn = src.slice(src.indexOf('async createTarget'), src.indexOf('async closeTarget'));
   assert.ok(fn.includes('params?.background'));
-  assert.ok(fn.indexOf('params?.background') < fn.indexOf('new BrowserWindow'));
+  // 4.8.1: a background page is a view in its own drawing window (parkView), not a hidden window that never draws
+  assert.ok(fn.indexOf('params?.background') < fn.indexOf('new WebContentsView'));
+  assert.match(fn, /parkView\(bucket, hidden\)/);
+  assert.doesNotMatch(fn, /show: false/);
   assert.match(fn, /isBlankUrl/);
   assert.match(fn, /embedShow\(port, true\)/);
   assert.doesNotMatch(fn, /embedShow\(port, 'open'\)/);
