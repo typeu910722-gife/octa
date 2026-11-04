@@ -13,6 +13,7 @@
 // A missing or wrong token always gets 401 with the same body, whatever the path.
 import { addJob, addMsg, blocked, bump, failed, getSettings, loadAll, putSettings } from './db.mjs';
 import { saveManuals } from './memory.mjs';
+import { noteSrc } from './memory-edit.mjs';
 import { describeEvent, fireEvent, routinePrompt, routineTarget } from './routines.mjs';
 import { correctionAsk } from './schedule.mjs';
 import { DAY, MIN, clean, now } from './util.mjs';
@@ -252,6 +253,7 @@ export async function hookRoute({ req, env, db, path, m, url, body, rawBody }) {
       st.memory = st.memory || {};
       for (const b of to.bots) st.memory[b.id] = [...new Set([...(st.memory[b.id] || []), rule])].slice(-40);
       await putSettings(db, U, st);
+      for (const b of to.bots) await noteSrc(db, U, 'rule', b.id, [rule], 'hook');
       remembered = true;
     }
     await addMsg(
@@ -286,11 +288,13 @@ export async function hookRoute({ req, env, db, path, m, url, body, rawBody }) {
     if (name && steps >= 3) {
       st.manuals = st.manuals || {};
       for (const b of to.bots) st.manuals[b.id] = saveManuals(st.manuals[b.id], [{ name, steps: text }]);
+      for (const b of to.bots) await noteSrc(db, U, 'manual', b.id, [{ name }], 'hook');
       saved = 'manual';
     } else {
       const rule = clean(text.replace(/\s+/g, ' '), 300);
       st.memory = st.memory || {};
       for (const b of to.bots) st.memory[b.id] = [...new Set([...(st.memory[b.id] || []), rule])].slice(-40);
+      for (const b of to.bots) await noteSrc(db, U, 'rule', b.id, [rule], 'hook');
       saved = 'rule';
     }
     await putSettings(db, U, st);

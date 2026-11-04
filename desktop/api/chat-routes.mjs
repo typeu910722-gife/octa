@@ -3,6 +3,7 @@ import { COMPACT_PROMPT, backstageItems, busyTurn, enqueueTurn } from './chat.mj
 import { addJob, addMsg, bump, getSettings, loadAll, nap, putSettings } from './db.mjs';
 import { cloneFile } from './files.mjs';
 import { applyRuleUpdates, groupAsk } from './memory.mjs';
+import { noteListChange } from './memory-edit.mjs';
 import { ownApproval, routinesOut } from './routines.mjs';
 import { localNow } from './schedule.mjs';
 import { DAY, J, WAIT_MS, WARM, clean, err, now } from './util.mjs';
@@ -238,9 +239,11 @@ export async function chatRoutes(c) {
       const st = await getSettings(db, U),
         { rules, done } = applyRuleUpdates((st.memory || {})[bot.id], ru[1]);
       st.memory = st.memory || {};
+      const before = st.memory[bot.id];
       if (rules.length) st.memory[bot.id] = rules;
       else delete st.memory[bot.id];
       await putSettings(db, U, st);
+      await noteListChange(db, U, 'rule', bot.id, before, rules, 'review'); // 4.7: the weekly review you approved
       await addMsg(
         db,
         U,

@@ -5,6 +5,10 @@ import { auth, bump, ensureSchema, newSession } from './db.mjs';
 import { fileRoutes } from './files.mjs';
 import { hookRoute } from './hooks.mjs';
 import { manageRoutes } from './manage-routes.mjs';
+import { memSrcBaseline, memoryRoutes } from './memory-edit.mjs';
+import { alertRoutes, alertSweep } from './notify.mjs';
+import { overviewRoutes } from './overview.mjs';
+import { rolesRoutes } from './roles.mjs';
 import { runnerRoutes } from './runner-routes.mjs';
 import { screenRoutes } from './screen-routes.mjs';
 import { settingsRoutes } from './settings-routes.mjs';
@@ -17,7 +21,15 @@ export async function onRequest(ctx) {
   const { request: req, env, params } = ctx;
   const path = (params.path || []).join('/');
   await ensureSchema(ctx.env.DB);
+  try {
+    await memSrcBaseline(ctx.env.DB); // 4.7: once — what was remembered before is marked 「來源不明（舊資料）」
+  } catch {}
   const res = await route(ctx);
+  // 4.7 異常主動推播: a job that just ended logged out / with a broken API / without its data is pushed at once
+  if (path === 'runner/done' && req.method === 'POST' && res.status < 300)
+    try {
+      await alertSweep(env, env.DB, res._u || 'local');
+    } catch {}
   if (req.method !== 'GET' && res.status < 300 && res._u && !NO_BUMP.test(path)) {
     try {
       await bump(env.DB, res._u);
@@ -27,7 +39,7 @@ export async function onRequest(ctx) {
 }
 
 // handlers in the order the old single router checked them; each returns a Response or nothing
-const HANDLERS = [fileRoutes, runnerRoutes, screenRoutes, chatRoutes, manageRoutes, codeRoutes, settingsRoutes];
+const HANDLERS = [fileRoutes, runnerRoutes, screenRoutes, chatRoutes, manageRoutes, codeRoutes, settingsRoutes, overviewRoutes, memoryRoutes, alertRoutes, rolesRoutes];
 
 async function route({ request: req, env, params }) {
   const db = env.DB;
