@@ -46,7 +46,7 @@ function ovCard(x,g){
   h+='</div>';
   // routines
   const rs=x.routines,re=x.routineErr;
-  if(rs.length||re.length||x.events)h+=`<div class="ov-rt">${ic('clock')}<span>${rs.length?`<span>下次例行任務</span> ${rs.slice(0,2).map(r=>`<span class="ov-rn">${ovWhen(r.at)} <span data-u>${esc(r.name)}</span></span>`).join('')}`:x.events?'<span>例行任務由外部事件觸發</span>':''}${re.map(r=>` <i class="ov-tag err">上次沒跑成</i> <span data-u>${esc(r.name)}</span>`).join('')}</span></div>`;
+  if(rs.length||re.length||x.events)h+=`<div class="ov-rt">${ic('clock')}<span>${rs.length?`<span>下次例行任務</span> ${rs.slice(0,2).map(r=>`<span class="ov-rn">${ovWhen(r.at)} <span data-u>${esc(r.name)}</span></span>`).join('')}`:x.events?'<span>例行任務由外部事件觸發</span>':''}${re.map(r=>` <i class="ov-tag err">上次沒跑成</i> <span data-u>${esc(r.name)}</span> <button type="button" class="ghost sm ov-rok" data-rok="${esc(r.id)}" title="已經處理好了，不再顯示">${ic('check')}<span>已處理</span></button>`).join('')}</span></div>`;
   h+=`<footer class="ov-ft"><button type="button" class="ghost sm" data-open="${esc(x.id)}">${ic('reply')}<span>打開對話</span></button>${g?'':`<button type="button" class="ghost sm" data-mem="${esc(x.id)}">${ic('brain')}<span>它記得什麼</span></button>`}${ap?`<button type="button" class="btn sm" data-ask="${esc(x.id)}">${ic('check')}<span>去核准</span></button>`:''}</footer></article>`;
   return h}
 function paintOverview(){const d=OV.data;if(!d||!ovOpen())return;
@@ -67,6 +67,7 @@ function paintOverview(){const d=OV.data;if(!d||!ovOpen())return;
   $('ovBody').querySelectorAll('details.ov-dl').forEach(x=>{if(open.has(x.closest('[data-oc]')?.dataset.oc))x.open=true});
   $('ovBody').scrollTop=keep}
 async function ovClick(e){
+  const k=e.target.closest('[data-rok]');if(k){k.disabled=true;try{await api('overview/routine-ok','POST',{id:k.dataset.rok});toast(I18N.t('已標記為處理好'))}catch(err){toast(err.message)}loadOverview(true);return}
   const r=e.target.closest('[data-retry]');if(r){r.disabled=true;await oneRetry(+r.dataset.retry);loadOverview(true);return}
   const o=e.target.closest('[data-open]');if(o){closeSheet();openConv(o.dataset.open);return}
   const m=e.target.closest('[data-mem]');if(m){openMemory(m.dataset.mem,()=>openOverview());return}

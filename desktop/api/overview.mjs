@@ -3,7 +3,7 @@
 import { FAIL_KINDS, classifyJobFailure } from '../lib/model-route.mjs';
 // older rows were saved as 'unknown' (其他錯誤): read the message again with today's rules
 const kindOf = j => (!j.err_kind || j.err_kind === 'unknown' ? classifyJobFailure(j.err_msg || '') : j.err_kind);
-import { loadAll } from './db.mjs';
+import { bump, loadAll } from './db.mjs';
 import { REVIEW_TAG } from './memory.mjs';
 import { ALERT_KINDS, ensureAlerts, retryJob } from './notify.mjs';
 import { nextRun } from './routines.mjs';
@@ -159,6 +159,16 @@ export async function overviewRoutes(c) {
     const r = await retryJob(db, U, body.job);
     if (r.error) return J({ error: r.error, job: r.job || null }, r.status || 400);
     return J({ ok: true, job: r.job });
+  }
+  // 4.8.2: 「上次沒跑成」 handled by hand → mark it so the card stops showing it (the next run still reports as usual)
+  if (path === 'overview/routine-ok' && m === 'POST') {
+    const r = await db
+      .prepare("UPDATE routines SET last_status='skipped', last_text=? WHERE id=? AND user_id=? AND last_status='error'")
+      .bind('已手動處理', String(body.id || ''), U)
+      .run();
+    if (!r?.meta?.changes) return J({ error: '這個例行任務目前沒有失敗紀錄' }, 404);
+    await bump(db, U);
+    return J({ ok: true });
   }
   return null;
 }

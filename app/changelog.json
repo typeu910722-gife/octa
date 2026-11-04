@@ -1,5 +1,18 @@
 [
  {
+  "v": "4.8.2",
+  "date": "2026-11-04",
+  "notes": [
+   "任務總覽：例行任務「上次沒跑成」旁邊多了「已處理」按鈕，自己處理好之後按一下就不再顯示"
+  ],
+  "notes_en": [
+   "Overview: a \"last run failed\" routine now has a Handled button — press it once you have dealt with it and the warning goes away"
+  ],
+  "notes_ja": [
+   "タスク一覧：定期タスクの「前回は失敗」に「対応済み」ボタンを追加。自分で対応したら押すと表示が消えます"
+  ]
+ },
+ {
   "v": "4.8.1",
   "date": "2026-11-04",
   "notes": [

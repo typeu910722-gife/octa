@@ -303,3 +303,7 @@
 - [x] 實測（xvfb、真 Electron、Playwright connectOverCDP 連 19011，本機測試頁用 rAF＋可見才載入的載入畫面）：修正前 工作分頁／收起面板／看別的機器人時 1 格/秒、截圖 2.1–3.1 秒、非前景分頁 0 格、背景頁載入不完、第二次連線 evaluate 逾時、關分頁逾時；修正後 9 種狀態（停靠、工作分頁、收起、別的機器人、系統匣、再打開、縮小、還原）× 3 個頁面都是 60 格/秒、截圖 40–60 ms，兩次連線都能讀頁、點擊、切分頁、關分頁；頁面 renderer 當掉後自動回來；導到 mail.google.com 自動改開 Chrome 視窗（帶 CHROME_AWAKE 參數）
 - [x] 測試：test/browser-awake.test.mjs（重送執行環境、喚醒指令、切分頁不斷線、關分頁、清除、分段訊息、等待視窗位置、Google 服務網址）、test/browser-watchdog.test.mjs（健康檢查、revive／重開／失敗種類、執行器流程）。全套 326 項，失敗只剩原本 4 項
 - 未實測：Windows 實機（等待視窗在畫面外是否真的繼續繪製、多螢幕、Windows 把畫面外視窗移回來）；真的 Gmail（沙箱無法登入）；工作中改到 Chrome 視窗後 AI 接著做（只有單元測試）；Chrome 視窗裡「切到前景就斷線」在 Linux 的 Chrome 153 重現不出來（背景分頁在 Playwright 連上後就是可見的），只做了重啟不關、看門狗與參數
+
+## 4.8.2 例行任務「上次沒跑成」可以消掉（2026-11-04）
+- [x] 任務總覽卡片的「上次沒跑成」旁加「已處理」按鈕 → POST overview/routine-ok：last_status error→skipped、last_text「已手動處理」，卡片不再顯示；下次排程照常跑、照常回報
+- [x] 測試：overview-memory.test.mjs 新增一項
