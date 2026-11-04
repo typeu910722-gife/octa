@@ -34,24 +34,7 @@ export async function enqueueTurn(db, userId, conv, text, bot, group, bots, quot
   // One group instruction runs in member order. Parallel only when the group task asks for it.
   if (group && parallelGroup(group) && !ordered) for (const id of chain) await addJob(db, userId, conv, [id], prompt);
   else await addJob(db, userId, conv, chain, prompt);
-  const running = (
-    await db
-      .prepare(
-        "SELECT DISTINCT bot_id FROM jobs WHERE user_id=? AND status='running' AND (kind IS NULL OR kind='' OR kind='chat')"
-      )
-      .bind(userId)
-      .all()
-  ).results;
-  if (running.length >= 3) {
-    const names = (bots || []).filter(b => running.some(r => r.bot_id === b.id)).map(b => b.name);
-    await addMsg(
-      db,
-      userId,
-      conv,
-      'sys',
-      `先排隊。現在有 ${running.length} 個在工作${names.length ? '：' + names.join('、') : ''}。做完就輪到這個。`
-    );
-  }
+  // 4.8: no 「先排隊」 note in the conversation any more: the 工作 panel shows the queue (position, who is ahead, about how long, 插隊)
 }
 // 旁聊: a message to a bot that is already working. The work is not interrupted: a stop goes to it (as 停止 does),
 // a change of plan waits until it is done, and anything else gets a quick reply from a side job (no browser).

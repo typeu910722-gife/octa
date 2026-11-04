@@ -15,7 +15,7 @@ import {
   buildBrowserPrompt, evidenceText, findUploads, fitLocal, forcedBrowseTask, hideSecrets, notesFile,
   planBrowserRound, refreshNotes, saveRecord, scrubNotes, stripBrowserTask, takeBrowserTask, taskPrompt
 } from './prompts.mjs';
-import { resetReports } from './reports.mjs';
+import { fiveHourUsed, resetReports } from './reports.mjs';
 import { stepTracker, stripStepMarks, toolKind } from './steps.mjs';
 import { cfg, log, workDir } from './state.mjs';
 import { collectSkills, restoreSkills } from './transfer.mjs';
@@ -97,6 +97,8 @@ async function chatRun(job) {
     return !stoppedByUser;
   };
   const sid = engine === 'claude' && !side ? randomUUID() : null;
+  // 4.8: the plan's 5-hour window before this run (Claude / ChatGPT), to show what the run used
+  const quota0 = !side && ['claude', 'codex'].includes(engine) ? fiveHourUsed(engine) : null;
   // what one AI run in this job may use: its browser (direct), progress, steps, what the tools read, the pause boundary
   const live = {
     progress, say, ctl, port, browser: job.browse === 'direct', files: job.browse === 'direct', pauseNow: () => !!job.paused,
@@ -177,11 +179,14 @@ async function chatRun(job) {
     else { const shot = newestImage(dir, start); if (shot) await saveShot(readFileSync(shot.p), extname(shot.p).toLowerCase()); }
   } catch (e) { log('截圖儲存失敗：' + e.message); }
   const nsk = collectSkills(dir, job.nskills);
+  const before = quota0 ? await quota0 : null, after = before != null ? await fiveHourUsed(engine) : null;
+  const quse = before != null && after != null ? { eng: engine, k: '5h', before, after } : null;
   await api('runner/done', {
     id: job.id, ok: res.ok, text: res.text, page, tokens: res.tokens ?? null,
     files: res.ok ? newFiles(join(here, '輸出'), start) : [], browser: !!port, stopped: stoppedByUser,
     ...(job.later ? { later: true } : {}), ...(nsk ? { nskills: nsk } : {}),
-    ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : {}), ...(shotB64 ? { shot: shotB64 } : {})
+    ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : {}), ...(shotB64 ? { shot: shotB64 } : {}),
+    ...(job.handed ? { handed: true } : {}), ...(quse ? { quse } : {})
   });
   log(`${res.ok ? '✓' : '✗'} ${job.bot.name}`);
   if (['claude', 'codex'].includes(job.bot.engine || 'claude')) resetReports({ engines: false, models: false });   // refresh how much is left

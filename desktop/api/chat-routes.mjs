@@ -6,13 +6,13 @@ import { applyRuleUpdates, groupAsk } from './memory.mjs';
 import { noteListChange } from './memory-edit.mjs';
 import { ownApproval, routinesOut } from './routines.mjs';
 import { localNow } from './schedule.mjs';
-import { busyRows } from './progress.mjs';
+import { busyRows, queueInfo } from './progress.mjs';
 import { metaOf } from './reply-meta.mjs';
 import { DAY, J, WAIT_MS, WARM, clean, err, now } from './util.mjs';
 
 // what is running now. bg: the bot is answering / doing what another bot asked (its avatar shows it chatting);
 // job: the id, for the work panel's timeline; created: when it was queued
-const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,paused,eng,
+const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,paused,eng,prio,
   CASE WHEN prompt LIKE '〔背景:%' OR via LIKE '%"k":"ask"%' OR via LIKE '%"k":"give"%' OR prompt LIKE '同事「%'
     OR instr(substr(prompt,1,80),' 問你：')>0 OR instr(substr(prompt,1,80),'把工作交接給你：')>0 THEN 1 ELSE 0 END AS bg
   FROM jobs WHERE user_id=? AND kind<>'test' AND status IN ('pending','running')`;
@@ -44,7 +44,7 @@ export async function chatRoutes(c) {
         .all()
     ).results;
     const u = await db.prepare('SELECT prog FROM users WHERE id=?').bind(U).first();
-    return J({ busy: busyRows(busy), prog: u?.prog ?? 0 });
+    return J({ busy: busyRows(busy), prog: u?.prog ?? 0, queue: await queueInfo(db, U) });
   }
   if (path === 'state' && m === 'GET') {
     const all = await loadAll(db, U);
@@ -63,7 +63,7 @@ export async function chatRoutes(c) {
       ...convIds.map(c =>
         db
           .prepare(
-            "SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts,CASE WHEN by_<>'me' AND instr(text,'待確認')>0 THEN substr(text,instr(text,'待確認')-(CASE WHEN substr(text,instr(text,'待確認')-1,1)=' ' THEN 2 ELSE 1 END),200) END AS ask FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' AND kind IS NULL ORDER BY id DESC LIMIT 1"
+            "SELECT conv,id,by_ AS by,substr(text,1,140) AS text,ts,json_extract(meta,'$.result.ok') AS rok,substr(json_extract(meta,'$.result.text'),1,140) AS rtext,substr(json_extract(meta,'$.approval.what'),1,140) AS awhat,CASE WHEN by_<>'me' AND instr(text,'待確認')>0 THEN substr(text,instr(text,'待確認')-(CASE WHEN substr(text,instr(text,'待確認')-1,1)=' ' THEN 2 ELSE 1 END),200) END AS ask FROM messages WHERE user_id=? AND conv=? AND by_<>'sys' AND kind IS NULL ORDER BY id DESC LIMIT 1"
           )
           .bind(U, c)
       )
@@ -80,6 +80,19 @@ export async function chatRoutes(c) {
         )
       : [];
     const gask = Object.fromEntries(all.groups.map((g, i) => [g.id, groupAsk(gq[i].results, all.bots)]).filter(([, v]) => v));
+    // 4.8: the newest finished chat work of each conversation, newer than your last message there (未完成 in the sidebar)
+    const lastJob = Object.fromEntries(
+      (
+        await db
+          .prepare(
+            `SELECT j.conv, j.id, j.status, j.err_kind, substr(j.err_msg,1,140) AS msg, j.finished FROM jobs j
+             WHERE j.user_id=? AND j.kind='chat' AND j.status IN ('done','error') AND j.created>? AND j.prompt NOT LIKE '〔背景:%' AND j.via IS NULL
+               AND j.id=(SELECT MAX(k.id) FROM jobs k WHERE k.user_id=j.user_id AND k.conv=j.conv AND k.kind='chat' AND k.status IN ('done','error') AND k.prompt NOT LIKE '〔背景:%' AND k.via IS NULL)`
+          )
+          .bind(U, now() - 3 * DAY)
+          .all()
+      ).results.map(r => [r.conv, { job: r.id, ok: r.status === 'done' && !r.err_kind, kind: r.err_kind || (r.status === 'error' ? 'stopped' : null), msg: r.msg || '', at: r.finished }])
+    );
     const st = await getSettings(db, U);
     const { date } = localNow(env),
       dayStart = Date.parse(date + 'T00:00:00Z') - (+env.TZ_OFFSET_MIN || 0) * 60000;
@@ -135,7 +148,9 @@ export async function chatRoutes(c) {
       routines: routinesOut(env, all.routines),
       last: last.results,
       ur: ur.results.map(r => [r.conv, r.id]),
-      busy: busyRows(busy.results)
+      busy: busyRows(busy.results),
+      queue: await queueInfo(db, U),
+      lastJob // 4.8: each conversation's newest finished work — the sidebar shows 「未完成」 when it did not work out
     });
   }
   if (path === 'messages' && m === 'GET') {
@@ -159,7 +174,17 @@ export async function chatRoutes(c) {
               .bind(U, conv, before || 9e15, lim)
       ).all()
     ).results.map(x => ({ ...x, files: x.files ? JSON.parse(x.files) : [], meta: metaOf(x.meta) }));
-    return J({ msgs: rows, more: !after && rows.length === lim });
+    // 4.8: replies rewritten since the app last looked (a follow-up of the same turn folded into it)
+    const since = +url.searchParams.get('since') || 0;
+    const changed = since
+      ? (
+          await db
+            .prepare('SELECT id,conv,by_ AS by,text,files,ts,reply,kind,meta,upd FROM messages WHERE user_id=? AND conv=? AND upd>=? ORDER BY id LIMIT 50')
+            .bind(U, conv, since)
+            .all()
+        ).results.map(x => ({ ...x, files: x.files ? JSON.parse(x.files) : [], meta: metaOf(x.meta) }))
+      : [];
+    return J({ msgs: rows, more: !after && rows.length === lim, changed, now: now() });
   }
   // 幕後: what bots asked of / handed to each other around this conversation
   if (path === 'backstage' && m === 'GET') {

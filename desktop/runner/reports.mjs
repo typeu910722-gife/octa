@@ -97,6 +97,16 @@ export async function modelReport() {   // every 30 minutes, or right away once 
   return out;
 }
 export let lastUsage = 0, usageNow = {};
+// 4.8: the 5-hour window's used % right now (before and after a run → how much this run used); null when unknown
+export async function fiveHourUsed(engine, ms = 6000) {
+  const ask = engine === 'claude' ? claudeUsage : engine === 'codex' ? codexUsage : null;
+  if (!ask) return null;
+  try {
+    const v = await Promise.race([ask(), new Promise(r => setTimeout(() => r(null), ms))]);
+    const w = v?.windows?.find(x => x.k === '5h');
+    return w && Number.isFinite(+w.used) ? +w.used : null;
+  } catch { return null; }
+}
 // ask again on the next report: which AIs are installed, their models, how much quota is left
 export function resetReports({ engines = true, models = true, usage = true } = {}) {
   if (engines) lastReport = 0;

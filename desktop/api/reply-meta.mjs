@@ -100,3 +100,54 @@ export function replyMeta(text, notes = []) {
   if (ap) meta.approval = ap;
   return { text: r.text, meta: Object.keys(meta).length ? meta : null };
 }
+
+// 4.8: one line that says what happened — for the sidebar preview, notifications and the work panel.
+// An approval says what it wants; then the ✅／⚠ result line; then the reply's first sentence (markers and Markdown out).
+const MARKS = /^\s*(📌|📇|📘|🧩|🗺️?|⏰|📍|🧭|📝|📛|【[^】]*】).*$/gmu;
+export function plainLine(text) {
+  return stripLeaks(String(text || ''))
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(MARKS, '')
+    .replace(/^\s*(✅\s*完成|⚠\s*沒做成)\s*[:：]?\s*/gm, '')
+    .replace(/^#{1,4}\s+|^\s*[-*•>]\s+|^\s*\d+[.)]\s+|\*\*|__|`|~~/gm, '')
+    .replace(/\|/g, ' ');
+}
+export function firstSentence(text, n = 60) {
+  const t = plainLine(text)
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean)[0] || '';
+  const m = t.match(/^.+?[。！？!?](?=\s|$|[^。！？!?」』)])/u);
+  let s = (m ? m[0] : t).trim();
+  if (s.length > n) {
+    const cut = s.slice(0, n - 1);
+    const at = Math.max(cut.lastIndexOf('，'), cut.lastIndexOf('、'), cut.lastIndexOf('；'), cut.lastIndexOf(','), cut.lastIndexOf(' '));
+    s = (at >= n * 0.55 ? cut.slice(0, at) : cut) + '…';
+  }
+  return s;
+}
+export function gist(text, meta, n = 60) {
+  const a = meta?.approval?.what || (String(text || '').match(/✅\s*待確認[:：]\s*(.+)/) || [])[1];
+  if (a) return '要你核准：' + firstSentence(a, n - 6);
+  const r = meta?.result;
+  if (r && r.text) return (r.ok === false ? '沒做成：' : '') + firstSentence(r.text, n);
+  return firstSentence(text, n) || (r ? (r.ok === false ? '沒做成' : '完成') : '');
+}
+// two replies that say the same thing (the second run of one turn repeating the first): character-pair overlap
+const norm = s => plainLine(s).replace(/[\s\p{P}\p{S}]+/gu, '');
+export function sameSaying(a, b) {
+  const x = norm(a).slice(0, 400),
+    y = norm(b).slice(0, 400);
+  if (!x || !y) return false;
+  if (x === y || x.includes(y) || y.includes(x)) return true;
+  const pairs = s => {
+    const m = new Map();
+    for (let i = 0; i < s.length - 1; i++) m.set(s.slice(i, i + 2), (m.get(s.slice(i, i + 2)) || 0) + 1);
+    return m;
+  };
+  const p = pairs(x),
+    q = pairs(y);
+  let both = 0;
+  for (const [k, v] of p) both += Math.min(v, q.get(k) || 0);
+  return (2 * both) / (x.length - 1 + y.length - 1) >= 0.55;
+}

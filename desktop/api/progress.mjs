@@ -1,8 +1,9 @@
 // 4.7 步驟進度 and 暫停: what a running job reports (jobs.progress, JSON) and the pause switch (jobs.paused).
 //   POST runner/progress {id, text, step?, total?, steps?, kind?, pmode?, held?}  (runner-routes.mjs)
 //   POST job/<id>/pause {on}                                            (here)
+//   POST job/<id>/bump                     4.8 插隊: to the front of the queue (jobs.prio)
 // GET state / busy give every running job `progress` (parsed object) and `paused` (boolean).
-import { bump } from './db.mjs';
+import { bump, getSettings } from './db.mjs';
 import { clean, err, now } from './util.mjs';
 
 const KINDS = ['browse', 'think', 'tool', 'ask'];
@@ -43,6 +44,18 @@ export const sameProgress = (raw, p) => {
   return JSON.stringify(a) === JSON.stringify(p);
 };
 // busy rows (state / busy) as the app gets them
+// 4.8 the queue in the 工作 panel: how long a run takes here lately (ms, the last 30 finished chat runs of 3 days)
+// and how many bots the runner works at once
+export async function queueInfo(db, U) {
+  const r = await db
+    .prepare(
+      "SELECT AVG(finished-started) AS a, COUNT(*) AS n FROM (SELECT finished, started FROM jobs WHERE user_id=? AND kind='chat' AND status IN ('done','error') AND started IS NOT NULL AND finished>started AND created>? ORDER BY id DESC LIMIT 30)"
+    )
+    .bind(U, now() - 3 * 86400000)
+    .first();
+  const st = await getSettings(db, U);
+  return { avg: r?.n ? Math.round(r.a) : null, slots: +st._slots || 3 };
+}
 export const busyRows = rows => rows.map(r => ({ ...r, progress: parseProgress(r.progress), paused: !!r.paused }));
 
 export async function jobRoutes(c) {
@@ -59,6 +72,17 @@ export async function jobRoutes(c) {
     ]);
     await bump(db, U);
     return ok({ ok: true, paused: on });
+  }
+  // 4.8 插隊: a queued job goes to the front of the queue (the runner takes the highest prio first, then the oldest)
+  const bm = path.match(/^job\/(\d+)\/bump$/);
+  if (bm && m === 'POST') {
+    const id = +bm[1];
+    const job = await db.prepare("SELECT id FROM jobs WHERE id=? AND user_id=? AND status='pending'").bind(id, U).first();
+    if (!job) return err('這件工作已經開始或結束了', 404);
+    const top = await db.prepare("SELECT MAX(IFNULL(prio,0)) AS p FROM jobs WHERE user_id=? AND status='pending'").bind(U).first();
+    await db.prepare('UPDATE jobs SET prio=? WHERE id=?').bind((top?.p || 0) + 1, id).run();
+    await bump(db, U);
+    return ok({ ok: true });
   }
   return null;
 }

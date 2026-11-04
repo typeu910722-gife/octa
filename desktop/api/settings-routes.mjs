@@ -234,7 +234,7 @@ export async function settingsRoutes(c) {
     const { bots, groups } = await loadAll(db, U);
     // ?conv=: one conversation's work, for its work panel (jobs it ran, and jobs its bot ran elsewhere)
     const conv = clean(url.searchParams.get('conv'), 64);
-    const cols = 'SELECT id,conv,bot_id,prompt,status,kind,url,created,started,finished,err_kind,err_msg,shot,retry_of,routine FROM jobs';
+    const cols = 'SELECT id,conv,bot_id,prompt,status,kind,url,created,started,finished,err_kind,err_msg,shot,retry_of,routine,tokens,quse FROM jobs';
     const rows = (
       await (conv
         ? db.prepare(cols + " WHERE user_id=? AND (conv=? OR bot_id=?) AND kind<>'test' ORDER BY id DESC LIMIT 40").bind(U, conv, conv)
@@ -246,6 +246,13 @@ export async function settingsRoutes(c) {
       logs: rows.map(r => ({
         ...r,
         retried: retried.has(r.id),
+        quse: (() => {
+          try {
+            return r.quse ? JSON.parse(r.quse) : null;
+          } catch {
+            return null;
+          }
+        })(),
         bot: r.kind === 'test' ? 'AI 連線測試：' + r.url : bots.find(b => b.id === r.bot_id)?.name || '已刪除',
         convName: (bots.find(b => b.id === r.conv) || groups.find(g => g.id === r.conv))?.name || '',
         prompt: stripRetryNote(r.prompt).slice(0, 80)

@@ -81,7 +81,7 @@ export async function nextWork(env, db, U, slots) {
         `SELECT * FROM jobs j WHERE user_id=? AND status='pending' AND (j.pc IS NULL OR j.pc=?)
       AND (j.kind='open' OR NOT EXISTS (SELECT 1 FROM jobs r WHERE r.user_id=j.user_id AND r.bot_id=j.bot_id AND r.status='running' AND r.kind<>'open'
         AND (IFNULL(j.via,'') LIKE ?3) = (IFNULL(r.via,'') LIKE ?3)))
-      ORDER BY (j.kind='open') DESC, id LIMIT 1`
+      ORDER BY (j.kind='open') DESC, IFNULL(j.prio,0) DESC, id LIMIT 1`
       )
       .bind(U, '', SIDE_LIKE)
 

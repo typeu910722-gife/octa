@@ -114,7 +114,7 @@ async function loop() {
       const slots = MAX - active;
       poll = new AbortController();
       const r = await api('runner/next', {
-        wait: true, slots, ...(await reports()), ...(booting ? { boot: true } : {}),
+        wait: true, slots, max: MAX, ...(await reports()), ...(booting ? { boot: true } : {}),
         version: VERSION, app: cfg.appVersion || undefined, store: storeDir()
       }, 'POST', slots ? undefined : poll.signal).catch(e => {
         if (e.name === 'AbortError' && poll.signal.aborted) return {};

@@ -211,7 +211,11 @@ const MIGRATIONS = [
   'CREATE INDEX IF NOT EXISTS hook_job_routine ON hook_jobs(routine, created)',
   // 4.7: what runner/done took out of a reply (notes, the ✅/⚠ result, the approval card), and 暫停 on a running job
   'ALTER TABLE messages ADD COLUMN meta TEXT',
-  'ALTER TABLE jobs ADD COLUMN paused INTEGER'
+  'ALTER TABLE jobs ADD COLUMN paused INTEGER',
+  // 4.8: one message per turn (a follow-up rewrites the reply: upd), 插隊 (prio), the quota a run used (quse)
+  'ALTER TABLE messages ADD COLUMN upd INTEGER',
+  'ALTER TABLE jobs ADD COLUMN prio INTEGER',
+  'ALTER TABLE jobs ADD COLUMN quse TEXT'
 ];
 const schemaReady = new WeakSet();
 export async function ensureSchema(db) {
@@ -242,7 +246,9 @@ export async function ensureSchema(db) {
         "SELECT id FROM jobs INDEXED BY job_hook WHERE hook=''",
         'SELECT id, seen FROM hook_jobs',
         'SELECT meta FROM messages',
-        'SELECT paused FROM jobs'
+        'SELECT paused FROM jobs',
+        'SELECT upd FROM messages',
+        'SELECT prio, quse FROM jobs'
       ].map(q => db.prepare(q + ' LIMIT 0'))
     );
     schemaReady.add(db);

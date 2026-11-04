@@ -32,7 +32,7 @@ import { mimeOf, safePath } from './files.mjs';
 import { PARTIAL_TAG } from './jobs.mjs';
 import { REVIEW_TAG, parseManuals, saveManuals, statAdd } from './memory.mjs';
 import { needsYou, sendNotify } from './notify.mjs';
-import { replyMeta } from './reply-meta.mjs';
+import { gist, replyMeta, sameSaying } from './reply-meta.mjs';
 import {
   moveTaskSchedules,
   nextText,
@@ -349,10 +349,16 @@ export async function runnerDone(c) {
   }
   const claimedBuilt = good && job.kind === 'chat' && /排程已建好|例行任務已建好|已建立例行任務|已建好例行/.test(text);
   const tk = Number.isFinite(+body.tokens) && body.tokens !== null ? Math.max(0, Math.round(+body.tokens)) : null;
+  // 4.8: how much of the plan's 5-hour window this run used (the runner asks before and after; Claude / ChatGPT only)
+  const q = body.quse && typeof body.quse === 'object' ? body.quse : null;
+  const quse =
+    q && Number.isFinite(+q.before) && Number.isFinite(+q.after)
+      ? JSON.stringify({ eng: clean(q.eng, 20), k: clean(q.k || '5h', 8), before: Math.round(+q.before), after: Math.round(+q.after) })
+      : null;
   // only once: a runner that retries runner/done must not post the reply (and start the next step) twice
   const fin = await db
-    .prepare("UPDATE jobs SET status=?, finished=?, tokens=?, result=COALESCE(?, result) WHERE id=? AND status='running'")
-    .bind(good ? 'done' : 'error', now(), tk, job.hook ? text.slice(0, 8000) : job.via || BG.test(job.prompt) ? text.slice(0, 1500) : null, job.id)
+    .prepare("UPDATE jobs SET status=?, finished=?, tokens=?, quse=COALESCE(?, quse), result=COALESCE(?, result) WHERE id=? AND status='running'")
+    .bind(good ? 'done' : 'error', now(), tk, quse, job.hook ? text.slice(0, 8000) : job.via || BG.test(job.prompt) ? text.slice(0, 1500) : null, job.id)
     .run();
   if (!fin.meta.changes) return ok();
   if (job.kind === 'chat' && !body.stopped) await statAdd(db, env, U, job, good, tk, !!body.browser);
@@ -419,7 +425,10 @@ export async function runnerDone(c) {
   const split = job.kind === 'chat' ? replyMeta(shown, notes) : { text: shown, meta: null };
   const outcome = good && job.kind === 'chat' && split.meta?.result?.ok === false && !LOGIN_WAIT.test(text) ? classifyOutcome(split.meta.result.text, { routine: !!job.routine }) : null;
   const showIt = !!shown && !(quiet && passed(shown) && !outs.length);
-  if (showIt) await addMsg(db, U, job.conv, job.bot_id, split.text || shown, outs, null, msgKind, split.meta);
+  // 4.8 one message per turn: a follow-up run of the same instruction (自動接續, a retry) rewrites the bot's reply to it
+  // instead of posting a second one that says the same thing again (評論：「同一件事重複回覆兩次」)
+  const merged = showIt && !msgKind ? await mergeTurn(db, U, job, split.text || shown, outs, split.meta) : false;
+  if (showIt && !merged) await addMsg(db, U, job.conv, job.bot_id, split.text || shown, outs, null, msgKind, split.meta);
   // the tags under the reply say it now: the separate system lines go to the work panel
   const noteKind = showIt && split.meta?.notes?.length ? 'note' : null;
   if (job.routine && job.kind === 'chat') {
@@ -593,9 +602,13 @@ export async function runnerDone(c) {
         ).results
       : [];
   const loginStuck = good && job.kind === 'chat' && LOGIN_WAIT.test(text);
+  // 4.8: the person pressed 接手 — the run stopped to wait for them: not 完成 in the work panel
+  const tookOver = good && job.kind === 'chat' && !!body.handed && !loginStuck && !fail && !outcome;
   const loginAgain = loginStuck && earlierMine.length >= 2 && LOGIN_WAIT.test(earlierMine[1]?.text || '');
   // paused for a sign-in counts as not_logged_in in 工作紀錄, even though the reply itself came back fine
   const loginKind = job.routine ? 'logout' : 'not_logged_in'; // 4.7: a routine that runs alone and meets a sign-in page was logged out
+  if (tookOver)
+    await db.prepare('UPDATE jobs SET err_kind=?, err_msg=? WHERE id=?').bind('handed', clean(text, 500), job.id).run();
   if (fail || loginStuck || outcome)
     await db
       .prepare('UPDATE jobs SET err_kind=?, err_msg=? WHERE id=?')
@@ -634,9 +647,11 @@ export async function runnerDone(c) {
         ) + hand,
         photo
       );
-    else if (!good || needsYou(text)) await sendNotify(env, st, `【OCTA】${who} 需要你處理：\n${text.slice(0, 600)}${hand}`);
+    // 4.8: the first line says what happened (the approval's what, the result, the first sentence); the reply follows
+    else if (!good || needsYou(text))
+      await sendNotify(env, st, `【OCTA】${who} 需要你處理：${gist(split.text || text, split.meta, 80)}\n\n${text.slice(0, 600)}${hand}`);
     else if (st.notifyAll && !JSON.parse(job.chain).length)
-      await sendNotify(env, st, `【OCTA】${who} 完成：\n${text.slice(0, 600)}`);
+      await sendNotify(env, st, `【OCTA】${who} 完成：${gist(split.text || text, split.meta, 80)}\n\n${text.slice(0, 600)}`);
   }
   if (body.page)
     await db.prepare('UPDATE bots SET page=? WHERE id=? AND user_id=?').bind(clean(body.page, 500), job.bot_id, U).run();
@@ -691,8 +706,12 @@ export async function runnerDone(c) {
   }
   // the bot stopped halfway ("還沒完成…"): one automatic follow-up, then it has to stop
   const round = +((job.prompt.match(/^（自動接續 (\d+)）/) || [])[1] || 0);
+  // 4.8: a reply that already says how it ended (✅ 完成／⚠ 沒做成), asks for approval, asks a question or waits for
+  // the person is a conclusion, not "stopped halfway": running it again only repeated the same answer (評論 #2)
+  const concluded = !!split.meta?.result || !!split.meta?.approval || /❓|✅\s*待確認|接手|我先停手/.test(text) || tookOver;
   if (
     !side &&
+    !concluded &&
     round < 1 &&
     !passed(text) &&
     /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) &&
@@ -815,4 +834,38 @@ export async function runnerDone(c) {
   if (gives.length || from) await bump(db, U);
   await addJob(db, U, job.conv, rest, job.prompt, job.depth + (asks.length || handed.length ? 1 : 0), job.routine, job.hook);
   return ok();
+}
+
+// 4.8 one message per turn. A run that continues the same instruction — the automatic 自動接續 round, or a retry of a
+// failed run — has its reply folded into the bot's reply to that instruction (the newest one after your last message):
+// the same thing said again replaces it, something new is added under it. Returns true when it did.
+export async function mergeTurn(db, U, job, text, outs, meta) {
+  const follow = /^（自動接續 \d+）/.test(job.prompt || '') || !!job.retry_of;
+  if (!follow || job.kind !== 'chat') return false;
+  const me = await db.prepare("SELECT MAX(id) AS id FROM messages WHERE user_id=? AND conv=? AND by_='me'").bind(U, job.conv).first();
+  const prev = await db
+    .prepare('SELECT id,text,files,meta FROM messages WHERE user_id=? AND conv=? AND by_=? AND kind IS NULL AND id>? ORDER BY id DESC LIMIT 1')
+    .bind(U, job.conv, job.bot_id, me?.id || 0)
+    .first();
+  if (!prev) return false;
+  let pm = null;
+  try {
+    pm = prev.meta ? JSON.parse(prev.meta) : null;
+  } catch {}
+  const same = sameSaying(prev.text, text) || (pm?.result?.text && meta?.result?.text && sameSaying(pm.result.text, meta.result.text));
+  const body = same ? text : clean(String(prev.text || '').trim() + '\n\n' + String(text || '').trim(), 20000);
+  const notes = [...(same ? [] : pm?.notes || []), ...(meta?.notes || [])];
+  const m2 = { ...(same ? {} : pm || {}), ...(meta || {}) };
+  if (notes.length) m2.notes = notes.slice(0, 30);
+  else delete m2.notes;
+  let files = [];
+  try {
+    files = prev.files ? JSON.parse(prev.files) : [];
+  } catch {}
+  files = [...files, ...(outs || [])].slice(0, 12);
+  await db
+    .prepare('UPDATE messages SET text=?, meta=?, files=?, ts=?, upd=? WHERE id=?')
+    .bind(body, Object.keys(m2).length ? JSON.stringify(m2) : null, files.length ? JSON.stringify(files) : null, now(), now(), prev.id)
+    .run();
+  return true;
 }

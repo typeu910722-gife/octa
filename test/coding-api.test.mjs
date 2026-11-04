@@ -657,7 +657,11 @@ test('the host catches up one missed routine, and a fourth job waits', async () 
   }
   assert.equal((await call(db, 'POST', 'messages', { token, body: { conv: ids[3], text: '也做' } })).status, 200);
   const queued = await call(db, 'GET', 'messages', { token, query: { conv: ids[3] } });
-  assert.ok(queued.data.msgs.some(m => m.by === 'sys' && m.text.includes('先排隊') && m.text.includes('甲')));
+  // 4.8: the queue is shown in the 工作 panel (position, who is ahead, about how long), not as a note in the chat
+  assert.ok(!queued.data.msgs.some(m => m.by === 'sys' && m.text.includes('先排隊')));
+  const st = await call(db, 'GET', 'state', { token });
+  assert.ok(st.data.busy.some(x => x.conv === ids[3] && x.status === 'pending'));
+  assert.ok(st.data.queue && st.data.queue.slots >= 1);
 });
 
 test('schedule times come from the instruction, and a backup still saves memory', () => {

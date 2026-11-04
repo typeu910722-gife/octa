@@ -104,6 +104,7 @@ export const FAIL_KINDS = {
   interrupted: { label: '中斷', why: '主機電腦斷線、睡眠或重新啟動，工作做到一半停了。', next: '主機連上後會自動接著做；沒有接上就按重試。', retry: true },
   timeout: { label: '逾時', why: '做太久，或 AI 很久沒有回應，已中止。', next: '把工作拆小一點再交代，或稍後按重試。', retry: true },
   tool_error: { label: '工具出錯', why: '瀏覽器、搜尋或其他工具出錯。', next: '確認電腦的網路和瀏覽器正常，再按重試。', retry: true },
+  handed: { label: '等你接手', why: '你按了接手，機器人停下來等你處理畫面。', next: '在它的瀏覽器處理好後按「繼續」。', retry: false },
   need_user: { label: '需要你提供資料', why: '機器人缺少資料或看不到要處理的東西，要你補給它。', next: '照它說的補上資料或截圖，再按重試。', retry: false },
   unknown: { label: '其他錯誤', why: '執行時發生錯誤。', next: '看錯誤訊息後按重試；一直失敗就換個說法交代。', retry: true }
 };

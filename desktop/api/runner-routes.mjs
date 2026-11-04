@@ -33,6 +33,14 @@ export async function runnerRoutes(c) {
       if (body.coding && JSON.stringify(body.coding).length < 4000) st._coding = body.coding;
       await putSettings(db, U, st);
     }
+    // 4.8: how many bots the runner works at once (the 工作 panel's queue estimate)
+    if (Number.isInteger(+body.max) && +body.max > 0) {
+      const st = await getSettings(db, U);
+      if (st._slots !== +body.max) {
+        st._slots = Math.min(8, +body.max);
+        await putSettings(db, U, st);
+      }
+    }
     if (path === 'runner/hello') return J({ user: U, name: me.name, label });
     if (path === 'runner/bye' && m === 'POST') return J({ ok: true });
 
