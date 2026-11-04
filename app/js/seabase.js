@@ -108,6 +108,7 @@ function seaCover(){let l=0,r=0,b=phoneUI()?6:38;const st=SEA.st,a=$('app');
     // the folded chat's bar and the hint sit at the bottom: the whole base stays above them
     if(a.classList.contains('chat-min'))b=$('chatMin').offsetHeight+28;else if(a.classList.contains('stage-none'))b=104}
   const w=st?.clientWidth||0;SEA.coverPx=l;SEA.rightPx=r;SEA.cover=w?Math.min(1,(l+r)/w):0;
+  st?.classList.toggle('narrow',!!w&&w-l-r<300);   // little of the base left beside the chat: no depth gauge over it
   const G=SEA.g;if(G&&(G.l!==l||G.rr!==r||G.bb!==b)){const fresh=G.l==null;G.l=l;G.rr=r;G.bb=b;if(G.h)G.bot=G.h-b;seaAim(G);if(!fresh&&!SEA.focus&&!SEA.sel)seaFocus(null);G.loop.kick(2)}}
 // the chat panel's width: drag its edge (remembered; double-click for the default; arrow keys too)
 (()=>{const g=$('chatGrip'),pane=$('pane');if(!g)return;let on=false,x0=0,w0=0;
