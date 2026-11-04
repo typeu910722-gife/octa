@@ -1,5 +1,24 @@
 [
  {
+  "v": "4.9.2",
+  "date": "2026-11-04",
+  "notes": [
+   "任務總覽和深海基地合成同一頁：左邊是 3D 基地，右邊是每個機器人的卡片；點章魚會跳到它的卡片，點卡片鏡頭會飛過去",
+   "上方一排計數（全部・工作中・需要你・今天完成・沒做成）就是篩選",
+   "沒工作的章魚不再發呆：會到「遊戲角」打桌球、下棋、玩牌、打街機、跳舞、看書、餵小魚，接到工作馬上游回座位"
+  ],
+  "notes_en": [
+   "Overview and the Deep-sea base are now one page: the 3D base on the left and each bot's card on the right; click an octopus to jump to its card, click a card to fly the camera to it",
+   "The counters at the top (All · Working · Needs you · Done today · Not done) are the filters",
+   "Idle octopuses no longer just doze: they play ping-pong, chess, cards, arcade games, dance, read or feed the fish in the new Play corner, and swim straight back when work starts"
+  ],
+  "notes_ja": [
+   "タスク一覧と深海基地を 1 ページに：左に 3D 基地、右に各ボットのカード。タコをクリックでカードへ、カードをクリックでカメラが移動",
+   "上部のカウンター（全部・作業中・要対応・今日完了・未完了）がそのままフィルター",
+   "手の空いたタコは寝ているだけでなく「遊びコーナー」で卓球・チェス・カード・ゲーム・ダンス・読書・魚のえさやり。仕事が来たらすぐ席に戻ります"
+  ]
+ },
+ {
   "v": "4.9.1",
   "date": "2026-11-04",
   "notes": [
