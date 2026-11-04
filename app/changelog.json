@@ -1,5 +1,24 @@
 [
  {
+  "v": "4.8.1",
+  "date": "2026-11-04",
+  "notes": [
+   "修正機器人「看不到」網頁：不管你有沒有在看它的瀏覽器（右側收起、切到別的機器人、縮到右下角），網頁都會正常運作，截圖和點擊不再逾時",
+   "機器人換分頁、第二次連上瀏覽器時不會再斷線；斷了會自動接回，開工前先檢查瀏覽器",
+   "Gmail、雲端硬碟、日曆等 Google 網站一律改用機器人自己的 Chrome，不再卡在載入畫面"
+  ],
+  "notes_en": [
+   "Fixed bots \"not seeing\" pages: pages keep working even when you are not looking at that bot's browser (panel folded, another bot open, minimised), so screenshots and clicks no longer time out",
+   "Switching tabs or reconnecting no longer drops the browser connection; it reconnects by itself and is checked before each job",
+   "Gmail, Drive, Calendar and other Google sites always open in the bot's own Chrome instead of hanging on the loading screen"
+  ],
+  "notes_ja": [
+   "ボットがページを「見られない」問題を修正：ボットのブラウザを見ていなくても（パネルを畳む・別のボット・最小化）ページが動き続け、スクショやクリックがタイムアウトしなくなりました",
+   "タブ切替や再接続でブラウザ接続が切れなくなり、切れても自動で再接続、作業前に確認します",
+   "Gmail・ドライブ・カレンダーなど Google サイトは常にボット専用の Chrome で開き、読み込み画面で止まらなくなりました"
+  ]
+ },
+ {
   "v": "4.8.0",
   "date": "2026-11-04",
   "notes": [
