@@ -1,5 +1,30 @@
 [
  {
+  "v": "4.10.0",
+  "date": "2026-11-04",
+  "notes": [
+   "深海基地就是主畫面：中間是 3D 基地，對話是浮在上面的玻璃面板，可以拖寬度、收起來看整個基地",
+   "點機器人（側欄、卡片或 3D 裡的章魚）就打開對話，鏡頭同時飛到牠旁邊",
+   "右邊多了「總覽」分頁（第一個）；側欄「總覽」按鈕會收起對話、顯示整個基地和所有卡片",
+   "打字時、對話蓋住大半畫面時 3D 會放慢，視窗縮小或不在前面時停住；設定 → 外觀可關掉「主畫面 3D 基地」",
+   "手機：聊天清單上方是可收起的 3D 基地，下面可切換「聊天｜總覽」"
+  ],
+  "notes_en": [
+   "The deep-sea base is now the main screen: the 3D base in the middle with the chat as a floating glass panel you can resize or fold away",
+   "Selecting a bot (sidebar, card or its octopus) opens its chat and flies the camera beside it",
+   "The right panel gets an Overview tab (first); the sidebar Overview button folds the chat to show the whole base and all cards",
+   "3D slows down while typing or when the chat covers most of it, and stops when the window is hidden; turn \"3D base on the main screen\" off in Settings → Appearance",
+   "Phone: a foldable 3D base above the chat list, with Chats | Overview below"
+  ],
+  "notes_ja": [
+   "深海基地がメイン画面に：中央に 3D 基地、チャットは上に浮かぶガラスパネル。幅の変更や折りたたみ可能",
+   "ボット（サイドバー・カード・3D のタコ）を選ぶとチャットが開き、カメラがその横へ",
+   "右パネルに「一覧」タブ（先頭）。サイドバーの「一覧」でチャットを畳み、基地全体とカードを表示",
+   "入力中やチャットが大きく覆うときは 3D を減速、ウィンドウが隠れると停止。設定 → 外観で「メイン画面の 3D 基地」をオフ可",
+   "スマホ：チャット一覧の上に折りたためる 3D 基地、下で「チャット｜一覧」を切替"
+  ]
+ },
+ {
   "v": "4.9.3",
   "date": "2026-11-04",
   "notes": [
