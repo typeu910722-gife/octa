@@ -1,5 +1,27 @@
 [
  {
+  "v": "4.9.0",
+  "date": "2026-11-04",
+  "notes": [
+   "新增「深海基地」：海底研究站的 3D 畫面，每個分區一座玻璃艙，章魚坐在自己的控制台工作，頭上顯示正在做什麼；需要你時亮琥珀燈，交接工作會游過管道找同事",
+   "可以拖拉旋轉、縮放，點艙房拉近，點章魚直接打開對話或暫停",
+   "設定 → 外觀新增「深海」主題：深藍底、青綠光、玻璃質感面板，側欄後面有淡淡的光影（可關）",
+   "沒在看時自動停止動畫，有省電模式，減少動態效果時改成靜態畫面"
+  ],
+  "notes_en": [
+   "New \"Deep-sea base\": a 3D undersea station where each folder is a glass dome and every octopus works at its own console, with a bubble showing what it is doing; amber beacons when it needs you, and it swims through the tubes to hand work to a colleague",
+   "Drag to rotate, zoom, click a dome to zoom in, click an octopus to open its chat or pause it",
+   "New \"Deep sea\" theme in Settings → Appearance: deep navy, cyan glows, glass panels and a subtle light layer behind the sidebar (can be turned off)",
+   "Animation stops when not visible; power-saving mode and reduced motion show a still picture"
+  ],
+  "notes_ja": [
+   "新しい「深海基地」：海底基地の 3D ビュー。フォルダーごとにガラスドーム、タコが自分の席で作業し、吹き出しで作業内容を表示。対応が必要なときは琥珀色のライト、引き継ぎではチューブを泳いで同僚へ",
+   "ドラッグで回転・ズーム、ドームをクリックで拡大、タコをクリックでチャットを開くか一時停止",
+   "設定 → 外観に「深海」テーマ：深い紺色、シアンの光、ガラス風パネル、サイドバー背後の淡い光（オフ可）",
+   "見ていないときはアニメーション停止、省電力モードと動きを減らす設定では静止画"
+  ]
+ },
+ {
   "v": "4.8.1",
   "date": "2026-11-04",
   "notes": [
