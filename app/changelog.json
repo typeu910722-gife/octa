@@ -1,5 +1,39 @@
 [
  {
+  "v": "4.8.0",
+  "date": "2026-11-04",
+  "notes": [
+   "沒做成的工作顯示黃色或紅色「未完成」並寫原因，不再標成完成",
+   "一輪只回一則訊息，標題和內文不再重複",
+   "進度只顯示在右側「工作」；排隊時看得到排第幾、前面是誰、預估要等多久，可以「插隊」",
+   "側欄預覽先顯示結論，需要你處理時直接標「待你核准／要你登入／未完成」",
+   "通知都附一行摘要；紅色數字分清是新訊息、待你處理還是有問題",
+   "額度同時顯示 5 小時和本週，每件工作標出這一輪用了多少",
+   "字體可以更小；設定即時生效，可選主題色、緊湊版面、對話寬度，側欄可拖拉寬度與排序",
+   "失敗原因分得更清楚：瀏覽器連不上算「工具出錯」，要你補資料算「需要你提供資料」"
+  ],
+  "notes_en": [
+   "Unfinished jobs show an amber or red \"Not done\" with the reason instead of \"Done\"",
+   "One message per turn; the result title no longer repeats the text",
+   "Progress lives only in the Work panel; queued jobs show position, who is ahead, an estimated wait, and a Jump-the-queue button",
+   "Sidebar previews lead with the conclusion and tag what needs you",
+   "Every notification carries a one-line summary; badges say what they count",
+   "Quota shows both the 5-hour and weekly windows, and each job shows how much it used",
+   "Smaller text sizes; settings apply instantly with accent colour, compact density and chat width; drag to resize and reorder the sidebar",
+   "Clearer failure reasons: browser not reachable counts as a tool error, and \"needs info from you\" is its own kind"
+  ],
+  "notes_ja": [
+   "完了できなかった作業は黄色または赤の「未完了」と理由を表示",
+   "1 ターン 1 メッセージ、見出しと本文の重複なし",
+   "進捗は右の「作業」だけに表示。待ち順・前の作業・予想待ち時間を表示し「割り込み」も可能",
+   "サイドバーのプレビューは結論から、要対応はタグで表示",
+   "通知に 1 行の要約、数字バッジの意味が分かるように",
+   "5 時間と週の残量を両方表示、作業ごとの使用量も表示",
+   "より小さい文字サイズ。設定は即時反映、テーマ色・コンパクト表示・チャット幅、サイドバーの幅と並び替え",
+   "失敗理由をより明確に：ブラウザ接続不可は「ツールエラー」、情報不足は「情報が必要」"
+  ]
+ },
+ {
   "v": "4.7.0",
   "date": "2026-11-04",
   "notes": [
