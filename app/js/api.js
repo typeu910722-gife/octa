@@ -7,6 +7,7 @@ let CFG={};                      // GET /api/config: {local, pair, …}
   if(f.t)store.set('ebot_token',f.t);
   if(f.go)store.set('octa_go',f.go);
   if(f.web)try{sessionStorage.setItem('octa_goweb',f.web)}catch(e){}
+  if(f.retry)try{sessionStorage.setItem('octa_goretry',f.retry);sessionStorage.setItem('octa_goretryb',f.web)}catch(e){}   // 4.7 overview.js
   history.replaceState(null,'',location.pathname+location.search)})();
 // this address stopped answering (the computer restarted: its address changed): back to /go, which finds the new one
 // (at most once a minute, only when the phone itself is online)

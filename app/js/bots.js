@@ -41,19 +41,38 @@ function tplSheet(){openSheet(`${sheetHead('從範本建立','一鍵建立一組
 /* ---------- a new bot: a name and a colour, nothing else ---------- */
 function newBotSheet(){
   const first=PALETTE[S.bots.length%PALETTE.length][0];   // a new colour each time, so bots are easy to tell apart
-  $('veil').innerHTML=`<form class="sheet sm" id="nbf">${sheetHead('新機器人','取個名字、挑個顏色就好。建立後直接跟它說要做什麼，它會自己記住工作。')}
+  $('veil').innerHTML=`<form class="sheet sm nbs" id="nbf">${sheetHead('新機器人','挑一個角色就全部設好；或只取名字，建立後直接跟它說要做什麼。')}
+    <div class="field"><span>從角色開始</span><div class="roles" id="nbRoles" role="radiogroup" aria-label="從角色開始"><button type="button" class="role on" role="radio" aria-checked="true" data-role=""><span class="re" aria-hidden="true">✏️</span><b>只取名字</b></button></div></div>
+    <div class="rprev" id="nbPrev" hidden></div>
     <div class="nbhero"><span class="av xl" id="nbAv">${octSvg('idle',first,true)}</span><label class="field grow"><span>名稱</span><input id="nbName" maxlength="20" placeholder="例如：客服小幫手" autocomplete="off"></label></div>
     <div class="field"><span>顏色</span>${paletteHtml(first,'nbPal')}</div>
     <div class="errmsg" id="nbE"></div>
-    <div class="acts"><button type="button" class="link" id="nbTpl">${ic('sparkle')}<span>從範本建立</span></button><span class="grow"></span><button type="button" class="ghost" id="sx">取消</button><button class="btn" id="nbGo">建立</button></div></form>`;
+    <div class="acts"><button type="button" class="link" id="nbTpl">${ic('sparkle')}<span>整組團隊範本</span></button><span class="grow"></span><button type="button" class="ghost" id="sx">取消</button><button class="btn" id="nbGo">建立</button></div></form>`;
   $('veil').hidden=false;paintIcons($('veil'));$('nbName').focus();$('sx').onclick=closeSheet;$('nbTpl').onclick=tplSheet;
   const pal=bindPalette($('nbPal'),c=>setHTML($('nbAv'),octSvg('idle',c,true)));
+  let roles=[],role=null;
   $('nbName').oninput=()=>{$('nbE').textContent=''};
+  // 4.7 每個機器人預設範本: 客服、房務、報表、訂房、社群小編、記帳 — one tap sets its task, 📌 rules, routines and colour
+  api('roles?lang='+encodeURIComponent(I18N.lang)).then(d=>{roles=d.roles||[];if(!$('nbRoles'))return;
+    $('nbRoles').insertAdjacentHTML('beforeend',roles.map(r=>`<button type="button" class="role" role="radio" aria-checked="false" data-role="${esc(r.key)}" style="--oc:${esc(r.color)}"><span class="re" aria-hidden="true">${esc(r.avatar)}</span><b data-u>${esc(r.name)}</b></button>`).join(''))}).catch(()=>{});
+  $('nbRoles').onclick=e=>{const b=e.target.closest('[data-role]');if(!b)return;
+    $('nbRoles').querySelectorAll('[data-role]').forEach(x=>{const on=x===b;x.classList.toggle('on',on);x.setAttribute('aria-checked',String(on))});
+    role=roles.find(r=>r.key===b.dataset.role)||null;const pv=$('nbPrev');
+    $('nbName').placeholder=role?role.name:I18N.t('例如：客服小幫手');
+    if(role){$('nbPal').querySelector(`[data-col="${role.color}"]`)?.click();
+      pv.hidden=false;setHTML(pv,`<p class="rp-k">指定任務</p><p data-u>${esc(role.task)}</p>
+        <p class="rp-k">📌 規則</p><ul>${role.rules.map(x=>`<li data-u>${esc(x)}</li>`).join('')}</ul>
+        ${role.routines.length?`<p class="rp-k">⏰ 例行任務</p><ul>${role.routines.map(r=>`<li><b data-u>${esc(r.name)}</b> · ${r.times.map(t=>/^\*\//.test(t)?`<span>每</span> <span data-u>${esc(t.slice(2))}</span> <span>分鐘</span>`:`<span>每天</span> <span data-u>${esc(t)}</span>`).join('、')}</li>`).join('')}</ul>
+        <label class="rp-on"><input type="checkbox" id="nbRt" checked><span>建立後就開始例行任務</span></label>`:''}
+        <p class="hmuted">建立後都可以在詳細資料或「它記得什麼」修改。</p>`)}
+    else{pv.hidden=true;pv.innerHTML=''}};
   $('nbf').onsubmit=async e=>{e.preventDefault();const raw=$('nbName').value.trim(),name=raw||freeName(I18N.t('新機器人'),S.bots.map(b=>b.name));
     const bad=raw?nameProblem(raw,''):'';if(bad){$('nbE').textContent=I18N.t(bad);$('nbName').focus();return}
     $('nbGo').disabled=true;
-    try{const r=await api('bots','POST',{name,task:'',engine:firstEngine(),color:pal.get(),folder:conv(cur)?.folder||null});closeSheet(true);await refresh();openConv(r.id);
-      $('msg').placeholder=I18N.t(raw?'跟它說要幫你做什麼…':'跟它說要幫你做什麼…（它會自己記住、取名字）');$('msg').focus();toast(I18N.t('已建立'))}
+    try{const r=role?await api('roles/create','POST',{role:role.key,name:raw,lang:I18N.lang,engine:firstEngine(),color:pal.get(),folder:conv(cur)?.folder||null,routines:$('nbRt')?$('nbRt').checked:true})
+        :await api('bots','POST',{name,task:'',engine:firstEngine(),color:pal.get(),folder:conv(cur)?.folder||null});
+      closeSheet(true);await refresh();openConv(r.id);
+      $('msg').placeholder=I18N.t(role?'跟它說要幫你做什麼…':raw?'跟它說要幫你做什麼…':'跟它說要幫你做什麼…（它會自己記住、取名字）');$('msg').focus();toast(I18N.t('已建立'))}
     catch(err){$('nbE').textContent=err.message;$('nbGo').disabled=false}}}
 const membersPicker=c=>`<div class="picks" id="picks">${(c?[...c.members.filter(bot),...S.bots.map(b=>b.id).filter(x=>!c.members.includes(x))]:S.bots.map(b=>b.id)).map(id=>{const b=bot(id);return `<label class="pick"><input type="checkbox" value="${b.id}" ${!c||c.members.includes(b.id)?'checked':''}><span class="av xs" data-u>${avOf(b.id)}</span><span data-u class="grow">${esc(b.name)}</span><button type="button" class="ib sm mv" data-up aria-label="往上">↑</button><button type="button" class="ib sm mv" data-down aria-label="往下">↓</button></label>`}).join('')}</div>`;
 function bindPicker(root){root.querySelector('#picks').onclick=e=>{const b=e.target.closest('.mv');if(!b)return;e.preventDefault();const row=b.closest('.pick');
@@ -108,7 +127,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
   DP.id=id;DP.sig=detailSig(c);rtEdit=null;addMem=null;
   const pinned=(S.pins||[]).includes(id),muted=!!(S.mute||{})[id];
   const q=(k,icon,label,on)=>`<button type="button" class="dq${on?' on':''}" data-dq="${k}">${ic(icon)}<span>${label}</span></button>`;
-  const quick=`<div class="dquick">${q('br','globe','瀏覽器')}${q('pin','pin',pinned?'已置頂':'置頂',pinned)}${q('mute',muted?'belloff':'bell',muted?'已靜音':'靜音',muted)}${g?'':q('cmp','compress','壓縮')}${q('shots','image','畫面')}</div>`;
+  const quick=`<div class="dquick">${q('br','globe','瀏覽器')}${q('pin','pin',pinned?'已置頂':'置頂',pinned)}${q('mute',muted?'belloff':'bell',muted?'已靜音':'靜音',muted)}${g?'':q('cmp','compress','壓縮')}${q('shots','image','畫面')}${g?'':q('memv','brain','它記得什麼')}</div>`;
   let body='';
   if(g){
     body+=dsec('task','協作','users',`<div class="field"><span>成員（由上到下依序執行）</span>${membersPicker(c)}</div>
@@ -160,7 +179,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
   const body2=box.querySelector('.dp-body');body2.scrollTop=keep;
   box.querySelectorAll('details.dsec').forEach(d=>d.addEventListener('toggle',()=>store.set('octa_dsec_'+d.dataset.sec,d.open?'1':'0')));
   // the quick row
-  const dq={br:()=>setTab('web'),pin:()=>togglePin(id),mute:()=>toggleMute(id),cmp:()=>compactConv(id),shots:()=>shotSheet(g?c.members.filter(bot):[id])};
+  const dq={br:()=>setTab('web'),pin:()=>togglePin(id),mute:()=>toggleMute(id),cmp:()=>compactConv(id),shots:()=>shotSheet(g?c.members.filter(bot):[id]),memv:()=>openMemory(id)};
   box.querySelectorAll('[data-dq]').forEach(b=>b.onclick=e=>{e.stopPropagation();dq[b.dataset.dq]?.()});
   box.querySelectorAll('[data-dz]').forEach(b=>b.onclick=()=>({dup:()=>dupBot(id),clr:()=>clearConv(id),del:()=>deleteConv(id)})[b.dataset.dz]());
   const nm0=c.name;const nameOk=()=>{const bad=g?(!$('sn').value.trim()?'請填名稱':''):nameProblem($('sn').value,nm0);$('se').textContent=bad?I18N.t(bad):'';$('sn').setAttribute('aria-invalid',bad?'true':'false');return !bad};

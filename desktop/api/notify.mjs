@@ -95,7 +95,7 @@ const stripNote = p =>
   String(p || '')
     .replace(/\n\n（自動重試 \d+）[\s\S]*$/, '')
     .replace(/^〔[^〕]*〕\s*/, '');
-export function alertText(who, kind, prompt, msg, link) {
+export function alertText(who, kind, prompt, msg, link, reason = '') {
   const k = ALERT_KINDS[kind] || ALERT_KINDS.api;
   const what = stripNote(prompt).replace(/\s+/g, ' ').trim().slice(0, 100);
   const m = String(msg || '')
@@ -106,7 +106,7 @@ export function alertText(who, kind, prompt, msg, link) {
   return [
     `【OCTA】⚠ ${who} ${k.label}`,
     what ? `做什麼：${what}` : '',
-    k.why,
+    reason ? `原因：${reason}——${k.why}` : k.why,
     m ? `訊息：${m}` : '',
     link ? `👉 一鍵重試（用手機打開）：${link}` : '打開 OCTA，在這個機器人上按「一鍵重試」。'
   ]
@@ -140,7 +140,7 @@ export async function alertSweep(env, db, U) {
       .first();
     const who = (await db.prepare('SELECT name FROM bots WHERE id=? AND user_id=?').bind(j.bot_id, U).first())?.name || '機器人';
     const link = retryLink(env.remoteLink?.() || '', j.bot_id, j.id);
-    const text = alertText(who, kind, j.prompt, j.err_msg, link);
+    const text = alertText(who, kind, j.prompt, j.err_msg, link, (FAIL_KINDS[j.err_kind] || {}).label || '');
     const send = !recent && !(st.mute || {})[j.conv];
     const ins = await db
       .prepare('INSERT OR IGNORE INTO alerts (user_id,bot_id,conv,kind,job,text,ts,pushed) VALUES (?,?,?,?,?,?,?,?)')
