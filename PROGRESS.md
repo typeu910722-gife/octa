@@ -291,3 +291,15 @@
 - [x] 測試：新增 test/turn-outcome.test.mjs（API：結論不再自動接續、一輪一則、接手、排隊與插隊、額度、通知摘要、migration）、test/ui-48.test.mjs（介面）；更新移除的進度條測試。全套 313 項，失敗只剩原本 4 項
 - [x] 實測：Playwright 截圖 docs/screens/*-48-*（淺／深、1400×860、390×844、70% 字體）；沙箱 server＋執行器＋真 Claude Code：成功的一輪與讀不到檔案的一輪都只有一則回覆，後者結果行 ok:false、工作 err_kind 不是空的（未完成）
 - 未實測：Windows 實機；每輪額度（沙箱的 Claude 登入讀不到用量 API，quse 只有單元測試）；Electron 裡整頁縮放時內嵌瀏覽器的位置；手機實機拖曳排序（手機用置頂）
+
+## 4.8.1 登入是好的，但機器人一直看不到頁面（Windows 使用者，2026-11-04）
+- 根本原因（xvfb＋Electron 44 實測重現）：①不在畫面上的頁面放在「隱藏」的視窗裡，隱藏視窗不繪製：網頁動畫每秒最多 1 格、Playwright 截圖 2–3 秒（Windows 上會逾時）、等畫面的載入畫面（Gmail 這類）不會跑完；被別的分頁蓋住的分頁、背景開的頁面完全停住（0 格、載入不完）。工作分頁、收起面板、看別的機器人、收到系統匣都會這樣 ②cdp-bridge：每頁只有一個 Electron debugger、所有連線共用，第一個連線開了 Runtime 之後，下一輪 AI 的新連線收不到執行環境 → evaluate／讀頁一直逾時（「連兩次都是 30 秒沒回應」）；關分頁不送 detachedFromTarget → close() 卡住 ③執行器重啟（睡眠醒來、伺服器沒回應）會關掉所有機器人的瀏覽器，包括 AI 正在用的 Chrome 視窗 → 「連不上 127.0.0.1:93xx」
+- [x] 每個頁面有自己「顯示中」的等待視窗，放在所有螢幕的左上方外面、並排不互相遮住（embed-layout parkSpot），不進工作列／Alt+Tab、不拿焦點；螢幕變動時移回畫面外。OCTA 視窗收到系統匣、縮小或關掉時，停在裡面的頁面移到等待視窗；所有分頁都保持可見（不再 setVisible(false)）
+- [x] 每頁 setBackgroundThrottling(false)、連上時 Emulation.setFocusEmulationEnabled＋Page.setWebLifecycleState active；debugger 掉了自動接回、renderer 掛了自動重新載入；embed.revive(port)
+- [x] cdp-bridge：記住執行環境並重送給之後的連線；不轉送 *.disable；Page.bringToFront／Target.activateTarget 由橋接切分頁（畫面跟著 AI 的分頁，不會把收到背景的瀏覽器叫回來，也不會斷線）；關分頁送 detachedFromTarget；使用者開的新分頁、關掉的分頁通知連線；連線離開時收回它的腳本／binding／Fetch 攔截；websocket 分段訊息
+- [x] 看門狗：工作前 browserHealth（讀頁＋小截圖），不行就 revive → 同一個埠重開 → 仍不行才失敗，新的失敗種類「瀏覽器沒有回應」（browser，可自動重試，AI 被告知不要猜）；工作中每 4 秒看埠，不見了在同一個埠重開（AI 的工具下一步自己重連）
+- [x] 執行器重啟不再關機器人的瀏覽器；機器人的 Chrome 視窗加 --disable-backgrounding-occluded-windows 等參數（被遮住或縮小也照常跑）
+- [x] Gmail：決定改在 Chrome 視窗（可靠）而不是修 Electron——Google 把登入綁在真正的 Chrome，內建瀏覽器已登入也一樣會卡。mail.google.com、雲端硬碟、文件、日曆等（googleWorkspacePage）一開就改到機器人的 Chrome 視窗並在那裡打開；工作中發生時 AI 停下、改連 Chrome 視窗接著做（Claude 同一個 session）；沒有 Chrome 就留在內建瀏覽器
+- [x] 實測（xvfb、真 Electron、Playwright connectOverCDP 連 19011，本機測試頁用 rAF＋可見才載入的載入畫面）：修正前 工作分頁／收起面板／看別的機器人時 1 格/秒、截圖 2.1–3.1 秒、非前景分頁 0 格、背景頁載入不完、第二次連線 evaluate 逾時、關分頁逾時；修正後 9 種狀態（停靠、工作分頁、收起、別的機器人、系統匣、再打開、縮小、還原）× 3 個頁面都是 60 格/秒、截圖 40–60 ms，兩次連線都能讀頁、點擊、切分頁、關分頁；頁面 renderer 當掉後自動回來；導到 mail.google.com 自動改開 Chrome 視窗（帶 CHROME_AWAKE 參數）
+- [x] 測試：test/browser-awake.test.mjs（重送執行環境、喚醒指令、切分頁不斷線、關分頁、清除、分段訊息、等待視窗位置、Google 服務網址）、test/browser-watchdog.test.mjs（健康檢查、revive／重開／失敗種類、執行器流程）。全套 326 項，失敗只剩原本 4 項
+- 未實測：Windows 實機（等待視窗在畫面外是否真的繼續繪製、多螢幕、Windows 把畫面外視窗移回來）；真的 Gmail（沙箱無法登入）；工作中改到 Chrome 視窗後 AI 接著做（只有單元測試）；Chrome 視窗裡「切到前景就斷線」在 Linux 的 Chrome 153 重現不出來（背景分頁在 Playwright 連上後就是可見的），只做了重啟不關、看門狗與參數

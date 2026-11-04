@@ -53,10 +53,13 @@ export async function switchToChrome(botId, url, info = {}) {
   try {
     const port = await openBrowser(bot, { noBack: true });
     await showBrowser(port, dest, false, true);
-    log(`🌐 ${bot.name}：Google 不讓內嵌瀏覽器登入，已改用 Chrome 視窗`);
+    const app = !googleSignInUrl(url);
+    log(`🌐 ${bot.name}：${app ? 'Gmail 等 Google 服務改在 Chrome 視窗開' : 'Google 不讓內嵌瀏覽器登入，已改用 Chrome 視窗'}`);
     try { moving.get(botId)?.(port); } catch { }
     // 4.7: it stays in the Chrome window (no automatic way back: a copied Google sign-in logs out again)
-    await chatNote(botId, 'Google 不讓 OCTA 內建瀏覽器登入，這個機器人改用自己的 Chrome 視窗，Google 的登入會一直留在那裡（重開 OCTA 也一樣）。在 Chrome 視窗或手機按「接手」登入一次就好。').catch(() => { });
+    await chatNote(botId, app
+      ? 'Gmail、雲端硬碟這類 Google 服務在 OCTA 內建瀏覽器會停在載入畫面，這個機器人改用自己的 Chrome 視窗開（Google 的登入也留在那裡，重開 OCTA 也一樣）。第一次要登入時，在 Chrome 視窗或手機按「接手」登入一次就好。'
+      : 'Google 不讓 OCTA 內建瀏覽器登入，這個機器人改用自己的 Chrome 視窗，Google 的登入會一直留在那裡（重開 OCTA 也一樣）。在 Chrome 視窗或手機按「接手」登入一次就好。').catch(() => { });
     return true;
   } catch (e) { log('改用 Chrome 失敗：' + e.message); return false; }
 }

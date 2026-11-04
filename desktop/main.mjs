@@ -198,7 +198,7 @@ function fitView(view, bounds, visible) {
 // does not draw, so its pages got no animation frames (about 1 a second at best), screenshots took seconds or never came
 // back and loaders that wait for a painted frame (Gmail's) never finished; a tab under another tab got none at all.
 // Now every page has its own real, shown window, placed past the top-left corner of every screen (embed-layout parkSpot,
-// side by side so none covers another), without a taskbar button, Alt+Tab entry, focus or mouse.
+// side by side so none covers another), without a taskbar button, Alt+Tab entry or focus.
 const displaysNow = () => { try { return screen.getAllDisplays(); } catch { return []; } };
 const parkSlots = [];   // slot → window
 function parkHost(host) {
@@ -227,7 +227,6 @@ function hostFor(bucket, view) {
   parkSlots[slot] = host;
   bucket.hosts.set(view, host);
   try { host.setMenuBarVisibility(false); } catch { }
-  try { host.setIgnoreMouseEvents(true); } catch { }
   try { host.webContents.setBackgroundThrottling(false); } catch { }
   const again = () => setTimeout(() => { if (embeds.has(bucket.port) && bucket.hosts.get(view) === host) parkHost(host); }, 50);
   host.on('minimize', again);
@@ -630,10 +629,11 @@ async function hookPage(wc, id, bucket) {
   try { if (!wc.debugger.isAttached()) wc.debugger.attach('1.3'); } catch (e) { if (!/already/i.test(String(e))) logError('debugger', e); }
   await applyIdentity(wc, bucket.engine || 'chrome');
   wakePage(wc);
-  wc.debugger.on('detach', (_e, reason) => {
+  wc.debugger.on('detach', (_e, reason) => setTimeout(() => {
+    if (wc.isDestroyed() || !embeds.has(bucket.port)) return;   // the tab was closed: nothing to put back
     logError('debugger-detach', new Error(String(reason || '')));
-    setTimeout(() => void reattach(wc, bucket), 300);
-  });
+    void reattach(wc, bucket);
+  }, 300));
   // the page's renderer died (out of memory, a crash): load it again instead of leaving a dead tab under the bot
   wc.on('render-process-gone', (_e, d) => {
     if (d?.reason === 'clean-exit') return;
@@ -649,6 +649,11 @@ async function hookPage(wc, id, bucket) {
   bucket.pages.set(id, { wc });
   const ping = () => { if (bucket.active?.webContents === wc) sendFrame(bucket, {}); };
   wc.on('did-navigate', (_e, url) => { ping(); googleBlocked(bucket, url); });
+  // 4.8.1: Gmail & co. go to the bot's Chrome window as soon as they are asked for, before they start loading here
+  wc.on('did-start-navigation', (d, legacyUrl, _inPlace, legacyMain) => {
+    const url = d?.url || legacyUrl, mainFrame = d?.isMainFrame ?? legacyMain;
+    if (mainFrame && !d?.isSameDocument && googleWorkspacePage(url)) googleBlocked(bucket, url);
+  });
   // Google's sign-in changes pages without loading: look at the text again once it has drawn
   wc.on('did-navigate-in-page', (_e, url, main) => { ping(); if (main !== false && /accounts\.google\.com/.test(url)) setTimeout(() => void notePage(wc, bucket), 1200); });
   wc.on('did-finish-load', () => { ping(); void notePage(wc, bucket); });
