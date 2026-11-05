@@ -14,9 +14,35 @@ export const sha = async s => hex(await crypto.subtle.digest('SHA-256', enc.enco
 export const randTok = () => hex(crypto.getRandomValues(new Uint8Array(24)));
 export const MIN = 60000,
   DAY = 86400000;
-export const WARM = [0, 30, 60, 120, 300, 600, -1];
-export const JOB_MAX = [15, 30, 60, 120, 180]; // 單件工作最長時間 (minutes); a job still reporting is never cut short by the 20-minute silence check
-export const jobMaxOk = v => (JOB_MAX.includes(+v) ? +v : 60); // AI 待機 seconds after a reply (0: off, -1: always)
+export const WARM = [0, 30, 60, 120, 300, 600, -1]; // AI 待機 seconds after a reply (0: off, -1: always)
+// 單件工作最長時間 (minutes; 0: 不限); a job still reporting is never cut short by the 20-minute silence check
+export const JOB_MAX = [0, 15, 30, 60, 120, 180];
+const unset = v => v === undefined || v === null || v === '';
+export const jobMaxOk = (v, full = false) => (!unset(v) && JOB_MAX.includes(+v) ? +v : full ? 0 : 60);
+// 4.11 全力模式: no per-job time / token / turn caps, AI 待機 always on, the runner keeps going until the work is done.
+// On by default; 關 restores the economical behaviour (lean flags, 60-minute limit, 120-second standby, retry caps).
+// Per bot: st.power[botId] = 'full' | 'save' overrides the global switch.
+export const POWER = ['full', 'save'];
+export const fullOn = (st, botId) => {
+  const p = botId ? (st?.power || {})[botId] : null;
+  return p === 'full' ? true : p === 'save' ? false : st?.full !== false;
+};
+// what a job gets: the user's own choice when made, else the mode's default
+export const jobMaxOf = (st, botId) => {
+  const full = fullOn(st, botId);
+  const v = jobMaxOk(st?.jobMax, full);
+  return !full && v === 0 ? 60 : v; // 不限 belongs to 全力模式 only
+};
+export const warmOf = (st, botId) => {
+  const full = fullOn(st, botId);
+  if (!unset(st?.warm) && WARM.includes(+st.warm)) return +st.warm;
+  return full ? -1 : 120;
+};
+// unattended routines leave room for the person's own work: a 5-hour (or weekly) window this full is not spent on them
+export const ROUTINE_QUOTA_CAP = 90;
+// 全力模式: transient failures (timeouts, interruptions, tool/browser errors) keep being retried, with a growing pause
+export const FULL_RETRY_MAX = 8;
+export const retryDelay = n => Math.min(30 * MIN, 30000 * 2 ** Math.max(0, n - 1));
 export const MAX_ASK_DEPTH = 4; // how many times bots may hand questions to each other in one run
 export const WAIT_MS = 25000; // long-poll length
 export const CHUNK = 900_000; // base64 characters per stored piece

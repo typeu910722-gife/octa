@@ -13,13 +13,14 @@ import { browserSnapshot, captureEyes, finishBrowserWindow, pushLive, settleBrow
 import { browserUseReady } from './ollama.mjs';
 import {
   buildBrowserPrompt, evidenceText, findUploads, fitLocal, forcedBrowseTask, hideSecrets, notesFile,
-  planBrowserRound, refreshNotes, saveRecord, scrubNotes, stripBrowserTask, takeBrowserTask, taskPrompt
+  BROWSE_MAX_FULL, planBrowserRound, refreshNotes, saveRecord, scrubNotes, stripBrowserTask, takeBrowserTask, taskPrompt
 } from './prompts.mjs';
 import { fiveHourUsed, resetReports } from './reports.mjs';
 import { stepTracker, stripStepMarks, toolKind } from './steps.mjs';
-import { cfg, log, workDir } from './state.mjs';
+import { CONT_MAX, cfg, log, workDir } from './state.mjs';
+import { runUntilDone, toolSig } from './continue.mjs';
 import { collectSkills, restoreSkills } from './transfer.mjs';
-import { sessions, warmClaude, warmSend } from './warm.mjs';
+import { PARTIAL_TAG, closeSession, partialNote, sessions, warmClaude, warmSend } from './warm.mjs';
 
 // ---------- job handlers ----------
 export async function chatJob(job) {
@@ -74,7 +75,10 @@ async function chatRun(job) {
   job.eyes = eyes;
   // live progress (at most every 4 s): 4.7 step x of y from the AI's 🧭 lines, and what it is doing. The answer says whether
   // 停止, 接手 or 暫停 was pressed: 停止 and 接手 stop the run now; 暫停 holds before the next step (see holdPaused)
-  const ctl = { maxMs: job.maxMin ? job.maxMin * 60000 : undefined };   // 單件工作最長時間, for every AI tool
+  // 單件工作最長時間, for every AI tool (4.11 全力模式 with 不限: none at all)
+  const ctl = { maxMs: job.maxMin ? job.maxMin * 60000 : job.full ? Infinity : undefined };
+  // AI 待機 belongs to Claude: a bot that moved to another AI (or turned standby off) lets its waiting session go
+  if (!side && (engine !== 'claude' || !job.warm) && sessions.has(job.bot.id)) closeSession(job.bot.id, `${job.bot.name}：換了 AI 或關掉待機，結束待機的對話`);
   const tr = stepTracker(), pmode = engine === 'claude' ? 'step' : 'turn';   // step: Claude stops between two actions; others after this AI run
   let lastSent = 0, timerP = null, stoppedByUser = false, held = false;
   const post = () => api('runner/progress', { id: job.id, ...tr.payload(), pmode, ...(held ? { held: true } : {}) }).then(r => {
@@ -103,10 +107,12 @@ async function chatRun(job) {
   // 4.8: the plan's 5-hour window before this run (Claude / ChatGPT), to show what the run used
   const quota0 = !side && ['claude', 'codex'].includes(engine) ? fiveHourUsed(engine) : null;
   // what one AI run in this job may use: its browser (direct), progress, steps, what the tools read, the pause boundary
+  // 4.11: every tool call is counted (work was done) and signed (a repeated call is not progress) for the run until done
+  job.toolCount = 0; job.toolSigs = new Set(); job.steps = tr.state;
   const live = {
-    progress, say, ctl, port, browser: job.browse === 'direct', files: job.browse === 'direct', pauseNow: () => !!job.paused,
-    tool: n => { if (toolKind(n) === 'browse') job.didBrowse = true; },
-    seen: t => { job.seen = ((job.seen || '') + '\n' + String(t).slice(0, 4000)).slice(-12000); }
+    progress, say, ctl, port, browser: job.browse === 'direct', files: job.browse === 'direct', pauseNow: () => !!job.paused, full: !!job.full, sid: null,   // sid: Claude's session once a run made it (for --resume)
+    tool: (n, input) => { if (toolKind(n) === 'browse') job.didBrowse = true; job.toolCount++; job.toolSigs.add(toolSig(n, input)); },
+    seen: t => { job.seen = ((job.seen || '') + '\n' + String(t).slice(0, job.full ? 20000 : 4000)).slice(job.full ? -60000 : -12000); }
   };
   let res;
   job.stopForHand = () => ctl.kill?.();
@@ -137,12 +143,14 @@ async function chatRun(job) {
       : engine === 'claude' && job.warm && (await has('claude'))
       ? await warmClaude(job, b, here, live)        // AI 待機: reuse the running Claude session
       : await runEngine(engine, taskPrompt(job, here), b, job.bot.model, { ...live, session: sid ? { id: sid } : null });
+    if (res?.session) live.sid = res.session;
     // 暫停 (Claude): it was stopped right after an action finished; on 繼續 the same session goes on with --resume
     while (res?.paused && !stoppedByUser && !job.handed) {
       const session = res.session || sid;
       if (!(await holdPaused()) || job.handed) break;
       res = await runEngine('claude', RESUME_PROMPT, b, job.bot.model, { ...live, session: { id: session, resume: true } });
     }
+    if (res?.session) live.sid = res.session;
     // moved to its Chrome window mid-turn: the same work goes on there (Claude: the same session, so nothing is redone)
     for (let hop = 0; job.moved && hop < 2 && !stoppedByUser && !job.handed; hop++) {
       const to = job.moved; job.moved = 0;
@@ -173,6 +181,32 @@ async function chatRun(job) {
           res = { ...res, text: `【派瀏覽】\n網址：目前頁面\n要做的事：${again}\n【派完】` };
           res = await browseRounds(job, b, here, engine, res, live);
         }
+      }
+      // 4.11 全力模式: the turn ended without a result while the work is not done: go on in the same session until
+      // ✅ 完成／⚠ 沒做成, an approval, a question, a sign-in, 停止 — or the loop guard calls it stuck
+      if (job.full && !side && res?.ok && !job.handed && !stoppedByUser) {
+        const outDir = join(here, '輸出');
+        const done = await runUntilDone(job, res, {
+          max: CONT_MAX, toolsVisible: engine === 'claude', progress: t => progress(t, 'think'),
+          mark: () => { job.outCount = newFiles(outDir, start).length; return { sigs: job.toolSigs.size, step: tr.state.step || 0, files: job.outCount }; },
+          canGo: async () => !stoppedByUser && !job.handed && (await holdPaused()) && !job.handed,
+          turn: async prompt => {
+            let r = await continueTurn(job, b, here, engine, prompt, live);
+            while (r?.paused && !stoppedByUser && !job.handed) {   // 暫停 between two actions of a continuation
+              if (!(await holdPaused()) || job.handed) break;
+              r = await runEngine('claude', RESUME_PROMPT, b, job.bot.model, { ...live, session: { id: r.session || live.sid, resume: true } });
+            }
+            if (r?.paused) return job.handed ? { ok: true, text: '' } : { ok: false, text: '已停止' };
+            if (r?.ok && (await holdPaused())) r = await connectorRounds(job, b, here, engine, r, live);
+            if (r?.ok && (await holdPaused())) r = await browseRounds(job, b, here, engine, r, live);
+            return r;
+          }
+        });
+        job.rounds = done.rounds || 0;
+        if (job.rounds) log(`🔁 ${job.bot.name}：自動接續 ${job.rounds} 輪${done.stuck ? '，判斷卡住' : ''}`);
+        // a failure while going on keeps what was already done (the server posts it and, for a quota, waits for the reset)
+        res = done.ok === false && done.prevText && !String(done.text || '').includes(PARTIAL_TAG)
+          ? { ...done, text: String(done.text || '') + partialNote(done.prevText, 12000) } : done;
       }
     }
   }
@@ -217,7 +251,8 @@ async function chatRun(job) {
     files: res.ok ? newFiles(join(here, '輸出'), start) : [], browser: !!port, stopped: stoppedByUser,
     ...(job.later ? { later: true } : {}), ...(nsk ? { nskills: nsk } : {}),
     ...(res.stalled ? { stalled: true, err_kind: 'timeout' } : !res.ok && job.browserDown ? { err_kind: 'browser' } : {}), ...(shotB64 ? { shot: shotB64 } : {}),
-    ...(job.handed ? { handed: true } : {}), ...(quse ? { quse } : {})
+    ...(job.handed ? { handed: true } : {}), ...(quse ? { quse } : {}),
+    ...(job.full ? { full: true, rounds: job.rounds || 0 } : {})
   });
   log(`${res.ok ? '✓' : '✗'} ${job.bot.name}`);
   if (['claude', 'codex'].includes(job.bot.engine || 'claude')) resetReports({ engines: false, models: false });   // refresh how much is left
@@ -238,12 +273,42 @@ async function parentFollow(job, b, here, engine, follow, live) {
   const direct = job.browse === 'direct';
   if (b.applyBrowser) b.applyBrowser(direct, direct);
   if (engine === 'claude' && job.warm && sessions.get(job.bot.id)) return warmSend(job, follow, live);
+  // 4.11 全力模式: Claude goes on in the turn's own session (it remembers the work) instead of starting over
+  if (engine === 'claude' && job.full && live.sid) {
+    const r = await runEngine('claude', follow, b, job.bot.model, { ...live, browser: direct, files: direct, session: { id: live.sid, resume: true } });
+    if (r?.session) live.sid = r.session;
+    return r;
+  }
   return runEngine(engine, taskPrompt({ ...job, prompt: follow }, here), b, job.bot.model, { ...live, browser: direct, files: direct, session: null });
 }
+// 4.11: one continuation turn of the run until done — the warm session, Claude's own session (--resume), or a new run
+async function continueTurn(job, b, here, engine, prompt, live) {
+  const direct = job.browse === 'direct';
+  if (b.applyBrowser) b.applyBrowser(direct, direct);
+  if (engine === 'claude' && job.warm) return sessions.get(job.bot.id) ? warmSend(job, prompt, live) : warmClaude({ ...job, prompt }, b, here, live);
+  if (engine === 'claude' && live.sid) {
+    const r = await runEngine('claude', prompt, b, job.bot.model, { ...live, browser: direct, files: direct, session: { id: live.sid, resume: true } });
+    if (r?.session) live.sid = r.session;
+    return r;
+  }
+  return runEngine(engine, taskPrompt({ ...job, prompt }, here), b, job.bot.model, { ...live, browser: direct, files: direct, session: null });
+}
+// connector calls per turn: 2 (省額度); 4.11 全力模式: as many as the work needs, up to CONNECTOR_MAX_FULL, and a call
+// that is exactly the one before is not made again (the AI is told so)
+export const CONNECTOR_MAX_FULL = 30, CONNECTOR_RESULT = 4000, CONNECTOR_RESULT_FULL = 20000;
 async function connectorRounds(job, b, here, engine, res, live) {
-  for (let depth = 0; depth < 2 && res?.ok; depth++) {
+  const maxDepth = job.full ? CONNECTOR_MAX_FULL : 2;
+  let lastCall = '';
+  for (let depth = 0; depth < maxDepth && res?.ok; depth++) {
     const task = takeConnectorTask(res.text);
     if (!task) break;
+    const call = JSON.stringify([task.name, task.action, task.path, task.content]);
+    if (job.full && call === lastCall) {
+      const next = await parentFollow(job, b, here, engine, '這個連接器呼叫跟上一次完全一樣，結果已經在上面了，不會再呼叫一次。根據已有的結果繼續做；做完用【回覆】回答。', live);
+      res = { ok: true, text: next?.ok ? next.text || '' : stripConnectorTask(res.text), tokens: addTokens(res.tokens, next?.tokens) };
+      continue;
+    }
+    lastCall = call;
     const known = (job.connectors || []).some(c => c.name === task.name);
     const approved = /核准[:：]/.test(job.prompt || '');
     if (!known || (task.action === '送出' && !approved)) {
@@ -258,11 +323,11 @@ async function connectorRounds(job, b, here, engine, res, live) {
     let report = '連接器沒有完成。';
     try {
       const r = await api('runner/connector', { job: job.id, name: task.name, action: task.action, path: task.path, content: task.content });
-      report = stripConnectorTask(r.text || report).slice(0, 4000) || report;
+      report = stripConnectorTask(r.text || report).slice(0, job.full ? CONNECTOR_RESULT_FULL : CONNECTOR_RESULT) || report;
     } catch (e) { report = '連接器沒有完成：' + e.message; }
     const follow = [
       `下面是連接器「${task.name}」的結果。只根據這份結果回答，不要貼金鑰，也不要把整段原文以外的內容說成你看到的。`,
-      depth + 1 < 2 ? '還要再呼叫一次就寫【連接器】到【接完】，而且不要寫【回覆】。夠了就用【回覆】回答。' : '不能再呼叫連接器。直接用【回覆】回答。',
+      depth + 1 < maxDepth ? '還要再呼叫一次就寫【連接器】到【接完】，而且不要寫【回覆】。夠了就用【回覆】回答。' : '不能再呼叫連接器。直接用【回覆】回答。',
       '結果：', report,
       '使用者原本的指示：', job.prompt
     ].join('\n');
@@ -270,7 +335,7 @@ async function connectorRounds(job, b, here, engine, res, live) {
     const tokens = addTokens(res.tokens, next?.tokens);
     if (!next?.ok) return { ok: true, text: report, tokens };
     let text = next.text || '';
-    if (depth + 1 >= 2 || !takeConnectorTask(text)) text = stripConnectorTask(text) || report;
+    if (depth + 1 >= maxDepth || !takeConnectorTask(text)) text = stripConnectorTask(text) || report;
     res = { ok: true, text, tokens };
   }
   if (res?.text) res = { ...res, text: stripConnectorTask(res.text) || '這次沒有新的結果。' };
@@ -281,8 +346,10 @@ const LOGIN_RE = /需要使用者在電腦上登入/;
 export const triedText = report => (String(report || '').match(/卡在哪裡[:：]\s*([^\n]+(?:\n(?!網址|頁面上有什麼|做成了什麼)[^\n]+){0,2})/) || [])[1]?.replace(/需要使用者在電腦上登入[。，,]?/g, '').replace(/\s+/g, ' ').trim().slice(0, 200) || '';
 async function browseRounds(job, b, here, engine, res, live) {
   const port = live.port, mine = job.bot.browser === 'mine';
-  for (let depth = 0; depth < 2 && res?.ok; depth++) {
-    const plan = planBrowserRound(res.text, { engine, port, mine, depth });
+  // 4.11 全力模式: no 「最多派兩次」 — the browse rounds go on until the report is enough (BROWSE_MAX_FULL as a safety net)
+  const max = job.full ? BROWSE_MAX_FULL : 2;
+  for (let depth = 0; depth < max && res?.ok; depth++) {
+    const plan = planBrowserRound(res.text, { engine, port, mine, depth, max });
     if (plan.action === 'keep') break;
     if (plan.action === 'strip') { res = { ...res, text: stripBrowserTask(res.text) || '這次的頁面沒有新的結果。' }; break; }
     if (plan.action === 'work') job.didBrowse = true;
@@ -317,7 +384,7 @@ async function browseRounds(job, b, here, engine, res, live) {
       const prompt = engine === 'opencode' ? fitLocal(buildBrowserPrompt(job, task, here, { plain: !!(port && !mine && browserUseReady()) }), 4000) : buildBrowserPrompt(job, task, here);
       const w = await runEngine(engine, prompt, b, job.bot.model, { progress: live.progress, say: live.say, ctl: live.ctl, browser: true, worker: true, files, port });
       if (b.applyBrowser) b.applyBrowser(false);
-      return { w, report: hideSecrets(stripBrowserTask(w?.ok ? w.text : ('瀏覽沒有完成：' + String(w?.text || '沒有報告'))), job).slice(0, 6000) || '瀏覽沒有完成。' };
+      return { w, report: hideSecrets(stripBrowserTask(w?.ok ? w.text : ('瀏覽沒有完成：' + String(w?.text || '沒有報告'))), job).slice(0, job.full ? 20000 : 6000) || '瀏覽沒有完成。' };
     };
     let { w: worker, report } = await work(plan.task), wTokens = worker?.tokens;
     // logged out: one more round only to log back in (remembered account, 「LINE 登入」, a password from 共用資料), then the task
@@ -327,7 +394,7 @@ async function browseRounds(job, b, here, engine, res, live) {
       const again = await work({ url: plan.task.url, prompt: `上一輪停在登入頁（${triedText(report) || '沒寫試過什麼'}）。這一輪先自己登回去，換上一輪沒試過的方法；登入成功就接著做：${plan.task.prompt}` });
       worker = again.w; report = again.report; wTokens = addTokens(wTokens, worker?.tokens);
     }
-    job.seen = ((job.seen || '') + '\n' + report).slice(-8000);
+    job.seen = ((job.seen || '') + '\n' + report).slice(job.full ? -60000 : -8000);
     if (LOGIN_RE.test(report)) {
       const site = (report.match(/https?:\/\/[^\s）)]+/) || [])[0] || '', tried = triedText(report);
       return { ok: true, text: `需要使用者在電腦上登入${site ? '（' + site + '）' : ''}。${tried ? '我先自己試過：' + tried + '。' : '我先自己試過登入，沒有成功。'}登入好之後跟我說一聲。`, tokens: addTokens(res.tokens, wTokens) };
@@ -340,7 +407,7 @@ async function browseRounds(job, b, here, engine, res, live) {
     const follow = [
       '下面是單獨一輪瀏覽交回的文字報告。只根據這份報告回答使用者原本的指示，不要把整頁貼上。',
       '報告裡如果寫了「需要使用者在電腦上登入」，回覆裡照抄這幾個字和網站名稱。',
-      depth + 1 < 2 ? '報告不夠、還要再看已登入的頁面時，可以再寫一次【派瀏覽】到【派完】，而且不要寫【回覆】。夠了就用【回覆】回答。' : '不能再派瀏覽了。直接用【回覆】根據報告回答。',
+      depth + 1 < max ? '報告不夠、還要再看已登入的頁面時，可以再寫一次【派瀏覽】到【派完】，而且不要寫【回覆】。夠了就用【回覆】回答。' : '不能再派瀏覽了。直接用【回覆】根據報告回答。',
       '報告：', report,
       '使用者原本的指示：', job.prompt
     ].join('\n');
@@ -348,7 +415,7 @@ async function browseRounds(job, b, here, engine, res, live) {
     const tokens = addTokens(addTokens(res.tokens, wTokens), next?.tokens);
     if (!next?.ok) return { ok: true, text: report, tokens };
     let text = next.text || '';
-    if (depth + 1 >= 2 || !takeBrowserTask(text)) text = stripBrowserTask(text) || report;
+    if (depth + 1 >= max || !takeBrowserTask(text)) text = stripBrowserTask(text) || report;
     res = { ok: true, text, tokens };
   }
   if (res?.text) res = { ...res, text: stripBrowserTask(res.text) || '這次的頁面沒有新的結果。' };

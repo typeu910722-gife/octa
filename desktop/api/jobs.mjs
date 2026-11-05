@@ -9,11 +9,11 @@ import { memoryFor } from './memory.mjs';
 import { parseProgress } from './progress.mjs';
 import { ROUTINE_SELF, userTurn } from './routines.mjs';
 import { correctionAsk, localNow, scheduleAsk } from './schedule.mjs';
-import { MAX_ASK_DEPTH, MIN, WARM, clean, jobMaxOk, now } from './util.mjs';
+import { FULL_RETRY_MAX, MAX_ASK_DEPTH, MIN, ROUTINE_QUOTA_CAP, clean, fullOn, jobMaxOf, now, retryDelay, warmOf } from './util.mjs';
 
 export const PARTIAL_TAG = '【中止前已完成的部分】'; // same tag as octa-runner.mjs partialNote()
 // a chat job that stopped halfway (no answer for a long time, or the host computer went offline): the same job again,
-// told to continue from what is done, at most MAX_AUTO_RETRY times. Other kinds just fail.
+// told to continue from what is done, at most MAX_AUTO_RETRY times (全力模式: FULL_RETRY_MAX, with a growing pause). Other kinds just fail.
 export async function continueJob(db, U, job, kind, msg) {
   const done = await db
     .prepare("UPDATE jobs SET status='error', finished=?, err_kind=?, err_msg=? WHERE id=? AND status='running'")
@@ -23,7 +23,8 @@ export async function continueJob(db, U, job, kind, msg) {
   const n = (+job.tries || 0) + 1,
     chat = !job.kind || job.kind === 'chat';
   const who = (await db.prepare('SELECT name FROM bots WHERE id=? AND user_id=?').bind(job.bot_id, U).first())?.name || '機器人';
-  if (!chat || n > MAX_AUTO_RETRY || String(job.via || '').includes('"side"')) {
+  const full = fullOn(await getSettings(db, U), job.bot_id);
+  if (!chat || n > (full ? FULL_RETRY_MAX : MAX_AUTO_RETRY) || String(job.via || '').includes('"side"')) {
     await addMsg(db, U, job.conv, job.bot_id, `⚠ ${msg}`, null, null, 'fail');
     if (job.routine)
       await db
@@ -34,7 +35,7 @@ export async function continueJob(db, U, job, kind, msg) {
   }
   const r = await db
     .prepare(
-      'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+      'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook,after) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
     )
     .bind(
       U,
@@ -49,7 +50,8 @@ export async function continueJob(db, U, job, kind, msg) {
       job.id,
       job.via || null,
       job.routine || null,
-      job.hook || null
+      job.hook || null,
+      full && n > MAX_AUTO_RETRY ? now() + retryDelay(n - MAX_AUTO_RETRY) : null
     )
     .run();
   if (job.routine)
@@ -57,7 +59,14 @@ export async function continueJob(db, U, job, kind, msg) {
       .prepare('UPDATE routines SET last_job=? WHERE id=? AND last_job=?')
       .bind(r.meta.last_row_id, job.routine, job.id)
       .run();
-  await addMsg(db, U, job.conv, 'sys', `「${who}」的工作中斷了（${msg}），自動接著做剩下的（第 ${n} 次）。`);
+  const wait = full && n > MAX_AUTO_RETRY ? retryDelay(n - MAX_AUTO_RETRY) : 0;
+  await addMsg(
+    db,
+    U,
+    job.conv,
+    'sys',
+    `「${who}」的工作中斷了（${msg}），${wait ? `${Math.max(1, Math.round(wait / MIN))} 分鐘後` : ''}自動接著做剩下的（第 ${n} 次）。`
+  );
   return true;
 }
 
@@ -78,14 +87,15 @@ export async function nextWork(env, db, U, slots) {
     // one task per bot at a time; showing its browser on screen ('open') never waits; a 旁聊 runs beside the work (one at a time)
     const j = await db
       .prepare(
-        `SELECT * FROM jobs j WHERE user_id=? AND status='pending' AND (j.pc IS NULL OR j.pc=?)
+        `SELECT * FROM jobs j WHERE user_id=? AND status='pending' AND (j.pc IS NULL OR j.pc=?) AND IFNULL(j.after,0)<=?4
       AND (j.kind='open' OR NOT EXISTS (SELECT 1 FROM jobs r WHERE r.user_id=j.user_id AND r.bot_id=j.bot_id AND r.status='running' AND r.kind<>'open'
         AND (IFNULL(j.via,'') LIKE ?3) = (IFNULL(r.via,'') LIKE ?3)))
       ORDER BY (j.kind='open') DESC, IFNULL(j.prio,0) DESC, id LIMIT 1`
       )
-      .bind(U, '', SIDE_LIKE)
-
+      .bind(U, '', SIDE_LIKE, now())
       .first();
+    // 4.11: a routine (nobody waiting on it) is not run when its AI's 5-hour or weekly window is nearly used up
+    if (j && (await deferRoutine(db, U, j))) return nextWork(env, db, U, slots);
     if (j) {
       const claimed = await db
         .prepare("UPDATE jobs SET status='running', started=? WHERE id=? AND status='pending'")
@@ -102,6 +112,54 @@ export async function nextWork(env, db, U, slots) {
   const convName = id => (all?.bots.find(b => b.id === id) || all?.groups.find(g => g.id === id))?.name || '';
   return { job, inbox: inbox.map(f => ({ ...f, convName: convName(f.conv) })), pull };
 }
+// The routine waits (jobs.after) until that window resets; an older waiting run of the same routine makes this one redundant.
+// Returns true when the job was put off (the caller looks for the next one).
+export async function deferRoutine(db, U, j) {
+  if (!j.routine || (j.kind && j.kind !== 'chat')) return false;
+  const st = await getSettings(db, U);
+  const bot = await db.prepare('SELECT engine, model FROM bots WHERE id=? AND user_id=?').bind(j.bot_id, U).first();
+  const eng = (j.eng ? j.eng.split('|')[0] : bot?.engine) || 'claude';
+  const tight = routineQuotaTight(st._usage?.[eng]);
+  if (!tight) return false;
+  const rt = await db.prepare('SELECT name FROM routines WHERE id=? AND user_id=?').bind(j.routine, U).first();
+  const waiting = await db
+    .prepare("SELECT id FROM jobs WHERE user_id=? AND routine=? AND status='pending' AND id<>? AND after IS NOT NULL LIMIT 1")
+    .bind(U, j.routine, j.id)
+    .first();
+  if (waiting) {
+    await db.prepare("DELETE FROM jobs WHERE id=? AND status='pending'").bind(j.id).run();
+    return true;
+  }
+  await db.prepare('UPDATE jobs SET after=? WHERE id=?').bind(tight.until, j.id).run();
+  await addMsg(
+    db,
+    U,
+    j.conv,
+    'sys',
+    `例行任務「${rt?.name || ''}」先延後：AI ${tight.k === '7d' ? '本週' : '5 小時'}額度已用 ${tight.used}%，留給你自己的工作；${hhmm(tight.until)} 額度重置後自動執行。`,
+    null,
+    null,
+    'note'
+  );
+  await bump(db, U);
+  return true;
+}
+// { k, used, until } of the first window at or over ROUTINE_QUOTA_CAP, or null (no report: not throttled)
+export function routineQuotaTight(u, t = now()) {
+  for (const w of u?.windows || []) {
+    if (!Number.isFinite(+w.used) || +w.used < ROUTINE_QUOTA_CAP) continue;
+    const reset = Date.parse(w.reset || '');
+    // the report is up to 10 minutes old; an unknown reset waits an hour
+    return { k: w.k, used: Math.round(+w.used), until: Number.isFinite(reset) && reset > t ? reset + MIN : t + 60 * MIN };
+  }
+  return null;
+}
+export const hhmm = t => {
+  const d = new Date(t),
+    z = n => String(n).padStart(2, '0');
+  const day = new Date(t).toDateString() === new Date().toDateString() ? '' : `${d.getMonth() + 1}/${d.getDate()} `;
+  return `${day}${z(d.getHours())}:${z(d.getMinutes())}`;
+};
 async function jobPayload(env, db, U, job) {
   if (job.kind === 'code') {
     const task = await db.prepare('SELECT * FROM code_tasks WHERE id=? AND user_id=?').bind(job.url, U).first();
@@ -134,8 +192,8 @@ async function jobPayload(env, db, U, job) {
   const conv = group || bot;
   const hist = (
     await db
-      .prepare('SELECT id,by_,text,files,reply FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT 30')
-      .bind(U, job.conv)
+      .prepare('SELECT id,by_,text,files,reply FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT ?')
+      .bind(U, job.conv, fullOn(await getSettings(db, U), job.bot_id) ? 80 : 30)
       .all()
   ).results.reverse();
   const seen = new Map(hist.map(h => [h.id, h]));
@@ -160,6 +218,7 @@ async function jobPayload(env, db, U, job) {
     : [];
   const pathOf = id => where.find(w => w.id === id)?.path || null;
   const st = await getSettings(db, U);
+  const full = fullOn(st, bot.id);
   // its AI ran out of quota recently: start straight on the first backup that still has some
   if (!job.eng && job.kind === 'chat' && bot.fb?.length) {
     const sp = st.spent || {},
@@ -187,7 +246,7 @@ async function jobPayload(env, db, U, job) {
         .first()
     )?.n ?? null;
   // 規則／事實 capped (newest kept), and only the 做事手冊 that look like this task; a used manual counts toward "most used"
-  const mem = memoryFor(st, bot.id, job.kind === 'chat' ? job.prompt : '');
+  const mem = memoryFor(st, bot.id, job.kind === 'chat' ? job.prompt : '', full);
   if (mem.manuals.length) {
     for (const m of (st.manuals || {})[bot.id] || []) if (mem.manuals.some(x => x.name === m.name)) m.used = (+m.used || 0) + 1;
     await putSettings(db, U, st);
@@ -216,8 +275,9 @@ async function jobPayload(env, db, U, job) {
     prompt:
       job.kind === 'chat' && /例行|排程|定時|刪|停用|暫停|取消/.test(job.prompt || '') ? job.prompt + ROUTINE_SELF : job.prompt,
     usageToday,
-    maxMin: jobMaxOk(st.jobMax),
-    warm: WARM.includes(+st.warm) ? +st.warm : 120,
+    full, // 4.11 全力模式: no time / turn / token caps; the runner goes on until the work is done or stuck
+    maxMin: jobMaxOf(st, bot.id), // 0: 不限
+    warm: warmOf(st, bot.id),
     allowed: (st.allow || {})[bot.id] || [],
     ...mem,
     skills: (st.skills || {})[bot.id] || [],
@@ -254,7 +314,7 @@ async function jobPayload(env, db, U, job) {
     sites: Object.entries(st.sites || {})
       .map(([d, l]) => `${d}：\n` + l.map(x => '- ' + x).join('\n'))
       .join('\n')
-      .slice(-6000),
+      .slice(full ? -24000 : -6000),
     lang: st.lang || 'zh-TW',
     connectors: publicConnectors(st),
     colleagues: bots

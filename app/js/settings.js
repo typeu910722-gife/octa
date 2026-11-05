@@ -139,9 +139,15 @@ function warmText(v){return v===0?I18N.t('不待機'):v===-1?I18N.t('永不（�
 SEC.work=async()=>{
   const all=block('sAll','每個例行任務');all.innerHTML=schedList();
   all.querySelectorAll('[data-rgo]').forEach(b=>b.onclick=()=>{const id=b.dataset.rgo;closeSheet();openConv(id)});
-  const job=block('sJob','單件工作最長時間','一件工作最多做多久就中止。機器人只要還在動作、有在回報進度，就不會被提早中止；超過 8 分鐘完全沒動靜才會當成卡住。一次要讀很多頁面時可以調長。');
+  // 4.11 全力模式: on by default; off brings back the economical limits
+  const pw=block('sFull','全力模式','開著：機器人沒有時間、回合和 token 的限制，AI 一直待機，自己一路做到完成或確定做不到才停（需要你核准、回答或登入時會停下等你）。額度用完會等重置後自動繼續；例行任務在額度快用完時自動延後。關掉：恢復省額度的做法（精簡工具、單件工作最長 60 分鐘、待機 2 分鐘、重試最多 2 次）。');
   let st={};try{st=await api('settings')}catch(e){}
-  job.innerHTML=`<select id="jobMax">${[15,30,60,120,180].map(v=>`<option value="${v}" ${(st.jobMax||60)===v?'selected':''}>${v<60?v+' '+I18N.t('分鐘'):v/60+' '+I18N.t('小時')}${v===60?' '+I18N.t('（建議）'):''}</option>`).join('')}</select>`;
+  const full=st.full!==false;
+  pw.innerHTML=toggleRow('scFull','全力模式',full,'會用比較多 AI 額度。每個機器人也可以在「詳細資料 → AI 與模型」單獨設定。');
+  $('scFull').onclick=async()=>{const on=!$('scFull').classList.contains('on');try{await api('settings','PUT',{full:on});S.full=on;S.warm=on?-1:120;swSet($('scFull'),on);toast(I18N.t('已儲存 ✓'));showSection('work')}catch(e){toast(e.message)}};
+  const job=block('sJob','單件工作最長時間','一件工作最多做多久就中止。機器人只要還在動作、有在回報進度，就不會被提早中止；超過 20 分鐘完全沒有回報、而且電腦上的執行器也說它不在做了，才會當成中斷。');
+  const jm=st.jobMax??(full?0:60),opts=full?[0,15,30,60,120,180]:[15,30,60,120,180];
+  job.innerHTML=`<select id="jobMax">${opts.map(v=>`<option value="${v}" ${jm===v?'selected':''}>${v===0?I18N.t('不限'):v<60?v+' '+I18N.t('分鐘'):v/60+' '+I18N.t('小時')}${v===(full?0:60)?' '+I18N.t('（建議）'):''}</option>`).join('')}</select>`;
   $('jobMax').onchange=async e=>{try{await api('settings','PUT',{jobMax:+e.target.value});toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}};
   const rev=block('sRev','每週自我檢討','每週一次，每個有工作的機器人回顧過去 7 天的失敗和被你糾正的事，提出要新增或修改的規則，用「核准」按鈕問你；你按核准才會寫入規則。');
   rev.innerHTML=`${toggleRow('scRev','每週自我檢討',S.review!==false)}<div class="row2"><button type="button" class="ghost sm" id="scRevNow">現在檢討一次</button><span id="scRevMsg" class="hmuted"></span></div>`;

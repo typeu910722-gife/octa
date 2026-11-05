@@ -8,7 +8,7 @@ import { MANUAL_MAX, MEM_KEYS, boardData, weeklyReview } from './memory.mjs';
 import { noteListChange } from './memory-edit.mjs';
 import { sendNotify } from './notify.mjs';
 import { localNow } from './schedule.mjs';
-import { J, JOB_MAX, WARM, clean, err, jobMaxOk, now, uid } from './util.mjs';
+import { J, JOB_MAX, POWER, WARM, clean, err, fullOn, jobMaxOf, now, uid, warmOf } from './util.mjs';
 
 export async function settingsRoutes(c) {
   const { env, db, path, m, url, body, me, U, ok } = c;
@@ -87,8 +87,10 @@ export async function settingsRoutes(c) {
   if (path === 'settings' && m === 'GET') {
     const st = await getSettings(db, U);
     return J({
-      jobMax: jobMaxOk(st.jobMax),
-      warm: WARM.includes(+st.warm) ? +st.warm : 120,
+      full: fullOn(st), // 4.11 全力模式
+      power: st.power || {},
+      jobMax: jobMaxOf(st),
+      warm: warmOf(st),
       shareBrowser: st.shareBrowser !== false,
       notes: st.notes || '',
       notifyAll: !!st.notifyAll,
@@ -102,8 +104,22 @@ export async function settingsRoutes(c) {
     if (body.notifyAll !== undefined) st.notifyAll = !!body.notifyAll;
     if (body.nick !== undefined) st.nick = clean(body.nick, 20); // what the bots call you
 
-    if (body.warm !== undefined && WARM.includes(+body.warm)) st.warm = +body.warm;
-    if (body.jobMax !== undefined && JOB_MAX.includes(+body.jobMax)) st.jobMax = +body.jobMax;
+    // 4.11 全力模式 開／關: the time limit and AI 待機 go back to that mode's defaults (they can still be set after)
+    if (body.full !== undefined) {
+      st.full = !!body.full;
+      delete st.jobMax;
+      delete st.warm;
+    }
+    // per bot: 跟隨全域 (null) / 全力 / 省額度
+    if (body.power && typeof body.power === 'object') {
+      const id = clean(body.power.bot, 64),
+        mode = POWER.includes(body.power.mode) ? body.power.mode : null;
+      st.power = st.power || {};
+      if (id && mode) st.power[id] = mode;
+      else if (id) delete st.power[id];
+    }
+    if (body.warm !== undefined && body.warm !== null && WARM.includes(+body.warm)) st.warm = +body.warm;
+    if (body.jobMax !== undefined && body.jobMax !== null && JOB_MAX.includes(+body.jobMax)) st.jobMax = +body.jobMax;
     if (body.shareBrowser !== undefined) st.shareBrowser = !!body.shareBrowser;
     if (['zh-TW', 'zh-CN', 'en', 'ja'].includes(body.lang)) st.lang = body.lang;
     // per-bot extras kept with the account: 置頂, notifications, memory (📌), skills (🧩)

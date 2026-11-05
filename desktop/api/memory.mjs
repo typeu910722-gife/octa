@@ -54,14 +54,17 @@ export function pickManuals(list, prompt, max = MEM_CAP.manual.n) {
     .slice(0, max)
     .map(x => x.m);
 }
-export function memoryFor(st, botId, prompt) {
-  const manuals = pickManuals((st.manuals || {})[botId], prompt).map(m => ({
+// 4.11 全力模式: everything that is saved goes along (up to what is kept at all), not the economical slice
+const MEM_CAP_FULL = { rule: { n: 200, chars: 20000 }, fact: { n: 200, chars: 20000 }, manual: { n: 5, chars: 4000 } };
+export function memoryFor(st, botId, prompt, full = false) {
+  const cap = full ? MEM_CAP_FULL : MEM_CAP;
+  const manuals = pickManuals((st.manuals || {})[botId], prompt, cap.manual.n).map(m => ({
     name: m.name,
-    steps: String(m.steps || '').slice(0, MEM_CAP.manual.chars)
+    steps: String(m.steps || '').slice(0, cap.manual.chars)
   }));
   return {
-    memory: capList((st.memory || {})[botId], MEM_CAP.rule.n, MEM_CAP.rule.chars),
-    facts: capList((st.facts || {})[botId], MEM_CAP.fact.n, MEM_CAP.fact.chars),
+    memory: capList((st.memory || {})[botId], cap.rule.n, cap.rule.chars),
+    facts: capList((st.facts || {})[botId], cap.fact.n, cap.fact.chars),
     manuals
   };
 }

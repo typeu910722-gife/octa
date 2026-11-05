@@ -118,6 +118,7 @@ test('next_run: fixed times, every N minutes, past midnight, UTC+8', () => {
 
 test('state gives each routine last_run, last_status, last_job, last_text and next_run; done, error and skipped are recorded', async () => {
   const t = await setup();
+  await call(t.db, 'PUT', 'settings', { token: t.token, body: { full: false } });   // 省額度: a failed run is not retried with back-off
   const b = await t.bot('房務');
   const past = t.pastToday();
   if (!past) return;   // the first minute of the day in UTC+8: nothing is past yet

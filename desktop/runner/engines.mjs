@@ -7,7 +7,7 @@ import { storeDir } from './files.mjs';
 import { grokBotEnv, grokBotUnsupported } from './grokbot.mjs';
 import { BU_WORDS, NO_TOOLS_TEXT, browserUseReady, ensureOllamaContext, ollamaCaps, ollamaModel } from './ollama.mjs';
 import { keepBrowserTask } from './prompts.mjs';
-import { JOB_TIMEOUT_MS, OLLAMA_NUM_CTX, QUIET_MS, WIN, q } from './state.mjs';
+import { JOB_TIMEOUT_MS, OLLAMA_NUM_CTX, QUIET_FULL_MS, QUIET_MS, WIN, q } from './state.mjs';
 
 // install: { win, mac } shell commands, or npm: package name (needs Node.js); pre: installed first; login: command that starts sign-in
 export const ENGINES = {
@@ -96,8 +96,9 @@ export async function spawnCli(bin, args, dir, input, opts = {}) {
     const finish = r => { if (done) return; done = true; clearTimeout(timer); clearTimeout(quietTimer); clearTimeout(fallback); resolve(r); };
     const stop = why => { killed = why; killTree(); fallback = setTimeout(() => finish({ code: 1, out: decode(out), err: decode(err) + '\n' + why }), 10000); };
     if (opts.ctl) opts.ctl.kill = killTree;
+    // Infinity (4.11 全力模式, 不限): no time limit at all — only silence (quietMs), 停止 or the end of the work stops it
     const maxMs = opts.maxMs || opts.ctl?.maxMs || JOB_TIMEOUT_MS;
-    const timer = setTimeout(() => stop(`執行超過 ${Math.round(maxMs / 60000)} 分鐘（單件工作最長時間），已中止。`), maxMs);
+    const timer = Number.isFinite(maxMs) && setTimeout(() => stop(`執行超過 ${Math.round(maxMs / 60000)} 分鐘（單件工作最長時間），已中止。`), maxMs);
     // a tool that never answers (e.g. a browser page frozen by a dialog): nothing comes out for minutes
     const quiet = () => {
       if (!opts.quietMs) return;
@@ -206,7 +207,7 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
   writeFileSync(join(dir, 'octa-task.md'), prompt);
   // some CLIs treat another folder as "current" (agy: the store): always give the full path
   const FILE_INSTR = BASE_INSTR.replace('目前資料夾裡的 octa-task.md', `檔案 ${join(dir, 'octa-task.md')}（用讀檔工具讀這個完整路徑）`);   // for CLIs that take the prompt as an argument (avoids Windows length limits)
-  let r, text, paused = false;
+  let r, text, paused = false, session = null;
   switch (engine) {
     case 'codex': {
       const last = join(dir, '.codex-last.txt');
@@ -224,7 +225,7 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
       break;
     }
     case 'gemini': r = await spawnCli('agy', ['-p', FILE_INSTR, '--dangerously-skip-permissions', '--output-format', 'text',
-      '--print-timeout', Math.round((live.ctl?.maxMs || JOB_TIMEOUT_MS) / 60000) + 'm', '--add-dir', store, ...m('--model')], dir, '', { ctl: live.ctl, ...lines }); break;
+      '--print-timeout', (Number.isFinite(live.ctl?.maxMs || JOB_TIMEOUT_MS) ? Math.round((live.ctl?.maxMs || JOB_TIMEOUT_MS) / 60000) : 24 * 60) + 'm', '--add-dir', store, ...m('--model')], dir, '', { ctl: live.ctl, ...lines }); break;
     case 'qwen': r = await spawnCli('qwen', ['--yolo', '--include-directories', store, ...m('-m'), '-p', STDIN_INSTR], dir, prompt, { ctl: live.ctl, ...lines }); break;
     case 'copilot': r = await spawnCli('copilot', ['-p', FILE_INSTR, '-s', '--allow-all-tools', '--allow-all-paths', '--no-color',
       '--additional-mcp-config', '@' + join(dir, 'copilot-mcp.json'), ...m('--model')], dir, '', { ctl: live.ctl, ...lines }); break;
@@ -271,8 +272,9 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
         '--mcp-config', join(dir, useBrowser ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config',
         '--add-dir', store, '--model', model || CLAUDE_DEFAULT_MODEL,
         ...(ses?.id ? (ses.resume ? ['--resume', ses.id] : ['--session-id', ses.id]) : []),
-        '--allowedTools', worker ? WORKER_TOOLS : useBrowser ? DIRECT_ALLOWED : PARENT_ALLOWED, ...(await claudeLean(worker))], dir, prompt, {
-        ctl: live.ctl, quietMs: QUIET_MS,
+        // 4.11 全力模式: no lean flags — every built-in tool, skill and slash command stays available
+        '--allowedTools', worker ? WORKER_TOOLS : useBrowser ? DIRECT_ALLOWED : PARENT_ALLOWED, ...(live.full ? [] : await claudeLean(worker))], dir, prompt, {
+        ctl: live.ctl, quietMs: live.full ? QUIET_FULL_MS : QUIET_MS,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }
           if (e.type === 'system' && e.session_id) sesSeen = e.session_id;   // (a resumed session may get a new id)
@@ -283,6 +285,7 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
       if (paused) return { ok: false, paused: true, session: sesSeen || ses?.id, text: '', tokens: result ? claudeTokens(result.usage) : null };
       if (result) { text = String(result.result || '').trim(); if (result.is_error && r.code === 0) r.code = 1; tokens = claudeTokens(result.usage); }
       else if (r.out && r.out.trim().startsWith('{')) text = '';   // stream with no result: fall back to the error output
+      session = sesSeen || ses?.id || null;   // 4.11: the run until done goes on in this session (--resume)
     }
   }
   text = keepBrowserTask((text || r.out || '').replace(/\x1b\[[0-9;]*m/g, ''));
@@ -296,7 +299,7 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
   if (tokens == null) { const tm = String((r.err || '') + (r.out || '')).match(/tokens used[:\s]*([\d,]+)/i); if (tm) tokens = +tm[1].replace(/,/g, ''); }
   // Exit 0 with only "流量不夠" is not an answer: report it as a failure so the backup runs.
   const refused = r.code === 0 && replyIsProviderRefusal(text);
-  if (r.code === 0 && text && !refused) return { ok: true, text, tokens };
+  if (r.code === 0 && text && !refused) return { ok: true, text, tokens, ...(session ? { session } : {}) };
   const quoted = providerFailureText([text, r.err, r.out]);
   if (refused || quoted) return { ok: false, text: refused ? text : quoted };
   return { ok: false, text: `⚠ ${E.label} 執行失敗：` + failText(r, prompt) };

@@ -2,6 +2,7 @@
 import {
   FAIL_KINDS,
   MAX_AUTO_RETRY,
+  TRANSIENT_KINDS,
   autoRetryable,
   classifyJobFailure,
   classifyModelFailure,
@@ -29,7 +30,7 @@ import {
 import { addJob, addMsg, bump, getSettings, loadAll, putSettings } from './db.mjs';
 import { ENGINE_NAMES, avatarOk, chainIndex, resetAt } from './engines.mjs';
 import { mimeOf, safePath } from './files.mjs';
-import { PARTIAL_TAG } from './jobs.mjs';
+import { PARTIAL_TAG, hhmm } from './jobs.mjs';
 import { REVIEW_TAG, parseManuals, saveManuals, statAdd } from './memory.mjs';
 import { needsYou, sendNotify } from './notify.mjs';
 import { gist, replyMeta, sameSaying } from './reply-meta.mjs';
@@ -44,7 +45,7 @@ import {
   userTurn
 } from './routines.mjs';
 import { applySchedules, routinePlan } from './schedule.mjs';
-import { MAX_ASK_DEPTH, clean, err, now, uid } from './util.mjs';
+import { FULL_RETRY_MAX, MAX_ASK_DEPTH, MIN, clean, err, fullOn, now, retryDelay, uid } from './util.mjs';
 
 export async function runnerDone(c) {
   const { env, db, body, U, ok } = c;
@@ -79,6 +80,7 @@ export async function runnerDone(c) {
     if (b && (!good || refused)) {
       if (refused) good = false;
       const st = await getSettings(db, U);
+      const full = fullOn(st, job.bot_id);
       st.spent = Object.fromEntries(Object.entries(st.spent || {}).filter(([, t]) => t > now()));
       const chain = [b.engine + (b.model ? '|' + b.model : ''), ...(b.fb || [])];
       const current = job.eng || chain[0];
@@ -91,7 +93,8 @@ export async function runnerDone(c) {
         index,
         resetsAt: /resets? in|小時|分鐘/i.test(raw) ? resetAt(raw) : 0,
         now: now(),
-        chain: chain.map(id => ({ id, spentUntil: st.spent[id] || 0 }))
+        chain: chain.map(id => ({ id, spentUntil: st.spent[id] || 0 })),
+        maxTransient: full ? FULL_RETRY_MAX : 2
       });
       const lab = x => {
         const [e, mm] = String(x || '').split('|');
@@ -118,9 +121,10 @@ export async function runnerDone(c) {
         if (!once.meta.changes) return ok(); // the same result was reported twice
         // the second try on the same model carries the reason and asks for another way
         const nextPrompt = decision.action === 'retry' ? retryPrompt(job.prompt, nextTries, fk, raw) : stripRetryNote(job.prompt);
+        const after = full && decision.action === 'retry' && nextTries > 2 ? now() + retryDelay(nextTries - 2) : null;
         await db
           .prepare(
-            'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+            'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook,after) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
           )
           .bind(
             U,
@@ -135,7 +139,8 @@ export async function runnerDone(c) {
             job.id,
             job.via || null,
             job.routine || null,
-            job.hook || null
+            job.hook || null,
+            after
           )
           .run();
         const note =
@@ -143,6 +148,39 @@ export async function runnerDone(c) {
             ? `「${b.name}」的 ${lab(chain[index])} ${why}，改由 ${lab(nextEng)} 接手。已完成的對話會保留，不會重做已完成的步驟。`
             : `「${b.name}」的 ${lab(current)} ${decision.reason === 'rate_limit' ? '被限流，同一個模型再試一次' : '暫時故障，同一個模型再試一次'}（第 ${nextTries} 次）。`;
         await addMsg(db, U, job.conv, 'sys', note);
+        await bump(db, U);
+        return ok();
+      }
+      // 4.11 全力模式: the plan ran out (and no backup has any left): the job waits and goes on by itself when the window resets
+      if (full && decision.action === 'stop' && (decision.reason === 'quota' || decision.reason === 'rate_limit') && !body.stopped) {
+        const until = quotaResumeAt(raw, st._usage?.[(current || '').split('|')[0] || 'claude']);
+        const once = await db
+          .prepare("UPDATE jobs SET status='error', finished=?, result=?, err_kind='quota', err_msg=? WHERE id=? AND status='running'")
+          .bind(now(), clean(raw, 500), clean(raw.replace(/^⚠\s*/, ''), 500), job.id)
+          .run();
+        if (!once.meta.changes) return ok();
+        await db
+          .prepare(
+            'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook,after) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+          )
+          .bind(
+            U,
+            job.conv,
+            job.bot_id,
+            job.chain,
+            quotaPrompt(job.prompt),
+            now(),
+            job.depth || 0,
+            job.eng || null,
+            +job.tries || 0,
+            job.id,
+            job.via || null,
+            job.routine || null,
+            job.hook || null,
+            until
+          )
+          .run();
+        await addMsg(db, U, job.conv, 'sys', `「${b.name}」的 AI 額度用完，${hhmm(until)} 自動繼續。`);
         await bump(db, U);
         return ok();
       }
@@ -160,7 +198,10 @@ export async function runnerDone(c) {
         // timeouts, changed pages, tool errors and unknown errors: the same job again (at most twice),
         // the second time with the reason attached. Quota went to the backup AI above; a sign-in is never retried.
         const n = (+job.tries || 0) + 1;
-        if (['execution', 'tool'].includes(decision.reason) && autoRetryable(fail.kind, raw) && n <= MAX_AUTO_RETRY) {
+        // 4.11 全力模式: a transient kind keeps going (FULL_RETRY_MAX), pausing longer each time after the first two
+        const cap = full && TRANSIENT_KINDS.includes(fail.kind) ? FULL_RETRY_MAX : MAX_AUTO_RETRY;
+        if (['execution', 'tool'].includes(decision.reason) && autoRetryable(fail.kind, raw) && n <= cap) {
+          const wait = n > MAX_AUTO_RETRY ? retryDelay(n - MAX_AUTO_RETRY) : 0;
           const once = await db
             .prepare(
               "UPDATE jobs SET status='error', finished=?, result=?, err_kind=?, err_msg=? WHERE id=? AND status='running'"
@@ -170,7 +211,7 @@ export async function runnerDone(c) {
           if (!once.meta.changes) return ok(); // the same result was reported twice
           await db
             .prepare(
-              'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+              'INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,depth,eng,tries,retry_of,via,routine,hook,after) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
             )
             .bind(
               U,
@@ -185,7 +226,8 @@ export async function runnerDone(c) {
               job.id,
               job.via || null,
               job.routine || null,
-              job.hook || null
+              job.hook || null,
+              wait ? now() + wait : null
             )
             .run();
           await addMsg(
@@ -193,7 +235,7 @@ export async function runnerDone(c) {
             U,
             job.conv,
             'sys',
-            `「${b.name}」這次沒做成（${FAIL_KINDS[fail.kind].label}），自動重試第 ${n} 次${n >= MAX_AUTO_RETRY ? '，這次會換一種方法' : ''}…`
+            `「${b.name}」這次沒做成（${FAIL_KINDS[fail.kind].label}），${wait ? `${Math.max(1, Math.round(wait / MIN))} 分鐘後` : ''}自動重試第 ${n} 次${n >= MAX_AUTO_RETRY ? '，這次會換一種方法' : ''}…`
           );
           await bump(db, U);
           return ok();
@@ -712,6 +754,7 @@ export async function runnerDone(c) {
   if (
     !side &&
     !concluded &&
+    !body.full &&
     round < 1 &&
     !passed(text) &&
     /(還沒|尚未|沒能|未能|無法)[^。\n]{0,8}(完成|核對|查完|核完|查到|整理|列出)|還沒查|先供參考|不能當作完整|不足以/.test(text) &&
@@ -869,3 +912,27 @@ export async function mergeTurn(db, U, job, text, outs, meta) {
     .run();
   return true;
 }
+
+// 4.11: when an exhausted plan can be used again — the CLI's own words first ("limit reached|<epoch>", "resets 3pm",
+// "resets in 2h"), then the runner's last quota report (the fullest window's reset), else in an hour. One minute of margin.
+export function quotaResumeAt(raw, usage, t = now()) {
+  const s = String(raw || '');
+  const epoch = s.match(/limit reached\|(\d{10})\b/i);
+  if (epoch && +epoch[1] * 1000 > t) return +epoch[1] * 1000 + MIN;
+  const clock = s.match(/resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (clock && !/resets?\s+[a-z]{3,}\s+\d/i.test(s)) {
+    let h = +clock[1] % 12;
+    if (clock[3].toLowerCase() === 'pm') h += 12;
+    const d = new Date(t);
+    d.setHours(h, clock[2] ? +clock[2] : 0, 0, 0);
+    if (+d <= t) d.setDate(d.getDate() + 1);
+    return +d + MIN;
+  }
+  if (/resets?\s+(in|[a-z]{3,}\s+\d)|小時|分鐘/i.test(s)) return resetAt(s) + MIN;
+  const full = (usage?.windows || []).filter(w => +w.used >= 95 && Date.parse(w.reset || '') > t).sort((a, b) => +b.used - +a.used)[0];
+  if (full) return Date.parse(full.reset) + MIN;
+  return t + 60 * MIN;
+}
+// the job that goes on after the pause: from where it stopped, nothing redone
+export const quotaPrompt = p =>
+  `${stripRetryNote(String(p || '').replace(/\n\n（額度恢復後自動繼續）[\s\S]*$/, ''))}\n\n（額度恢復後自動繼續）上一次做到一半時 AI 額度用完了。先看對話紀錄和你的工作紀錄：已經做完、已經送出的不要重做，只把剩下的做完，最後回報時寫清楚整件事的結果。`;

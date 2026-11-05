@@ -61,7 +61,8 @@ function nextLive(chain, index, now) {
 
 // chain items: { id, spentUntil }. index is the model that just failed.
 // tries counts retries already used on that same model.
-export function decideRoute({ kind, tries = 0, chain = [], index = 0, resetsAt = 0, now = Date.now() } = {}) {
+// maxTransient: how many times a temporary outage is retried on the same model (4.11 全力模式 gives more, with back-off)
+export function decideRoute({ kind, tries = 0, chain = [], index = 0, resetsAt = 0, now = Date.now(), maxTransient = 2 } = {}) {
   const later = nextLive(chain, index, now);
   if (kind === 'cancelled') return { action: 'stop', reason: 'cancelled', message: '已停止，不會再重試或改用備援。' };
   if (kind === 'auth') return { action: 'stop', reason: 'auth', message: '這個 AI 的登入或 API Key 無效。請到「AI 連線」檢查憑證，系統不會重複呼叫。' };
@@ -83,7 +84,7 @@ export function decideRoute({ kind, tries = 0, chain = [], index = 0, resetsAt =
     return { action: 'retry', reason: 'rate_limit', message: '遇到 HTTP 429，用同一個模型再試一次。' };
   }
   if (kind === 'transient') {
-    if (tries < 2) return { action: 'retry', reason: 'transient', message: '服務暫時故障，用同一個模型再試一次。' };
+    if (tries < maxTransient) return { action: 'retry', reason: 'transient', message: '服務暫時故障，用同一個模型再試一次。' };
     if (later < 0) return { action: 'stop', reason: 'transient', message: '服務暫時故障，重試與備援都已用完。任務進度已保留。' };
     return { action: 'switch', index: later, reason: 'transient', message: '服務暫時故障，有限次重試後改用備援。' };
   }
@@ -111,6 +112,9 @@ export const FAIL_KINDS = {
   unknown: { label: '其他錯誤', why: '執行時發生錯誤。', next: '看錯誤訊息後按重試；一直失敗就換個說法交代。', retry: true }
 };
 export const MAX_AUTO_RETRY = 2;
+// 4.11 全力模式: kinds that are worth trying again and again (with a pause) — the work itself was fine, something around it
+// failed for a while. A changed page, a missing list or an unknown error repeats the same way, so those keep the cap.
+export const TRANSIENT_KINDS = ['timeout', 'interrupted', 'tool_error', 'browser'];
 // A program that crashes the same way every time (a failing test, a syntax error) is not helped by running it again.
 const SAME_EVERY_TIME = /AssertionError|SyntaxError|ReferenceError|TypeError:|tests? failed|測試(沒過|失敗)/i;
 export const autoRetryable = (kind, text) => !!FAIL_KINDS[kind]?.retry && !(kind === 'unknown' && SAME_EVERY_TIME.test(String(text || '')));

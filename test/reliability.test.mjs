@@ -117,6 +117,7 @@ test('only the second retry carries the reason, and notes never stack', () => {
 
 test('a timeout retries twice (the second time with the reason), then fails with a reason, notification and 重試', async () => {
   const { db, token, bot, rt } = await setup('rel1');
+  await call(db, 'PUT', 'settings', { token, body: { full: false } });   // 省額度: at most two retries (全力模式: test/full-mode.test.mjs)
   await call(db, 'POST', 'messages', { token, body: { conv: bot, text: '查今天的訂單' } });
   const j1 = await claim(db, rt);
   sent.length = 0;

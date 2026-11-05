@@ -9,7 +9,7 @@ import { progressOf, sameProgress } from './progress.mjs';
 import { approvalNag, weeklyReview } from './memory.mjs';
 import { fireEvent, fireRoutines, tidyOnce } from './routines.mjs';
 import { runnerDone } from './runner-done.mjs';
-import { CHUNK, J, MIN, WAIT_MS, clean, err, jobMaxOk, now, uid } from './util.mjs';
+import { CHUNK, J, MIN, WAIT_MS, clean, err, jobMaxOf, now, uid } from './util.mjs';
 
 export async function runnerRoutes(c) {
   const { env, db, path, m, body, me, U, ok } = c;
@@ -47,7 +47,7 @@ export async function runnerRoutes(c) {
     if (path === 'runner/next' && m === 'POST') {
       let changed = await fireRoutines(env, db, U);
       // stale running jobs become errors
-      const maxMin = jobMaxOk((await getSettings(db, U)).jobMax);
+      const stNow = await getSettings(db, U);
       // the host just (re)started: whatever was running belonged to the old run and will never report back.
       // Those jobs continue (from what is done) instead of sitting in 處理中 until they time out.
       if (body.boot) {
@@ -59,23 +59,36 @@ export async function runnerRoutes(c) {
         ).results;
         for (const j of lost) if (await continueJob(db, U, j, 'interrupted', '主機電腦斷線或重新啟動')) changed++;
       }
-      const stale = (
+      // 4.11: what the runner says it is still working on (a heartbeat-silent job it still holds is checked, not killed)
+      const holding = new Set((Array.isArray(body.running) ? body.running : []).map(Number).filter(Number.isFinite));
+      const cands = (
         await db
           .prepare(
-            "SELECT * FROM jobs WHERE user_id=? AND status='running' AND ((kind='chat' AND (IFNULL(beat,started)<? OR (started<? AND IFNULL(paused,0)=0))) OR (started<? AND IFNULL(paused,0)=0))"
+            "SELECT * FROM jobs WHERE user_id=? AND status='running' AND (IFNULL(beat,started)<? OR (started<? AND IFNULL(paused,0)=0))"
           )
-          .bind(U, now() - 20 * MIN, now() - (maxMin + 5) * MIN, now() - Math.max(3 * 60, maxMin + 5) * MIN)
+          .bind(U, now() - 20 * MIN, now() - 10 * MIN)
           .all()
       ).results;
-      for (const s of stale) {
+      for (const s of cands) {
+        const chat = s.kind === 'chat';
+        // 0: 不限 (全力模式) — only the heartbeat decides; other kinds of work keep their 3-hour bound
+        const maxMin = jobMaxOf(stNow, s.bot_id);
         const quietLong = now() - (s.beat || s.started) >= 20 * MIN;
+        const tooLong = !s.paused && (chat ? maxMin > 0 && s.started < now() - (maxMin + 5) * MIN : s.started < now() - Math.max(3 * 60, maxMin + 5) * MIN);
+        const lost = chat && quietLong && !holding.has(s.id);
+        if (chat && quietLong && !lost && !tooLong) {
+          // 20 minutes without a report, but the runner says it still has it: alive (e.g. one very long tool call)
+          await db.prepare('UPDATE jobs SET beat=? WHERE id=?').bind(now(), s.id).run();
+          continue;
+        }
+        if (!lost && !tooLong) continue;
         if (
           await continueJob(
             db,
             U,
             s,
-            quietLong ? 'interrupted' : 'timeout',
-            quietLong ? '超過 20 分鐘沒有任何回報（主機可能睡眠或斷線）' : `執行超過 ${maxMin} 分鐘（單件工作最長時間）`
+            lost ? 'interrupted' : 'timeout',
+            lost ? '超過 20 分鐘沒有任何回報（主機可能睡眠或斷線）' : `執行超過 ${maxMin} 分鐘（單件工作最長時間）`
           )
         )
           changed++;
@@ -96,6 +109,15 @@ export async function runnerRoutes(c) {
       for (;;) {
         const u2 = await db.prepare('SELECT rev FROM users WHERE id=?').bind(U).first(),
           r = u2?.rev ?? 0;
+        // 4.11: a job that was waiting for a time (quota reset, retry back-off) is due now
+        const due = await db
+          .prepare("SELECT 1 AS n FROM jobs WHERE user_id=? AND status='pending' AND after IS NOT NULL AND after<=? LIMIT 1")
+          .bind(U, now())
+          .first();
+        if (due) {
+          await db.prepare("UPDATE jobs SET after=NULL WHERE user_id=? AND status='pending' AND after<=?").bind(U, now()).run();
+          rev = null;
+        }
         if (r !== rev) {
           // something changed since the last look
           rev = r;

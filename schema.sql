@@ -132,7 +132,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   outs TEXT,                     -- 4.5: JSON [{id,name,mime}] files the reply came with (hook work only)
   paused INTEGER,                -- 4.7: 1 = the user pressed 暫停 (the runner holds before its next step)
   prio INTEGER,                  -- 4.8: 插隊 — queued jobs with a higher number are taken first (then by id)
-  quse TEXT                      -- 4.8: JSON {eng, k:'5h', before, after}: the plan quota used (%) before and after this run
+  quse TEXT,                     -- 4.8: JSON {eng, k:'5h', before, after}: the plan quota used (%) before and after this run
+  after INTEGER                  -- 4.11: not before this time (quota pause until the window resets, retry back-off, deferred routine)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created);

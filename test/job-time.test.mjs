@@ -78,6 +78,7 @@ async function setup() {
 // 單件工作最長時間: a long job that keeps sending heartbeats is not cut at 20 minutes; a silent one is
 test('a job that keeps reporting runs past 20 minutes; a silent one is stopped; the limit is a setting', async () => {
   const t = await setup();
+  await call(t.db, 'PUT', 'settings', { token: t.token, body: { full: false } });   // 省額度 (全力模式 below)
   const a = await t.bot('長工');
   assert.equal((await call(t.db, 'GET', 'settings', { token: t.token })).data.jobMax, 60);
   await t.say(a, '讀兩館所有 LINE 對話');

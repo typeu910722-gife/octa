@@ -2,7 +2,7 @@
 import os from 'node:os';
 import { join } from 'node:path';
 
-export const VERSION = '19.3';
+export const VERSION = '20.0';
 // OpenCode's own system prompt + browser tool schemas run ~16–18K tokens per call (seen in Ollama's server log);
 // at 4K/8K Ollama cut every prompt down to ~2K, the model lost its instructions and tools and looped until the job timed out.
 export const OLLAMA_NUM_CTX = 24576;
@@ -11,6 +11,14 @@ export const PW_MCP = '@playwright/mcp@0.0.83';
 export const WIN = process.platform === 'win32';
 export const JOB_TIMEOUT_MS = 60 * 60 * 1000;   // default 單件工作最長時間; the server sends the user's choice as job.maxMin
 export const QUIET_MS = 8 * 60 * 1000;   // Claude streams an event at least every step; 8 silent minutes means a tool is stuck
+// 4.11 全力模式: one tool call may legitimately run long (a 10-minute Bash, a slow page); silence still ends a stuck run
+export const QUIET_FULL_MS = 20 * 60 * 1000;
+// 4.11 全力模式, run until done: the runner continues the same session while a turn ends without a result.
+// CONT_GUARD continuations in a row with no new action, step, file or (for AIs whose tools are not visible) new words: stuck.
+// CONT_MAX is only a last safety net against a runaway loop.
+export const CONT_GUARD = 4, CONT_MAX = 60;
+// AI 待機 sessions kept at once (least recently used goes first); fewer when the computer is short of memory
+export const WARM_MAX = 6, WARM_MAX_LOW_MEM = 3, LOW_MEM_BYTES = 1.5 * 1024 ** 3;
 export const CHUNK = 900_000;
 
 // Shared runner state. Other modules read these live bindings; only configure() (called by startRunner) changes them.

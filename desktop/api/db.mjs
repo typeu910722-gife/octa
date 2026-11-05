@@ -215,7 +215,9 @@ const MIGRATIONS = [
   // 4.8: one message per turn (a follow-up rewrites the reply: upd), 插隊 (prio), the quota a run used (quse)
   'ALTER TABLE messages ADD COLUMN upd INTEGER',
   'ALTER TABLE jobs ADD COLUMN prio INTEGER',
-  'ALTER TABLE jobs ADD COLUMN quse TEXT'
+  'ALTER TABLE jobs ADD COLUMN quse TEXT',
+  // 4.11 全力模式: a queued job that waits until a time (quota resets, retry back-off, a deferred routine)
+  'ALTER TABLE jobs ADD COLUMN after INTEGER'
 ];
 const schemaReady = new WeakSet();
 export async function ensureSchema(db) {
@@ -248,7 +250,8 @@ export async function ensureSchema(db) {
         'SELECT meta FROM messages',
         'SELECT paused FROM jobs',
         'SELECT upd FROM messages',
-        'SELECT prio, quse FROM jobs'
+        'SELECT prio, quse FROM jobs',
+        'SELECT after FROM jobs'
       ].map(q => db.prepare(q + ' LIMIT 0'))
     );
     schemaReady.add(db);

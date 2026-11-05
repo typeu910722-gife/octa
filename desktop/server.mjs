@@ -107,7 +107,8 @@ const MIGRATIONS = ["ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'c
   'CREATE INDEX IF NOT EXISTS hook_job_routine ON hook_jobs(routine, created)',
   // 4.7: markers taken out of a reply (notes, result, approval card) and 暫停
   'ALTER TABLE messages ADD COLUMN meta TEXT', 'ALTER TABLE jobs ADD COLUMN paused INTEGER',
-  'ALTER TABLE messages ADD COLUMN upd INTEGER', 'ALTER TABLE jobs ADD COLUMN prio INTEGER', 'ALTER TABLE jobs ADD COLUMN quse TEXT'];
+  'ALTER TABLE messages ADD COLUMN upd INTEGER', 'ALTER TABLE jobs ADD COLUMN prio INTEGER', 'ALTER TABLE jobs ADD COLUMN quse TEXT',
+  'ALTER TABLE jobs ADD COLUMN after INTEGER'];
 
 // ---------- helpers ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8' };

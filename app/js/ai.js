@@ -17,8 +17,8 @@ function quotaHtml(k,U){   // how much of the plan is left, as far as each servi
 SEC.ai=focus=>{
   const el=block('aiBlock','','機器人用這台電腦上登入的 AI 工作，用的是你自己的帳號或訂閱。連一個就能開始，之後在每個機器人的「詳細資料 → AI 與模型」選要用哪個。');
   el.id='aiCards';openAI(focus);
-  const warm=block('sWarm','AI 待機','機器人回覆完後，讓它的 AI 保持待機多久。待機中再傳訊息會直接接著做，回覆快很多；待機越久越省等待時間，但會一直佔用一點電腦記憶體。目前只有 Claude 支援待機。');
-  warm.innerHTML=`<select id="warmSel" aria-label="AI 待機">${WARMS.map(v=>`<option value="${v}" ${(S.warm??120)===v?'selected':''}>${warmText(v)}${v===120?' '+I18N.t('（建議）'):''}${v===0?' — '+I18N.t('每則訊息都重新啟動 AI（最省記憶體，最慢）'):v===-1?' — '+I18N.t('一直待機，回覆最快；電腦記憶體較少時不建議'):''}</option>`).join('')}</select>`;
+  const warm=block('sWarm','AI 待機','機器人回覆完後，讓它的 AI 保持待機多久。待機中再傳訊息會直接接著做，回覆快很多；待機越久越省等待時間，但會一直佔用一點電腦記憶體。目前只有 Claude 支援待機。全力模式預設一直待機：同時最多 6 個機器人待機（電腦記憶體不足時 3 個），最久沒用的先休息；電腦睡眠過、換 AI 或壓縮對話後會重新開始。');
+  warm.innerHTML=`<select id="warmSel" aria-label="AI 待機">${WARMS.map(v=>`<option value="${v}" ${(S.warm??(S.full!==false?-1:120))===v?'selected':''}>${warmText(v)}${v===(S.full!==false?-1:120)?' '+I18N.t('（建議）'):''}${v===0?' — '+I18N.t('每則訊息都重新啟動 AI（最省記憶體，最慢）'):v===-1?' — '+I18N.t('一直待機，回覆最快；電腦記憶體較少時不建議'):''}</option>`).join('')}</select>`;
   $('warmSel').onchange=async e=>{try{await api('settings','PUT',{warm:+e.target.value});S.warm=+e.target.value;toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}};
   const gb=block('sGrok','Grok Bot ⇄ OCTA','Grok Bot 在 xAI 的雲端工作，可以把任務交派給 OCTA 的機器人：它呼叫一個「交接網址」，指定的 OCTA 機器人就會在你的電腦上自動開始做，結果出現在那個機器人的對話裡。');
   paintGrok(gb)};

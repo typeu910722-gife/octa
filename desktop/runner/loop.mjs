@@ -17,6 +17,7 @@ import { closeSession, sessions, testJob } from './warm.mjs';
 // ---------- main loop: long-poll, so work starts the moment it's sent ----------
 export let active = 0, failures = 0, stopped = true, polling = false, standby = false;
 const fileWork = new Set();
+const holding = new Set();   // 4.11: job ids this runner is working on (the server checks a silent job against it, not kills it)
 function codeSummary(state) {
   const { events, context, ...rest } = state || {};
   rest.diff = String(rest.diff || '').slice(0, 20000);
@@ -76,11 +77,11 @@ async function codingProbe() {
   return codingCache;
 }
 function runJob(job) {
-  active++;
+  active++; holding.add(job.id);
   const handlers = { code: codeJob, open: openJob, test: testJob, list: listJob, install: installJob, export: exportJob, import: importJob };
   (Object.hasOwn(handlers, job.kind) ? handlers[job.kind] : chatJob)(job)
     .catch(e => { log('任務錯誤：' + e.message); return api('runner/done', { id: job.id, ok: false, text: '⚠ ' + e.message }).catch(() => { }); })
-    .finally(() => { active--; kick(); });
+    .finally(() => { active--; holding.delete(job.id); kick(); });
 }
 function doFiles(inbox = [], pull = []) {
   for (const f of inbox) if (!fileWork.has(f.id)) { fileWork.add(f.id); saveUpload(f).catch(e => log('附件儲存失敗：' + e.message)).finally(() => fileWork.delete(f.id)); }
@@ -114,7 +115,7 @@ async function loop() {
       const slots = MAX - active;
       poll = new AbortController();
       const r = await api('runner/next', {
-        wait: true, slots, max: MAX, ...(await reports()), ...(booting ? { boot: true } : {}),
+        wait: true, slots, max: MAX, running: [...holding], ...(await reports()), ...(booting ? { boot: true } : {}),
         version: VERSION, app: cfg.appVersion || undefined, store: storeDir()
       }, 'POST', slots ? undefined : poll.signal).catch(e => {
         if (e.name === 'AbortError' && poll.signal.aborted) return {};

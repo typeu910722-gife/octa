@@ -8,7 +8,7 @@ import { ownApproval, routinesOut } from './routines.mjs';
 import { localNow } from './schedule.mjs';
 import { busyRows, queueInfo } from './progress.mjs';
 import { metaOf } from './reply-meta.mjs';
-import { DAY, J, WAIT_MS, WARM, clean, err, now } from './util.mjs';
+import { DAY, J, WAIT_MS, clean, err, fullOn, now, warmOf } from './util.mjs';
 
 // what is running now. bg: the bot is answering / doing what another bot asked (its avatar shows it chatting);
 // job: the id, for the work panel's timeline; created: when it was queued
@@ -141,7 +141,9 @@ export async function chatRoutes(c) {
       nsk: Object.fromEntries(
         Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])
       ),
-      warm: WARM.includes(+st.warm) ? +st.warm : 120,
+      warm: warmOf(st),
+      full: fullOn(st),
+      power: st.power || {},
       models: st._models || null,
       focus: st.focus?.conv ? { conv: st.focus.conv, dev: st.focus.dev || '', at: st.focus.at || 0 } : null,
       gask,
