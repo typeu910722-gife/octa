@@ -13,13 +13,19 @@ test('a tunnel that stops answering (Cloudflare 1033) is replaced after two miss
     await srv.desktopApi('remote', { on: true });
     const first = srv.tunnelUrl();
     assert.match(first, /^https:\/\/t\d\.trycloudflare\.com$/);
-    const dead = async () => new Response('<html>Error 1033</html>', { status: 530 });
+    const dead = async () => new Response('<html>Error 1033 Cloudflare Tunnel error</html>', { status: 530 });
     const alive = async () => new Response('ok', { headers: { 'x-octa-host': 'abc' } });
-    assert.equal(await srv.tunnelCheck(alive), true);
-    assert.equal(await srv.tunnelCheck(dead), false);
-    assert.equal(srv.tunnelUrl(), first, 'one miss is not enough');
-    assert.equal(await srv.tunnelCheck(dead), false);
-    assert.notEqual(srv.tunnelUrl(), first, 'a new tunnel was started');
+    const offline = async () => { throw new TypeError('fetch failed: getaddrinfo ENOTFOUND'); };
+    const t0 = Date.now(), later = { now: t0 + 10 * 60000 };
+    assert.equal(await srv.tunnelCheck(dead, { now: t0 }), true, 'a brand-new tunnel gets a few minutes');
+    assert.equal(await srv.tunnelCheck(alive, later), true);
+    for (let i = 0; i < 5; i++) assert.equal(await srv.tunnelCheck(offline, later), true, 'our own DNS or network failing never replaces the tunnel');
+    assert.equal(srv.tunnelUrl(), first);
+    assert.equal(await srv.tunnelCheck(dead, later), false);
+    assert.equal(await srv.tunnelCheck(dead, later), false);
+    assert.equal(srv.tunnelUrl(), first, 'two misses are not enough');
+    assert.equal(await srv.tunnelCheck(dead, later), false);
+    assert.notEqual(srv.tunnelUrl(), first, 'Cloudflare saying 1033 three times starts a new tunnel');
     assert.match(srv.tunnelUrl(), /trycloudflare/);
   } finally { await srv.close?.(); rmSync(dir, { recursive: true, force: true }); }
 });

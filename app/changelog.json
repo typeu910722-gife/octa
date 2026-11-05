@@ -1,5 +1,18 @@
 [
  {
+  "v": "4.10.1",
+  "date": "2026-11-05",
+  "notes": [
+   "修正手機一直被登出：4.9.3 的連線檢查在電腦自己的網路或 DNS 一時連不到時，誤以為手機連線壞了而一直換新網址，手機就跟著斷線、看起來像被登出。現在只有 Cloudflare 明確回報通道失效（Error 1033）連續三次才會換"
+  ],
+  "notes_en": [
+   "Fixed phones being signed out over and over: the 4.9.3 tunnel check mistook the computer's own brief network or DNS hiccups for a broken tunnel and kept changing the address. It now renews only after Cloudflare itself reports the tunnel gone (Error 1033) three times in a row"
+  ],
+  "notes_ja": [
+   "スマホが何度もログアウトされる問題を修正：4.9.3 の接続チェックが PC 自身のネットワーク／DNS の一時的な不調をトンネル故障と誤認し、アドレスを何度も変えていました。Cloudflare がトンネル消失（Error 1033）を 3 回続けて返したときだけ更新します"
+  ]
+ },
+ {
   "v": "4.10.0",
   "date": "2026-11-04",
   "notes": [

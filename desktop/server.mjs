@@ -373,17 +373,27 @@ export async function startServer(opts = {}) {
   function stopTunnel() { const p = tunnel.proc; Object.assign(tunnel, { url: '', proc: null }); p?.kill(); }
   // A quick tunnel can stay running but stop working (sleep, network change: Cloudflare then answers 1033 for its
   // address). Check it from outside every minute; two misses in a row → start a new one (new address, published again).
-  let tunnelMiss = 0;
-  async function tunnelCheck(fetchImpl = fetch) {
+  // Only Cloudflare itself saying the tunnel is gone counts (HTTP 530 / "Error 1033"). Our own network or DNS failing to
+  // reach the brand-new address (Windows caches "not found" for minutes) is not the tunnel's fault and must not make
+  // us throw away a working tunnel — that would change the address again and again and sign phones out each time.
+  let tunnelMiss = 0, tunnelBorn = 0;
+  async function tunnelCheck(fetchImpl = fetch, { now = Date.now() } = {}) {
     const url = tunnel.url;
     if (!url || !tunnel.proc || tunnel.starting || !/^https:\/\//.test(url)) { tunnelMiss = 0; return true; }
-    let ok = false;
+    if (!tunnelBorn) tunnelBorn = now;
+    if (now - tunnelBorn < 3 * 60000) return true;   // a new quick tunnel needs a little while to be reachable everywhere
+    let dead = false;
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000);
-    try { const r = await fetchImpl(url + '/__octa_ping', { signal: ctl.signal, cache: 'no-store' }); ok = r.ok && r.headers.has('x-octa-host'); }
-    catch { ok = false; } finally { clearTimeout(t); }
-    if (ok) { tunnelMiss = 0; return true; }
-    if (++tunnelMiss < 2 || tunnel.url !== url) return false;
-    tunnelMiss = 0;
+    try {
+      const r = await fetchImpl(url + '/__octa_ping', { signal: ctl.signal, cache: 'no-store' });
+      if (!(r.ok && r.headers.has('x-octa-host'))) {
+        const body = r.ok ? '' : String(await r.text().catch(() => '')).slice(0, 4000);
+        dead = r.status === 530 || /error\s*1033|cloudflare tunnel error/i.test(body);
+      }
+    } catch { dead = false; } finally { clearTimeout(t); }
+    if (!dead) { tunnelMiss = 0; return true; }
+    if (++tunnelMiss < 3 || tunnel.url !== url) return false;
+    tunnelMiss = 0; tunnelBorn = 0;
     const wasRemote = remote.on;
     stopTunnel(); Object.assign(remote, { on: false, url: '', code: '' });
     try { await ensureTunnel(); if (wasRemote) await setRemote(true); } catch { }
