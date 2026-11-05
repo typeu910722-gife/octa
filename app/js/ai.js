@@ -100,3 +100,6 @@ async function testAI(k){
     if(aiTests[k]==='run')aiTests[k]={ok:false,text:I18N.t('三分鐘內沒有結果，請看電腦上的 OCTA 是否開著。')};
   }catch(e){aiTests[k]={ok:false,text:e.message}}
   await refresh();if($('aiCards'))openAI(k);if(typeof paintTour==='function')paintTour()}
+// 4.11 全力模式 for one bot (詳細資料 → AI 與模型): 跟隨全域 / 全力 / 省額度
+const powerHtml=id=>`<label class="field"><span>全力模式</span><select id="sf_power" data-nodirty>${[['','跟隨全域設定'],['full','全力（做到完成為止）'],['save','省額度']].map(([v,l])=>`<option value="${v}"${((S.power||{})[id]||'')===v?' selected':''}>${l}</option>`).join('')}</select></label><p class="hmuted">全力：不限時間與回合、AI 一直待機，自己做到完成或確定做不到，會用比較多 AI 額度。省額度：精簡工具、最長 60 分鐘、待機 2 分鐘。</p>`;
+function powerBind(id){const el=$('sf_power');if(!el)return;el.onchange=async e=>{const v=e.target.value;el.disabled=true;try{await api('settings','PUT',{power:{bot:id,mode:v||null}});S.power={...(S.power||{})};if(v)S.power[id]=v;else delete S.power[id];toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}el.disabled=false}}
