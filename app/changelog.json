@@ -1,5 +1,18 @@
 [
  {
+  "v": "4.11.1",
+  "date": "2026-11-05",
+  "notes": [
+   "全力模式帶給 AI 的對話紀錄改為最近 50 則（原本 80 則）"
+  ],
+  "notes_en": [
+   "Full-power mode now gives the AI the last 50 messages (was 80)"
+  ],
+  "notes_ja": [
+   "全力モードで AI に渡す会話履歴を直近 50 件に（従来 80 件）"
+  ]
+ },
+ {
   "v": "4.11.0",
   "date": "2026-11-05",
   "notes": [

@@ -193,7 +193,7 @@ async function jobPayload(env, db, U, job) {
   const hist = (
     await db
       .prepare('SELECT id,by_,text,files,reply FROM messages WHERE user_id=? AND conv=? ORDER BY id DESC LIMIT ?')
-      .bind(U, job.conv, fullOn(await getSettings(db, U), job.bot_id) ? 80 : 30)
+      .bind(U, job.conv, fullOn(await getSettings(db, U), job.bot_id) ? 50 : 30)
       .all()
   ).results.reverse();
   const seen = new Map(hist.map(h => [h.id, h]));
