@@ -1,5 +1,30 @@
 [
  {
+  "v": "4.11.0",
+  "date": "2026-11-05",
+  "notes": [
+   "新增「全力模式」（預設開）：不限每次用量、不限工作時間，AI 待機一直開著，機器人會自己一直做到「✅ 完成」或確定「⚠ 沒做成」",
+   "一輪講完還沒做完會自動接著做；連續幾輪沒有新進展就判定卡住並說明原因",
+   "額度用完會自動暫停，額度恢復後自己接著做；例行任務在額度剩不到一成時延後，不吃掉你自己要用的額度",
+   "暫時的錯誤會一直重試（間隔逐漸拉長）；寄信、付款、刪除照樣要你核准",
+   "設定 → 工作與排程可關掉全力模式回到省額度做法，每個機器人也能單獨設定"
+  ],
+  "notes_en": [
+   "New Full-power mode (on by default): no per-run usage cap, no job time limit, AI standby always on — bots keep working until ✅ done or certain ⚠ not done",
+   "When a turn ends before the job is finished it continues automatically; several rounds without progress count as stuck, with the reason",
+   "Out of quota pauses the job and resumes when the quota resets; routines wait when less than 10% is left so your own work keeps its quota",
+   "Temporary errors keep retrying with growing pauses; sending, paying and deleting still need your approval",
+   "Turn it off in Settings → Work & schedules to go back to saving quota, or set it per bot"
+  ],
+  "notes_ja": [
+   "新しい「全力モード」（既定オン）：1 回の使用量・作業時間の上限なし、AI 待機は常時オン。✅ 完了か ⚠ 未完了が確定するまで作業を続けます",
+   "1 ターンで終わらなければ自動で続行。数ターン進展がなければ行き詰まりと判断し理由を表示",
+   "残量切れは一時停止し、回復後に自動で再開。定期タスクは残り 1 割を切ると延期し、あなたの作業分を残します",
+   "一時的なエラーは間隔を延ばしながら再試行。送信・支払い・削除は従来どおり承認が必要",
+   "設定 → 作業とスケジュールでオフにすると節約モードに戻せます。ボットごとの設定も可能"
+  ]
+ },
+ {
   "v": "4.10.1",
   "date": "2026-11-05",
   "notes": [
