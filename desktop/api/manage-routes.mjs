@@ -135,7 +135,7 @@ export async function manageRoutes(c) {
         color,
         body.browser === 'mine' ? 'mine' : null,
         now(),
-        fbOk(body.fb),
+        engine === 'grokcloud' ? '[]' : fbOk(body.fb),
         autonomyOk(body.autonomy)
       )
       .run();
@@ -156,7 +156,10 @@ export async function manageRoutes(c) {
       if (NAME_SPACE.test(name) && name !== old?.name) return err(NAME_SPACE_ERR); // an old name with spaces may stay until it is renamed
       const engine = engineOk(body.engine);
       if (engine === 'grokbot' && grokBotOff(env) && old?.engine !== 'grokbot') return err(GROKBOT_WIN); // a bot that already had it keeps its setting (its jobs explain why they can't run)
-      const fb = body.fb === undefined ? JSON.stringify(old?.fb || []) : fbOk(body.fb);
+      // Grok Bot（雲端）: the point is to use no Claude/GPT quota — switching to it drops the backup AIs; they come back only
+      // when the person adds one again afterwards (a later save that sends fb while already on Grok Bot（雲端）)
+      let fb = body.fb === undefined ? JSON.stringify(old?.fb || []) : fbOk(body.fb);
+      if (engine === 'grokcloud' && old?.engine !== 'grokcloud') fb = '[]';
       const autonomy = body.autonomy === undefined ? old?.autonomy || null : autonomyOk(body.autonomy);
       const color = body.color === undefined ? old?.color || null : colorOk(body.color); // left out: keep the colour it has
       if (color === undefined) return err('顏色不正確');

@@ -374,3 +374,11 @@ test('the app: Grok Bot（雲端）on the AI page, the Windows card points to it
   assert.match(ai, /使用你的 Grok Bot 額度/);
   void fnSrc;
 });
+
+test('Grok Bot（雲端） never quietly uses another AI: switching drops backups, and a bot not set up yet is not handed to a backup', async () => {
+  const src = (await import('node:fs')).readFileSync(new URL('../desktop/api/manage-routes.mjs', import.meta.url), 'utf8');
+  assert.match(src, /engine === 'grokcloud' && old\?\.engine !== 'grokcloud'\) fb = '\[\]'/);
+  assert.match(src, /engine === 'grokcloud' \? '\[\]' : fbOk\(body\.fb\)/);
+  const gc = (await import('node:fs')).readFileSync(new URL('../desktop/api/grokcloud.mjs', import.meta.url), 'utf8');
+  assert.match(gc, /kind !== 'not_logged_in' \? \(bot\?\.fb/);
+});

@@ -264,7 +264,8 @@ export async function gcBody(env, db, U, job, p, r) {
 // backup AI for this bot themselves (詳細資料 → 備援 AI), which then takes over like any backup.
 async function gcFail(env, db, U, job, text, kind = 'api') {
   const bot = (await loadAll(db, U)).bots.find(b => b.id === job.bot_id);
-  const fb = !job.eng && kind !== 'timeout' ? (bot?.fb || []).find(x => !String(x).startsWith(GC)) : null;
+  // not set up yet (no webhook): never hand it to another AI — that would quietly spend Claude/GPT quota
+  const fb = !job.eng && kind !== 'timeout' && kind !== 'not_logged_in' ? (bot?.fb || []).find(x => !String(x).startsWith(GC)) : null;
   if (fb) {
     const moved = await db
       .prepare("UPDATE jobs SET status='error', finished=?, err_kind=?, err_msg=?, ext=NULL WHERE id=? AND status='running'")

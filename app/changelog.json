@@ -1,5 +1,18 @@
 [
  {
+  "v": "4.14.2",
+  "date": "2026-11-06",
+  "notes": [
+   "Grok Bot（雲端）不再偷用 Claude／GPT：還沒貼好 Webhook 時直接提醒你設定，不交給備援 AI；機器人改成 Grok Bot（雲端）時會一併拿掉備援 AI"
+  ],
+  "notes_en": [
+   "Grok Bot (cloud) no longer falls back to Claude/GPT: if the webhook isn't set up yet it tells you instead of handing the job to a backup AI, and switching a bot to Grok Bot (cloud) removes its backup AIs"
+  ],
+  "notes_ja": [
+   "Grok Bot（クラウド）が Claude／GPT に切り替わらないように：Webhook 未設定ならバックアップ AI に回さず設定を案内し、ボットを Grok Bot（クラウド）に変えるとバックアップ AI も外します"
+  ]
+ },
+ {
   "v": "4.14.1",
   "date": "2026-11-06",
   "notes": [
