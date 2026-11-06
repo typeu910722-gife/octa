@@ -165,13 +165,24 @@ export async function pairWith(url, code, { fetch = globalThis.fetch } = {}) {
 }
 // the app on the host's address, signed in with this phone's token (in the fragment, never sent to a server)
 // (4.14.1 sh=1: shown inside /go; theme: the look the app had last time, so the first paint matches)
+// 4.14.1 what the app on the phone keeps (look, language, what it has read): the app's storage belongs to its address,
+// which changes with every restart, so /go keeps a copy and hands it to the next address (app/index.html, same keys)
+export const PREF_KEYS = ["octa_lang", "octa_theme", "octa_accent", "octa_accent_css", "octa_fs", "octa_density", "octa_cw", "octa_sidew", "octa_chatw", "octa_seafx", "octa_lowpower", "octa_seen_v", "ebot_guided", "octa_seen", "octa_failseen", "octa_nag", "octa_order", "octa_rail", "octa_folded", "octa_seafold", "octa_wsfold", "octa_ovf", "octa_lseg"];
+export function cleanPrefs(o) {
+  const out = {};
+  if (!o || typeof o !== 'object') return out;
+  let size = 0;
+  for (const k of PREF_KEYS) { const v = o[k]; if (typeof v === 'string' && v.length <= 4000 && (size += v.length) <= 12000) out[k] = v; }
+  return out;
+}
+export const encodePrefs = o => { const c = cleanPrefs(o); return Object.keys(c).length ? b64uEncode(enc.encode(JSON.stringify(c))) : ''; };
 // (n: a new number each time the frame is reloaded — the same address with only the fragment changed would not reload)
-export function appUrl(url, { t, web, go, retry, sh, theme, n }) {
+export function appUrl(url, { t, web, go, retry, sh, theme, n, p }) {
   const qs = new URLSearchParams();
   if (/^(light|dark|sea)$/.test(theme || '')) qs.set('theme', theme);
   if (n) qs.set('n', String(n));
   const q = qs.toString() ? '?' + qs : '';
-  return url.replace(/\/+$/, '') + '/' + q + buildFragment({ t, web, retry, go, sh: sh ? 1 : '' });
+  return url.replace(/\/+$/, '') + '/' + q + buildFragment({ t, web, retry, go, sh: sh ? 1 : '', p: sh ? encodePrefs(p) : '' });
 }
 
 // ---------- 4.14.1 /go keeps the app inside itself ----------
@@ -195,14 +206,14 @@ export function shellAccept(ev, currentUrl, frameWindow) {
 // the shell's brain (no DOM: go.html draws it). show({ mode: 'app' | 'wait', url, src, reload, why })
 //   why while waiting: 'lost' (stopped answering, nothing known yet) | 'update' | 'restart' | 'quit' | 'down' |
 //   'off' | 'relay' | 'unpaired'
-export function createShell({ host, save = () => { }, show, go, web = '', retry = '', theme = '', fetch = globalThis.fetch, relay = RELAY,
+export function createShell({ host, save = () => { }, show, go, web = '', retry = '', theme = '', prefs = () => ({}), fetch = globalThis.fetch, relay = RELAY,
   now = () => Date.now(), schedule = (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); }, visible = () => true }) {
   const st = { mode: '', url: '', why: '', since: 0, ready: false, ticks: 0 };
   let cancel = null, busy = null, once = { web, retry }, loads = 0;
   const opts = { fetch, relay };
   const later = (fn, ms) => { cancel?.(); cancel = schedule(() => { cancel = null; return fn(); }, ms); };
   function srcOf(url) {
-    const s = appUrl(url, { t: host.t, go, web: once.web, retry: once.retry, sh: 1, theme, n: ++loads });
+    const s = appUrl(url, { t: host.t, go, web: once.web, retry: once.retry, sh: 1, theme, n: ++loads, p: prefs() });
     once = { web: '', retry: '' };   // a notice's bot opens once, not again after every restart
     return s;
   }

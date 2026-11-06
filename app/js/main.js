@@ -24,7 +24,7 @@ async function start(){$('pair').hidden=true;
     boot.set(50,I18N.t('連不上 OCTA，重試中…'));setTimeout(start,3000);return}
   if(cur)await loadMsgs(cur,'first').catch(()=>{});
   $('app').hidden=false;
-  toShell('ready',{title:document.title});shellLook();   // 4.14.1: /go takes its cover away
+  toShell('ready',{title:document.title});shellLook();shellPrefs();   // 4.14.1: /go takes its cover away
   focusBrowser();
   boot.set(100,I18N.t('完成'));boot.hide();
   render(true);live();scrDeepLink();viaStart();

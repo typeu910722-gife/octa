@@ -199,6 +199,23 @@ test('postMessage: /go hears only the address its frame shows; the app talks onl
   assert.match(html, /location\.replace\(url\);   \/\/ an OCTA from before 4\.14\.1/, 'older hosts still open directly');
 });
 
+test('the phone\'s look and what it has read come along to the next address (only those keys, never the token)', () => {
+  const p = GO.encodePrefs({ octa_theme: 'dark', octa_lang: 'ja', octa_seen_v: '4.14.1', ebot_token: 'SECRET', octa_go: 'https://evil.example/go', octa_draft_x: 'x'.repeat(10) });
+  const back = JSON.parse(Buffer.from(p, 'base64url').toString('utf8'));
+  assert.deepEqual(back, { octa_lang: 'ja', octa_theme: 'dark', octa_seen_v: '4.14.1' });
+  assert.equal(GO.encodePrefs({ octa_seen: 'x'.repeat(5000) }), '', 'nothing too big');
+  const src = GO.appUrl('https://a.trycloudflare.com', { t: 'T'.repeat(40), go: 'https://octa.yzprojecttw.com/go', sh: 1, p: { octa_theme: 'sea' } });
+  assert.equal(new URLSearchParams(new URL(src).hash.slice(1)).get('p'), GO.encodePrefs({ octa_theme: 'sea' }), 'in the fragment: never sent to a server');
+  assert.equal(new URLSearchParams(new URL(GO.appUrl('https://a.trycloudflare.com', { t: 'T'.repeat(40), p: { octa_theme: 'sea' } })).hash.slice(1)).get('p'), null, 'only inside /go');
+  // the same keys in the app (what it sends) and in index.html (what it restores, before the first paint)
+  const keep = JSON.parse(scripts['api.js'].match(/const SHELL_KEEP=(\[[^\]]+\]);/)[1]);
+  assert.deepEqual(keep, GO.PREF_KEYS);
+  const html = readFileSync(join(repo, 'app/index.html'), 'utf8');
+  assert.equal(html.match(/K=\/\^\(([^)]+)\)\$\//)[1], GO.PREF_KEYS.join('|'));
+  assert.ok(!GO.PREF_KEYS.some(k => /token|_go$|_dev$/.test(k)));
+  assert.match(html, /localStorage\.getItem\(k\)===null\)localStorage\.setItem/, 'what this address already has wins');
+});
+
 test('direct mode (bookmarks, desktop browsers): the app goes back to /go as soon as its address is gone', () => {
   const api = scripts['api.js'];
   assert.match(api, /if\(Date\.now\(\)-last<15000\)return false;/, 'not once a minute any more: a short guard against loops');

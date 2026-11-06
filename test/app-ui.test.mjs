@@ -12,7 +12,7 @@ test('index.html is markup only and loads every script and stylesheet that exist
   assert.equal(html.match(/<style/g), null, 'no inline styles block');
   const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
   assert.equal(inline.length, 1, 'only the before-first-paint look script is inline');
-  assert.ok(inline[0][1].length < 960);   // 4.9: + the 深海 look
+  assert.ok(inline[0][1].length < 2100);   // 4.9: + the 深海 look; 4.14.1: + the phone's look carried over by /go
   for (const f of scriptNames) assert.ok(scripts[f], f + ' exists');
   assert.deepEqual([...scriptNames].sort(), Object.keys(scripts).sort(), 'every script in app/js is loaded');
   for (const f of styleNames) assert.ok(existsSync(join(root, 'app', 'css', f)), f);

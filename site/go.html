@@ -90,7 +90,7 @@ html.shell .wrap.first{background:var(--bg)}
 <iframe id="frame" hidden title="OCTA" allow="camera; microphone; clipboard-read; clipboard-write; fullscreen; screen-wake-lock; display-capture" referrerpolicy="no-referrer"></iframe>
 <noscript><p style="text-align:center">需要開啟 JavaScript。</p></noscript>
 <script type="module">
-import { RELAY, parseFragment, loadHost, saveHost, mergeHost, locate, pairWith, appUrl, STORE_KEY, createShell, shellAccept, shellOk } from '/go-core.js';
+import { RELAY, parseFragment, loadHost, saveHost, mergeHost, locate, pairWith, appUrl, STORE_KEY, createShell, shellAccept, shellOk, cleanPrefs } from '/go-core.js';
 
 // ---------- words (繁體中文 first; English, 日本語, 简体中文 follow the phone's language) ----------
 const L = (() => { const l = (navigator.language || 'zh-TW').toLowerCase(); return l.startsWith('ja') ? 'ja' : /^zh-(cn|sg|hans)/.test(l) ? 'zh-CN' : l.startsWith('zh') ? 'zh-TW' : 'en'; })();
@@ -176,7 +176,7 @@ const chip = () => host ? `<div class="host">${IC.pc}<span>${hostName()}</span><
 function paintFoot() {
   foot.innerHTML = host ? `<span>${t('privacy')}</span><br><button class="lnk" id="forget">${t('forget')}</button>` : `<span>${t('privacy')}</span>`;
   const f = document.getElementById('forget');
-  if (f) f.onclick = () => { if (confirm(W.forgetQ[IDX].replace('{name}', host?.n || W.pc[IDX]))) { S.removeItem(STORE_KEY); host = null; stopTimer(); if (shell) { shell.stop(); shell = null; frame.src = 'about:blank'; frame.hidden = true; document.documentElement.classList.remove('shell'); } cover(true); none(); } };
+  if (f) f.onclick = () => { if (confirm(W.forgetQ[IDX].replace('{name}', host?.n || W.pc[IDX]))) { S.removeItem(STORE_KEY); S.removeItem(PREFS_KEY); S.removeItem(LOOK_KEY); prefs = {}; host = null; stopTimer(); if (shell) { shell.stop(); shell = null; frame.src = 'about:blank'; frame.hidden = true; document.documentElement.classList.remove('shell'); } cover(true); none(); } };
 }
 function busy(key) {
   view.innerHTML = `${hero('idle', '', true)}<h1>${t(key)}</h1>${chip()}`;
@@ -228,6 +228,8 @@ function ready(url, inside) {
 const wrap = document.querySelector('.wrap'), frame = document.getElementById('frame');
 const direct = new URLSearchParams(location.search).has('direct');
 const LOOK_KEY = 'octa_go_look';
+const PREFS_KEY = 'octa_go_prefs';
+let prefs = {}; try { prefs = cleanPrefs(JSON.parse(S.getItem(PREFS_KEY) || '{}')); } catch { }
 let look = {}; try { look = JSON.parse(S.getItem(LOOK_KEY) || '{}') || {}; } catch { }
 const themeMeta = [...document.querySelectorAll('meta[name="theme-color"]')];
 function paintLook() {
@@ -262,7 +264,7 @@ function shellUp() {
   document.documentElement.classList.add('shell');
   paintLook();
   shell = createShell({
-    host, go: goBack, web, retry, theme: look.theme || '', relay: RELAY_URL,
+    host, go: goBack, web, retry, theme: look.theme || '', relay: RELAY_URL, prefs: () => prefs,
     save: h => { host = h; saveHost(S, h); },
     visible: () => !document.hidden,
     show({ mode, src, why }) {
@@ -291,6 +293,7 @@ addEventListener('message', e => {
     try { S.setItem(LOOK_KEY, JSON.stringify(look)); } catch { }
     return paintLook();
   }
+  if (d.type === 'prefs') { prefs = cleanPrefs(d.prefs); try { S.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { } return; }
   if (d.type === 'ready' && typeof d.title === 'string') document.title = d.title.slice(0, 80) || 'OCTA';
   shell.message(d);
   const st = shell.state();

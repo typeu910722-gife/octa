@@ -22,6 +22,11 @@ function toShell(type,data){if(!SHELL)return false;try{window.parent.postMessage
 // from /go: only from the page around this one, at its exact origin
 if(SHELL)addEventListener('message',e=>{if(e.origin!==SHELL_ORIGIN||e.source!==window.parent)return;const d=e.data||{};if(d.octa!==1)return;
   if(d.type==='wake'){toShell('alive');if(typeof awake==='function')awake()}});
+// what /go carries to the next address for this phone (index.html restores it before the first paint; same keys there)
+const SHELL_KEEP=["octa_lang","octa_theme","octa_accent","octa_accent_css","octa_fs","octa_density","octa_cw","octa_sidew","octa_chatw","octa_seafx","octa_lowpower","octa_seen_v","ebot_guided","octa_seen","octa_failseen","octa_nag","octa_order","octa_rail","octa_folded","octa_seafold","octa_wsfold","octa_ovf","octa_lseg"];
+function shellPrefs(){if(!SHELL)return;const prefs={};for(const k of SHELL_KEEP){const v=store.get(k);if(v!=null&&v.length<=4000)prefs[k]=v}toShell('prefs',{prefs})}
+if(SHELL){document.addEventListener('visibilitychange',()=>{if(document.hidden)shellPrefs()});setInterval(shellPrefs,30000);
+  const set0=store.set;store.set=(k,v)=>{set0(k,v);if(SHELL_KEEP.includes(k)){clearTimeout(shellPrefs.t);shellPrefs.t=setTimeout(shellPrefs,400)}}}
 // the look of the page around the app follows the app (its background behind the safe areas, the theme next time)
 function shellLook(){if(!SHELL)return;try{const c=el=>getComputedStyle(el).backgroundColor,ok=v=>v&&!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(v);
   toShell('look',{bg:[c(document.body),c(document.documentElement)].find(ok)||'',theme:store.get('octa_theme')||''})}catch(e){}}

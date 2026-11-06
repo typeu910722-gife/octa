@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <!-- look, text size, density, chat width, sidebar width and accent before first paint (data-theme only when the person picked one) -->
 <script>
+// 4.14.1 inside the phone's /go page: what this phone chose and has seen (look, language, read messages) comes along to
+// this computer's new address in the fragment (#…&p=); only these keys, and only where this address has nothing yet
+(function(){try{var h=location.hash,m=/[#&]p=([A-Za-z0-9_-]{1,16000})(&|$)/.exec(h);if(!m||!/[#&]sh=1(&|$)/.test(h)||window.parent===window)return;
+var s=m[1].replace(/-/g,'+').replace(/_/g,'/'),b=atob(s+'==='.slice((s.length+3)%4)),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
+var o=JSON.parse(new TextDecoder().decode(u)),K=/^(octa_lang|octa_theme|octa_accent|octa_accent_css|octa_fs|octa_density|octa_cw|octa_sidew|octa_chatw|octa_seafx|octa_lowpower|octa_seen_v|ebot_guided|octa_seen|octa_failseen|octa_nag|octa_order|octa_rail|octa_folded|octa_seafold|octa_wsfold|octa_ovf|octa_lseg)$/;for(var k in o)if(K.test(k)&&typeof o[k]==='string'&&o[k].length<=4000&&localStorage.getItem(k)===null)localStorage.setItem(k,o[k])}catch(e){}})();
 (function(){try{var d=document.documentElement,L=localStorage,q=new URLSearchParams(location.search).get('theme'),s=localStorage.getItem('octa_theme');var t=/^(light|dark|sea)$/.test(q)?q:s;if(t==='light'||t==='dark')d.setAttribute('data-theme',t);if(t==='sea')d.setAttribute('data-theme',t);if(window.octaDesktop)d.classList.add('desk');
 var f=localStorage.getItem('octa_fs');var map={s:.93,m:1,l:1.12,xl:2};var z=map[f];if(z==null){var n=parseFloat(f);if(n>=70&&n<=200)z=n/100}if(z){d.style.setProperty('--fz',z<1?1:z);if(z<1)d.style.zoom=z;var a=z>=1.6?'xl':z>=1.08?'l':z<=.8?'xs':z<=.95?'s':'';a&&d.setAttribute('data-fs',a)}
 L.octa_density=='compact'&&d.setAttribute('data-density','compact');(a=L.octa_cw)&&d.setAttribute('data-cw',a);(a=+L.octa_sidew)>=220&&d.style.setProperty('--side-w',a+'px');
