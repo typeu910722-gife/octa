@@ -1,5 +1,27 @@
 [
  {
+  "v": "4.14.0",
+  "date": "2026-11-06",
+  "notes": [
+   "新增 AI「Grok Bot（雲端）」：機器人的工作全部交給 Grok Bot 在它的雲端電腦上做，不用 Claude、GPT、Gemini 額度，Windows 也能用",
+   "設定：在 Grok Bot 建一個 Webhook 例行任務、貼上 OCTA 給的說明，再把它的網址和金鑰貼回 OCTA，按「測試連線」",
+   "Grok Bot 做完會把結果和檔案傳回 OCTA 對話；寄信付款等動作照樣先跳核准卡",
+   "Windows 上原本的 Grok Bot 機器人可以一鍵改用 Grok Bot（雲端）"
+  ],
+  "notes_en": [
+   "New AI \"Grok Bot (cloud)\": the bot's work is done by Grok Bot on its own cloud computer — no Claude, GPT or Gemini quota, works on Windows too",
+   "Setup: create a Webhook routine in Grok Bot, paste OCTA's instructions, paste its URL and key back into OCTA and press Test connection",
+   "Grok Bot sends results and files back into the OCTA chat; sending and paying still ask for approval first",
+   "On Windows, bots on the old Grok Bot engine can switch to Grok Bot (cloud) in one tap"
+  ],
+  "notes_ja": [
+   "新しい AI「Grok Bot（クラウド）」：作業をすべて Grok Bot のクラウド PC で実行。Claude・GPT・Gemini の残量を使わず、Windows でも使えます",
+   "設定：Grok Bot で Webhook 定期タスクを作り OCTA の説明を貼り付け、URL とキーを OCTA に戻して「接続テスト」",
+   "Grok Bot は結果とファイルを OCTA のチャットに返します。送信・支払いは従来どおり承認カードを表示",
+   "Windows で旧 Grok Bot エンジンのボットはワンタップで Grok Bot（クラウド）に切替可能"
+  ]
+ },
+ {
   "v": "4.13.0",
   "date": "2026-11-06",
   "notes": [
