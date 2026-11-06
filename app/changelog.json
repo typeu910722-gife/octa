@@ -1,5 +1,24 @@
 [
  {
+  "v": "4.13.0",
+  "date": "2026-11-06",
+  "notes": [
+   "新增「擴充工具箱」（設定 → 技能與工具，預設關閉）：打開後機器人可以用去背（rembg）、圖片放大（Real-ESRGAN）、語音轉字幕並燒進影片（whisper.cpp）、自動剪掉空白（auto-editor）、批次處理圖片",
+   "有 NVIDIA 顯示卡的電腦可以一鍵安裝 ComfyUI，在自己電腦免費生圖（FLUX、SDXL）和生影片（Wan，需要 12GB 以上顯示卡記憶體）；大型下載會先問你",
+   "所有工具都從官方來源下載並核對檔案，不需要管理員權限，可以隨時移除"
+  ],
+  "notes_en": [
+   "New Extra toolbox (Settings → Skills & tools, off by default): when on, bots can remove backgrounds (rembg), upscale images (Real-ESRGAN), transcribe and burn in subtitles (whisper.cpp), cut silences (auto-editor) and batch-edit images",
+   "Computers with an NVIDIA card can install ComfyUI in one click to generate images (FLUX, SDXL) and video (Wan, needs 12 GB+ VRAM) locally for free; big downloads ask first",
+   "Every tool comes from its official source with a verified checksum, needs no admin rights and can be removed any time"
+  ],
+  "notes_ja": [
+   "新しい「拡張ツール箱」（設定 → スキルとツール、既定オフ）：オンにすると背景除去（rembg）、画像拡大（Real-ESRGAN）、文字起こしと字幕焼き込み（whisper.cpp）、無音カット（auto-editor）、画像の一括処理が使えます",
+   "NVIDIA GPU 搭載 PC は ComfyUI をワンクリック導入でき、画像（FLUX・SDXL）や動画（Wan、VRAM 12GB 以上）を無料でローカル生成。大きなダウンロードは事前に確認",
+   "すべて公式配布元からチェックサム検証付きで導入、管理者権限不要、いつでも削除可能"
+  ]
+ },
+ {
   "v": "4.12.0",
   "date": "2026-11-06",
   "notes": [
