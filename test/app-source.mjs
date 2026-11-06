@@ -34,7 +34,7 @@ export function secSrc(k) {
   return 'SEC.' + rest.slice(0, b < 0 ? undefined : b);
 }
 // the plain functions (app/js/pure.js), loaded on their own
-export const pure = new Function(scripts['pure.js'] + '\nreturn { APPR, apprDecision, apprOwn, apprImpact, apprStrip, rtStatus, memberState, ASKRE, askText, askOpts, verCmp, nameProblem, pairCode, freeName, PALETTE, OC_DEFAULT, colorHex, accentOf, botState, msgPlace, bgKey, scrMap, octaFrag, goLink, apprFields, progOf, progView, parseNotes, msgMeta, msgView, noteChips, foldReply, collabItems, collabWait, minsOf, jobOutcome, firstSent, gistOf, resultBody, sameText, needTag, queueOrder, queueView, etaText, quotaWins, quotaTone, runUse };')();
+export const pure = new Function(scripts['pure.js'] + '\nreturn { APPR, apprDecision, apprOwn, apprImpact, apprStrip, rtStatus, memberState, ASKRE, askText, askOpts, verCmp, nameProblem, pairCode, freeName, PALETTE, OC_DEFAULT, colorHex, accentOf, botState, msgPlace, bgKey, scrMap, octaFrag, goLink, shellOrigin, apprFields, progOf, progView, parseNotes, msgMeta, msgView, noteChips, foldReply, collabItems, collabWait, minsOf, jobOutcome, firstSent, gistOf, resultBody, sameText, needTag, queueOrder, queueView, etaText, quotaWins, quotaTone, runUse };')();
 // what the page shows for a key in a language (exact entries, then the patterns)
 export function tr(lang, s) {
   const d = dict[lang]; if (d.t[s] !== undefined) return d.t[s];

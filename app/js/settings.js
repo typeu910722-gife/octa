@@ -68,8 +68,9 @@ SEC.browser=async()=>{
 /* ---------- 通知 ---------- */
 SEC.noti=async()=>{
   const dev=block('sDev','這個裝置','機器人回覆時，在這個裝置跳出通知（不在那個對話裡或視窗在背景時）。手機要把 OCTA 加到主畫面才收得到。');
-  const perm='Notification' in window?Notification.permission:'unsupported';
-  dev.innerHTML=toggleRow('nDev','在這個裝置跳出通知',notiOn()&&perm==='granted','',perm==='unsupported'?' disabled':'')+(perm==='denied'?'<p class="note-box warn">瀏覽器封鎖了通知，請在網址列左邊的網站設定裡允許通知。</p>':perm==='unsupported'?'<p class="hmuted">這個瀏覽器不支援通知。</p>':'');
+  // 4.14.1 inside /go the app is a frame of another site: phones' browsers don't let a frame ask for notifications
+  const perm=SHELL?'shell':'Notification' in window?Notification.permission:'unsupported';
+  dev.innerHTML=toggleRow('nDev','在這個裝置跳出通知',notiOn()&&perm==='granted','',perm==='unsupported'||perm==='shell'?' disabled':'')+(perm==='shell'?'<p class="hmuted">'+esc(I18N.t('從手機主畫面的 OCTA 捷徑打開時，手機不讓網頁跳出通知；有新回覆時會在畫面上提示。要在背景收到通知，請設定下面的 Telegram 或 LINE。'))+'</p>':perm==='denied'?'<p class="note-box warn">瀏覽器封鎖了通知，請在網址列左邊的網站設定裡允許通知。</p>':perm==='unsupported'?'<p class="hmuted">這個瀏覽器不支援通知。</p>':'');
   $('nDev').onclick=async()=>{const want=!$('nDev').classList.contains('on');
     if(want&&Notification.permission!=='granted'){const p=await Notification.requestPermission().catch(()=>'denied');if(p!=='granted'){toast(I18N.t('沒有取得通知權限'));return showSection('noti')}}
     store.set(NOTI_KEY,want?'1':'0');swSet($('nDev'),want);

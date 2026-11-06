@@ -2038,4 +2038,5 @@ T.update({
  'Grok Bot 設定與測試': ('Grok Bot setup & test', 'Grok Bot の設定とテスト'),
  '不用 Claude、ChatGPT 的額度（除非你自己設定備援 AI）；使用你的 Grok Bot 額度。': ('Uses no Claude or ChatGPT quota (unless you set a backup AI yourself) — it uses your Grok Bot allowance.', 'Claude や ChatGPT の枠は使いません（自分で予備 AI を設定した場合を除く）。Grok Bot の利用枠を使います。'),
  '在 Grok Bot 雲端電腦上': ('On Grok Bot’s cloud computer', 'Grok Bot のクラウドコンピューター上'),
+ '從手機主畫面的 OCTA 捷徑打開時，手機不讓網頁跳出通知；有新回覆時會在畫面上提示。要在背景收到通知，請設定下面的 Telegram 或 LINE。': ('When OCTA is opened from the home-screen shortcut, the phone doesn’t let the page show notifications; new replies show up on screen instead. For notifications in the background, set up Telegram or LINE below.', 'ホーム画面の OCTA ショートカットから開いた場合、スマホはページからの通知を許可しません。新しい返信は画面上でお知らせします。バックグラウンドで通知を受け取るには、下の Telegram か LINE を設定してください。'),
 })

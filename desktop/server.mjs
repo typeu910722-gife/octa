@@ -114,13 +114,13 @@ const MIGRATIONS = ["ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'c
 
 // ---------- helpers ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8' };
-function serveStatic(req, res) {
+function serveStatic(req, res, extra) {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (p === '/') p = '/index.html';
   const f = normalize(join(WEB, p));
   if (!f.startsWith(WEB) || !existsSync(f)) { res.writeHead(404); return res.end('Not found'); }
   // 4.9: app/vendor/ files carry their version in the name (three-0.170.0…): the phone keeps them instead of fetching 700 KB again
-  res.writeHead(200, { 'content-type': MIME[extname(f)] || 'application/octet-stream', 'cache-control': p.startsWith('/vendor/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'x-content-type-options': 'nosniff' });
+  res.writeHead(200, { 'content-type': MIME[extname(f)] || 'application/octet-stream', 'cache-control': p.startsWith('/vendor/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'x-content-type-options': 'nosniff', ...(extra || {}) });
   res.end(readFileSync(f));
 }
 async function toRequest(req, base) {
@@ -312,7 +312,7 @@ export async function startServer(opts = {}) {
   const remoteSrv = http.createServer(async (req, res) => {
     try {
       // is the tunnel still alive (the /go page asks too: which computer is this)
-      if (req.url === '/__octa_ping') { res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'no-store', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'x-octa-host, x-octa-phone', 'x-octa-host': linking?.link().id || '', 'x-octa-phone': remote.on ? 'on' : 'off' }); return res.end('ok'); }
+      if (req.url === '/__octa_ping') { res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'no-store', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'x-octa-host, x-octa-phone, x-octa-shell', 'x-octa-shell': '1', 'x-octa-host': linking?.link().id || '', 'x-octa-phone': remote.on ? 'on' : 'off' }); return res.end('ok'); }
       // the /go page pairs a phone that scanned this computer's QR (the pairing code is in the QR)
       if (req.url === '/api/pair' && req.headers.origin === goOrigin) {
         res.setHeader('access-control-allow-origin', goOrigin); res.setHeader('vary', 'origin');
@@ -333,7 +333,8 @@ export async function startServer(opts = {}) {
       if (!remote.on && !pc) { res.writeHead(503); return res.end('遠端已關閉'); }
       if (!hosting) { res.writeHead(503); return res.end('遠端已關閉'); }
       if (linking?.handing() && req.method !== 'GET') return json(res, HANDING, 503);
-      if (!req.url.startsWith('/api/')) return serveStatic(req, res);
+      // 4.14.1: the app may be shown inside the phone's /go page (the OCTA site), and nowhere else
+      if (!req.url.startsWith('/api/')) return serveStatic(req, res, { 'content-security-policy': `frame-ancestors 'self' ${goOrigin}` });
       if (req.url.startsWith('/api/desktop/') || req.url.startsWith('/api/runner')) { res.writeHead(403); return res.end(); }
       await callApi(req, res, {
         ...base, runnerOnline: () => Date.now() - runnerSeen < 60000,
@@ -732,6 +733,8 @@ export async function startServer(opts = {}) {
     url: `http://127.0.0.1:${localPort}`, remoteUrl: `http://127.0.0.1:${remotePort}`, dataDir, webDir: WEB, runnerPath: RUNNER, apiPath: API, loadRunner,
     desktopApi: (p, body) => callDesktop(p, body), getStore: () => hooks.getStore(), installEngine: k => hooks.installEngine(k),
     cloudImport, link: linking, remotePort,
+    // 4.14.1: before quitting / installing an update — the phones' /go page shows 電腦正在更新 and waits for the new address
+    announceRestart: why => linking.announceRestart(why, { phones: remote.on }),
     // 4.5: before this computer's data is deleted — say goodbye to linked computers, close the tunnel and the database
     async wipeShutdown() {
       clearInterval(phoneTimer); clearInterval(gcTimer);
@@ -752,6 +755,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const s = await startServer({ onNotify: t => console.log('🔔 ' + t) });
   console.log(`OCTA 已啟動：${s.url}　資料夾：${s.dataDir}`);
   if (!process.argv.includes('--no-open')) openExternal(s.url);
-  const bye = async () => { await s.close(); process.exit(0); };
+  const bye = async () => { await s.announceRestart('quit').catch(() => { }); await s.close(); process.exit(0); };
   process.on('SIGINT', bye); process.on('SIGTERM', bye);
 }

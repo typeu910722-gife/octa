@@ -165,6 +165,22 @@ export function createLinking(ctx) {
       Object.assign(phonePub, { url, at: Date.now(), error: '', ok: Date.now() });
     } catch (e) { Object.assign(phonePub, { url, error: e.message, at: Date.now() - REPUBLISH_MS + 5 * 60000 }); }   // try again in 5 minutes
   }
+  // 4.14.1: about to quit, restart or install an update — tell the phones (and the linked computers) right away, so /go
+  // shows 電腦正在更新／重新啟動 and keeps looking for the new address quickly. A few seconds at most (quitting waits).
+  async function announceRestart(why, { phones = true, timeout = 2500 } = {}) {
+    const l = link();
+    if (role() !== 'host' || handing || !l.secret) return { phones: false, computers: false };
+    const url = ctx.tunnel.current() || phonePub.url || pub.url;
+    if (!url) return { phones: false, computers: false };
+    const msg = { secret: l.secret, url, epoch: l.epoch || 0, hostId: l.id, hostName: myName(), restarting: why || 'restart', fetch: fetchFn, relay, timeout };
+    const ok = p => p.then(() => true, () => false);
+    const [p, c] = await Promise.all([
+      phones ? ok(publishHost({ ...msg, key: phoneKeyOf(l.secret) })) : false,
+      (await linked().catch(() => false)) ? ok(publishHost(msg)) : false
+    ]);
+    if (p) phonePub.url = '';   // the next start publishes its address even if the tunnel's address were the same
+    return { phones: p, computers: c };
+  }
   // another computer is the host now (it has a higher epoch): stop working here and follow it
   async function supersede(m) {
     const l = link();
@@ -573,7 +589,7 @@ export function createLinking(ctx) {
       const ok = await wait(publishGone({ secret: l.secret, epoch: l.epoch || 0, hostId: l.id, hostName: myName(), fetch: fetchFn, relay }), 6000);
       return { role: 'host', computers: n, told: ok };
     },
-    publish, phoneInfo, publishPhone, phoneRelay: () => ({ ok: phonePub.ok, error: phonePub.error }),
+    publish, phoneInfo, publishPhone, announceRestart, phoneRelay: () => ({ ok: phonePub.ok, error: phonePub.error }),
     stop() { clearInterval(watchTimer); client?.stop(); if (handing) { clearInterval(handing.timer); rmSync(handing.snapshot, { force: true }); handing = null; } }
   };
 }

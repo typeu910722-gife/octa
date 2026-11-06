@@ -129,7 +129,10 @@ function octaFrag(hash){const p=new URLSearchParams(String(hash||'').replace(/^#
   if(o.web&&/^\d{1,12}$/.test(retry))o.retry=retry;
   if(/^(overview|base|sea)$/.test(p.get('view')||''))o.view='overview';   // 4.9.2: open 任務總覽 (older 深海基地 links too)   // 4.7: a 一鍵重試 link (only shows the button; retrying is an API call)
   if(/^(https:\/\/octa\.yzprojecttw\.com|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)\/go$/.test(go))o.go=go;
+  if(o.go&&p.get('sh')==='1')o.sh=1;   // 4.14.1: shown inside /go (the phone's permanent page), which talks to it with postMessage
   return o}
+// 4.14.1: the origin of the /go page the app may talk to (only the OCTA site, or this computer in tests)
+function shellOrigin(go){try{return /^(https:\/\/octa\.yzprojecttw\.com|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)\/go$/.test(go||'')?new URL(go).origin:''}catch(e){return ''}}
 // the link that sets up /go on this phone (what it keeps: the relay key, which computer, this phone's token)
 function goLink(base,g,token,url){const p=new URLSearchParams();for(const [k,v] of [['tp',g.tp],['k',g.k],['h',g.h],['n',g.n],['u',url],['t',token]])if(v)p.set(k,v);return base+'#'+p.toString()}
 

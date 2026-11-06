@@ -68,6 +68,15 @@ h1{margin:0 0 6px;font-size:20px;line-height:1.45;font-weight:700;letter-spacing
 .foot{margin-top:18px;color:var(--faint);font-size:12.5px;text-align:center}
 .lnk{appearance:none;background:none;border:0;padding:4px;font:inherit;color:var(--mute);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* 4.14.1 the app inside /go: the frame fills the screen inside the safe areas; the card covers it while the computer is away */
+html.shell,html.shell body{overflow:hidden;overscroll-behavior:none}
+html.shell body::before{display:none}
+#frame{position:fixed;top:env(safe-area-inset-top);right:env(safe-area-inset-right);bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:calc(100% - env(safe-area-inset-top) - env(safe-area-inset-bottom));border:0;background:transparent;display:block}
+#frame[hidden]{display:none}
+html.shell .wrap{position:fixed;inset:0;z-index:2;overflow:auto;background:color-mix(in srgb,var(--bg) 82%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.1);backdrop-filter:blur(14px) saturate(1.1);transition:opacity .25s ease}
+html.shell .wrap.gone{opacity:0;pointer-events:none;visibility:hidden;transition:opacity .25s ease,visibility 0s .25s}
+html.shell .wrap.first{background:var(--bg)}
+.calm{color:var(--mute);font-size:13px;margin-top:14px}
 </style>
 </head>
 <body>
@@ -78,9 +87,10 @@ h1{margin:0 0 6px;font-size:20px;line-height:1.45;font-weight:700;letter-spacing
   </main>
   <div class="foot" id="foot"></div>
 </div>
+<iframe id="frame" hidden title="OCTA" allow="camera; microphone; clipboard-read; clipboard-write; fullscreen; screen-wake-lock; display-capture" referrerpolicy="no-referrer"></iframe>
 <noscript><p style="text-align:center">需要開啟 JavaScript。</p></noscript>
 <script type="module">
-import { RELAY, parseFragment, loadHost, saveHost, mergeHost, locate, pairWith, appUrl, STORE_KEY } from '/go-core.js';
+import { RELAY, parseFragment, loadHost, saveHost, mergeHost, locate, pairWith, appUrl, STORE_KEY, createShell, shellAccept, shellOk } from '/go-core.js';
 
 // ---------- words (繁體中文 first; English, 日本語, 简体中文 follow the phone's language) ----------
 const L = (() => { const l = (navigator.language || 'zh-TW').toLowerCase(); return l.startsWith('ja') ? 'ja' : /^zh-(cn|sg|hans)/.test(l) ? 'zh-CN' : l.startsWith('zh') ? 'zh-TW' : 'en'; })();
@@ -115,6 +125,16 @@ const W = {
   forgetQ: ['這支手機不再記得「{name}」。之後要再掃描主機電腦上的 QR code。', 'This phone will forget “{name}”. You will need to scan the QR code on the computer again.', 'このスマホは「{name}」を忘れます。再度パソコンの QR コードを読み取る必要があります。', '这支手机不再记得「{name}」。之后要再扫描主机电脑上的 QR code。'],
   pc: ['主機電腦', 'your computer', 'パソコン', '主机电脑'],
   noStore: ['這個瀏覽器不能儲存資料（可能是無痕模式），每次都要重新掃描。', 'This browser can’t keep data (private mode?), so you will have to scan every time.', 'このブラウザはデータを保存できません（プライベートモード？）。毎回読み取りが必要です。', '这个浏览器不能储存资料（可能是无痕模式），每次都要重新扫描。'],
+  back: ['電腦重新啟動中，馬上回來…', 'Your computer is restarting — back in a moment…', 'パソコンを再起動しています。すぐ戻ります…', '电脑重新启动中，马上回来…'],
+  backSub: ['不用做任何事，電腦一回來就會自動接上。', 'Nothing to do — it reconnects by itself as soon as the computer is back.', '何もしなくて大丈夫です。パソコンが戻れば自動でつながります。', '不用做任何事，电脑一回来就会自动接上。'],
+  update: ['電腦正在更新 OCTA，馬上回來…', 'Your computer is updating OCTA — back in a moment…', 'パソコンで OCTA を更新しています。すぐ戻ります…', '电脑正在更新 OCTA，马上回来…'],
+  updateSub: ['更新裝好後會自動接上，通常不到一分鐘，不用重新配對。', 'It reconnects by itself once the update is installed, usually within a minute. No pairing needed.', '更新が終わると自動でつながります。通常 1 分以内で、再ペアリングは不要です。', '更新装好后会自动接上，通常不到一分钟，不用重新配对。'],
+  quit: ['OCTA 在電腦上關閉了', 'OCTA was closed on your computer', 'パソコンの OCTA が終了しました', 'OCTA 在电脑上关闭了'],
+  quitSub: ['在主機電腦重新打開 OCTA，這裡會自動接上。', 'Open OCTA on the computer again and this page reconnects by itself.', 'パソコンで OCTA をもう一度開くと、自動でつながります。', '在主机电脑重新打开 OCTA，这里会自动接上。'],
+  repair: ['這台手機需要重新配對', 'This phone needs to be paired again', 'このスマホは再ペアリングが必要です', '这台手机需要重新配对'],
+  repairSub: ['主機電腦不再認得這支手機（可能在電腦上移除了它，或 90 天沒用）。照下面做一次就好：', 'Your computer no longer knows this phone (it was removed there, or not used for 90 days). Do this once:', 'パソコンがこのスマホを認識しなくなりました（パソコン側で削除されたか、90 日使われていません）。次の手順を一度行ってください：', '主机电脑不再认得这支手机（可能在电脑上移除了它，或 90 天没用）。照下面做一次就好：'],
+  haveCode: ['我有配對碼', 'I have a pairing code', 'ペアリングコードがある', '我有配对码'],
+  waited: ['已等候 {n}', 'Waiting {n}', '待機 {n}', '已等候 {n}'],
   privacy: ['加密轉送：ntfy.sh · 資料只在你的電腦', 'Encrypted relay: ntfy.sh · your data stays on your computer', '暗号化中継：ntfy.sh · データはあなたのパソコンだけ', '加密转送：ntfy.sh · 资料只在你的电脑'],
 };
 const IDX = { 'zh-TW': 0, en: 1, ja: 2, 'zh-CN': 3 }[L];
@@ -156,7 +176,7 @@ const chip = () => host ? `<div class="host">${IC.pc}<span>${hostName()}</span><
 function paintFoot() {
   foot.innerHTML = host ? `<span>${t('privacy')}</span><br><button class="lnk" id="forget">${t('forget')}</button>` : `<span>${t('privacy')}</span>`;
   const f = document.getElementById('forget');
-  if (f) f.onclick = () => { if (confirm(W.forgetQ[IDX].replace('{name}', host?.n || W.pc[IDX]))) { S.removeItem(STORE_KEY); host = null; stopTimer(); none(); } };
+  if (f) f.onclick = () => { if (confirm(W.forgetQ[IDX].replace('{name}', host?.n || W.pc[IDX]))) { S.removeItem(STORE_KEY); host = null; stopTimer(); if (shell) { shell.stop(); shell = null; frame.src = 'about:blank'; frame.hidden = true; document.documentElement.classList.remove('shell'); } cover(true); none(); } };
 }
 function busy(key) {
   view.innerHTML = `${hero('idle', '', true)}<h1>${t(key)}</h1>${chip()}`;
@@ -184,7 +204,7 @@ function down(code) {
   tick(); timer = setInterval(tick, 1000);
   paintFoot();
 }
-function ready(url) {
+function ready(url, inside) {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const android = /Android/.test(navigator.userAgent);
   const rows = [
@@ -197,7 +217,89 @@ function ready(url) {
     ${storeOk ? '' : `<p class="note warn">${t('noStore')}</p>`}
     <div class="acts"><a class="btn p" id="openApp" href="${esc(url)}">${t('go')}</a></div>`;
   paintFoot();
+  // 4.14.1: OCTA opens inside this page (so it can come back by itself after the computer restarts)
+  if (inside) document.getElementById('openApp').onclick = e => { e.preventDefault(); wrap.classList.remove('first'); shellUp().enter(inside); };
 }
+
+// ---------- 4.14.1: OCTA inside this page ----------
+// This page stays the one the phone has open; the app runs in the frame at the computer's current address. When the
+// computer restarts (an update: a new address) the card covers the frame, the new address is found and put in the
+// frame with this phone's token, all by itself. ?direct=1 opens the app the old way (straight at its address).
+const wrap = document.querySelector('.wrap'), frame = document.getElementById('frame');
+const direct = new URLSearchParams(location.search).has('direct');
+const LOOK_KEY = 'octa_go_look';
+let look = {}; try { look = JSON.parse(S.getItem(LOOK_KEY) || '{}') || {}; } catch { }
+const themeMeta = [...document.querySelectorAll('meta[name="theme-color"]')];
+function paintLook() {
+  if (!/^(rgb|#)/.test(look.bg || '')) return;
+  document.body.style.background = look.bg;
+  for (const m of themeMeta) m.setAttribute('content', look.bg);
+}
+let shell = null, readyTimer = null;
+function cover(on) { wrap.classList.toggle('gone', !on); }
+function waitView(why) {
+  if (why === 'unpaired') {
+    view.innerHTML = `${hero('warn', 'qr')}<h1>${t('repair')}</h1><p class="sub">${t('repairSub')}</p>${chip()}
+      <ol class="steps"><li><span class="k">${IC.pc}</span><span>${t('n1')}</span></li><li><span class="k">${IC.gear}</span><span>${t('n2')}</span></li><li><span class="k">${IC.qr}</span><span>${t('n3')}</span></li></ol>
+      <div class="acts"><button class="btn s" id="haveCode">${t('haveCode')}</button></div>`;
+    document.getElementById('haveCode').onclick = () => cover(false);   // the app's own pairing screen is under this card
+    return paintFoot();
+  }
+  const k = { lost: 'back', restart: 'back', update: 'update', quit: 'quit', down: 'down', off: 'off', relay: 'relay' }[why] || 'back';
+  const calm = k === 'back' || k === 'update';
+  view.innerHTML = `${hero(calm ? 'idle' : 'warn', calm ? '' : 'off', calm || k === 'quit' || k === 'down')}<h1>${t(k)}</h1><p class="sub">${t(k + 'Sub')}</p>${chip()}<p class="calm" id="waited" aria-live="off"></p>`;
+  paintFoot();
+}
+// how long it has been (shown quietly under the card)
+setInterval(() => {
+  const el = document.getElementById('waited'), st = shell?.state();
+  if (!el || !st || st.mode !== 'wait' || !st.since) return;
+  const s = Math.round((Date.now() - st.since) / 1000);
+  el.textContent = s < 5 ? '' : W.waited[IDX].replace('{n}', s < 60 ? s + 's' : Math.floor(s / 60) + 'm' + String(s % 60).padStart(2, '0') + 's');
+}, 1000);
+function shellUp() {
+  if (shell) return shell;
+  document.documentElement.classList.add('shell');
+  paintLook();
+  shell = createShell({
+    host, go: goBack, web, retry, theme: look.theme || '', relay: RELAY_URL,
+    save: h => { host = h; saveHost(S, h); },
+    visible: () => !document.hidden,
+    show({ mode, src, why }) {
+      clearTimeout(readyTimer);
+      if (mode === 'app') {
+        if (src) {
+          busy('open'); cover(true);
+          frame.hidden = false; frame.src = src;
+          // the app says when it is ready; if it never does, show what the frame has anyway
+          readyTimer = setTimeout(() => cover(false), 20000);
+        } else cover(false);
+        return;
+      }
+      waitView(why); cover(true);
+    }
+  });
+  return shell;
+}
+addEventListener('message', e => {
+  if (!shell) return;
+  const d = shellAccept(e, shell.state().url, frame.contentWindow);
+  if (!d) return;
+  if (d.type === 'title' && typeof d.title === 'string') { document.title = d.title.slice(0, 80) || 'OCTA'; return; }
+  if (d.type === 'look') {
+    look = { bg: String(d.bg || '').slice(0, 40), theme: /^(light|dark|sea)$/.test(d.theme || '') ? d.theme : '' };
+    try { S.setItem(LOOK_KEY, JSON.stringify(look)); } catch { }
+    return paintLook();
+  }
+  if (d.type === 'ready' && typeof d.title === 'string') document.title = d.title.slice(0, 80) || 'OCTA';
+  shell.message(d);
+  const st = shell.state();
+  if (st.mode === 'app' && st.ready) { clearTimeout(readyTimer); cover(false); }
+});
+const wake = () => { if (shell && !document.hidden) shell.check(); };
+document.addEventListener('visibilitychange', wake);
+addEventListener('online', wake);
+addEventListener('focus', wake);
 
 // ---------- find the host, then open the app there ----------
 let running = false;
@@ -208,7 +310,11 @@ async function run() {
     busy(host.c ? 'pairing' : 'find');
     let where;
     try { where = await locate(host, { relay: RELAY_URL }); }
-    catch (e) { return down(e.code); }
+    catch (e) {
+      // signed in already: wait here (quickly at first) and come back by itself, whatever the reason
+      if (host.t && !direct) { shellUp().find(host.u || '', e.code === 'restarting' ? e.why : e.code === 'off' ? 'off' : e.code === 'relay-down' ? 'relay' : 'lost'); return; }
+      return down(e.code === 'restarting' ? 'down' : e.code);
+    }
     if (where.name && where.name !== host.n) host.n = where.name;
     host.u = where.url;
     if (host.c) {
@@ -217,14 +323,16 @@ async function run() {
     }
     saveHost(S, host);
     if (!host.t) return none();
+    const inside = !direct && await shellOk(where.url) ? where.url : '';
     const url = appUrl(where.url, { t: host.t, web, retry, go: goBack });
-    if (fresh) { fresh = false; return ready(url); }   // the first time: show how to keep this page on the home screen
+    if (fresh) { fresh = false; if (inside) wrap.classList.add('first'); return ready(url, inside); }   // the first time: show how to keep this page on the home screen
+    if (inside) return shellUp().enter(inside);
     busy('open');
-    location.replace(url);
+    location.replace(url);   // an OCTA from before 4.14.1: open it at its address, as before
   } finally { running = false; }
 }
 // coming back to this tab (the app was on an old address): look again
-addEventListener('pageshow', e => { if (e.persisted) run(); });
+addEventListener('pageshow', e => { if (e.persisted) { if (shell) shell.check(); else run(); } });
 // a QR or notice link opened while this page was already showing: start over with what it carries
 addEventListener('hashchange', () => { if (location.hash) location.reload(); });
 run();

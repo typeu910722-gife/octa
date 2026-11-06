@@ -129,6 +129,7 @@ export async function ping(url, h, { fetch = globalThis.fetch, timeout = 8000 } 
   } catch { return ''; } finally { clearTimeout(t); }
 }
 // → { url, via: 'relay' | 'last', name? } or throws { code: 'down' | 'relay-down' | 'off' }
+// (4.14.1: the newest message may say the host is restarting — its address is about to die: 'restarting', with why)
 export async function locate(host, opts = {}) {
   let m = null, relayErr = null, off = false;
   try { m = await readRelay(host, opts); } catch (e) { relayErr = e; }
@@ -140,7 +141,20 @@ export async function locate(host, opts = {}) {
     if (p === 'on') return { url, via, ...(via === 'relay' ? { name: m.hostName || '' } : {}) };
     if (p === 'off') off = true;
   }
-  throw Object.assign(new Error('down'), { code: off ? 'off' : relayErr && !m ? 'relay-down' : 'down' });
+  const why = restartingOf(m, opts.now);
+  throw Object.assign(new Error('down'), { code: off ? 'off' : why ? 'restarting' : relayErr && !m ? 'relay-down' : 'down', ...(why ? { why } : {}) });
+}
+// a 「正在重新啟動」 message counts for a while only (OCTA closed for good leaves it as the newest message)
+export const RESTART_FRESH = 15 * 60000;
+export function restartingOf(m, now = Date.now()) {
+  if (!m?.restarting || !Number.isFinite(m.ts) || now - m.ts > RESTART_FRESH) return '';
+  return /^(update|restart|quit)$/.test(m.restarting) ? m.restarting : 'restart';
+}
+// 4.14.1: can this host's app be shown inside /go? (OCTA from before 4.14.1 can't: /go then opens it directly, as before)
+export async function shellOk(url, { fetch = globalThis.fetch, timeout = 8000 } = {}) {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), timeout);
+  try { const r = await fetch(url.replace(/\/+$/, '') + '/__octa_ping', { cache: 'no-store', signal: ac.signal }); return r.ok && r.headers.get('x-octa-shell') === '1'; }
+  catch { return false; } finally { clearTimeout(t); }
 }
 // a phone scanned the host's QR: trade the pairing code for this phone's own session token
 export async function pairWith(url, code, { fetch = globalThis.fetch } = {}) {
@@ -150,6 +164,114 @@ export async function pairWith(url, code, { fetch = globalThis.fetch } = {}) {
   return d.token;
 }
 // the app on the host's address, signed in with this phone's token (in the fragment, never sent to a server)
-export function appUrl(url, { t, web, go, retry }) {
-  return url.replace(/\/+$/, '') + '/' + buildFragment({ t, web, retry, go });
+// (4.14.1 sh=1: shown inside /go; theme: the look the app had last time, so the first paint matches)
+// (n: a new number each time the frame is reloaded — the same address with only the fragment changed would not reload)
+export function appUrl(url, { t, web, go, retry, sh, theme, n }) {
+  const qs = new URLSearchParams();
+  if (/^(light|dark|sea)$/.test(theme || '')) qs.set('theme', theme);
+  if (n) qs.set('n', String(n));
+  const q = qs.toString() ? '?' + qs : '';
+  return url.replace(/\/+$/, '') + '/' + q + buildFragment({ t, web, retry, go, sh: sh ? 1 : '' });
+}
+
+// ---------- 4.14.1 /go keeps the app inside itself ----------
+// The phone keeps /go open (a page on the OCTA site that never goes away) and the app runs in a frame inside it, at the
+// host computer's current address. When the computer restarts (an update, a restart: a new address), /go is still
+// there: it covers the frame with 「電腦重新啟動中，馬上回來…」, looks for the new address quickly and puts it in the
+// frame with the phone's token — nobody has to tap anything. Reopening the page or the home-screen shortcut always
+// lands on /go too.
+// The frame and /go talk with postMessage only, each checking the other's exact origin (shellAccept).
+export const FAST_MS = 2500, SLOW_MS = 10000, FAST_FOR = 5 * 60000, WATCH_MS = 15000, QUIET_MS = 2 * 60000;
+// a message from the frame counts only from the address the frame is showing now
+export function shellAccept(ev, currentUrl, frameWindow) {
+  try {
+    if (!currentUrl || !ev || ev.origin !== new URL(currentUrl).origin) return null;
+    if (frameWindow && ev.source !== frameWindow) return null;
+    const d = ev.data;
+    if (!d || typeof d !== 'object' || d.octa !== 1 || typeof d.type !== 'string') return null;
+    return d;
+  } catch { return null; }
+}
+// the shell's brain (no DOM: go.html draws it). show({ mode: 'app' | 'wait', url, src, reload, why })
+//   why while waiting: 'lost' (stopped answering, nothing known yet) | 'update' | 'restart' | 'quit' | 'down' |
+//   'off' | 'relay' | 'unpaired'
+export function createShell({ host, save = () => { }, show, go, web = '', retry = '', theme = '', fetch = globalThis.fetch, relay = RELAY,
+  now = () => Date.now(), schedule = (fn, ms) => { const t = setTimeout(fn, ms); return () => clearTimeout(t); }, visible = () => true }) {
+  const st = { mode: '', url: '', why: '', since: 0, ready: false, ticks: 0 };
+  let cancel = null, busy = null, once = { web, retry }, loads = 0;
+  const opts = { fetch, relay };
+  const later = (fn, ms) => { cancel?.(); cancel = schedule(() => { cancel = null; return fn(); }, ms); };
+  function srcOf(url) {
+    const s = appUrl(url, { t: host.t, go, web: once.web, retry: once.retry, sh: 1, theme, n: ++loads });
+    once = { web: '', retry: '' };   // a notice's bot opens once, not again after every restart
+    return s;
+  }
+  // the frame shows the app at this address
+  function enter(url, { reload = true } = {}) {
+    const moved = url !== st.url;
+    Object.assign(st, { mode: 'app', url, why: '', since: 0 });
+    if (moved || reload) st.ready = false;
+    if (moved) { host.u = url; save(host); }
+    show({ mode: 'app', url, src: moved || reload ? srcOf(url) : '', reload: moved || reload });
+    later(watch, WATCH_MS);
+  }
+  function wait(why) {
+    if (st.mode !== 'wait') { st.since = now(); st.ticks = 0; }
+    st.mode = 'wait'; st.why = why;
+    show({ mode: 'wait', url: st.url, why });
+  }
+  // while the app shows: is its computer still there? (twice before believing it is gone)
+  async function watch() {
+    if (st.mode !== 'app') return;
+    if (!visible()) return later(watch, WATCH_MS);
+    let p = await ping(st.url, host.h, opts);
+    if (p !== 'on' && st.mode === 'app') p = await ping(st.url, host.h, opts);
+    if (st.mode !== 'app') return;
+    if (p === 'on') return later(watch, WATCH_MS);
+    wait(p === 'off' ? 'off' : 'lost');
+    return tick();
+  }
+  // while waiting: the relay and the last address, quickly for the first 5 minutes, then every 10 seconds
+  function tick() {
+    if (busy) return busy;
+    busy = (async () => {
+      if (st.mode !== 'wait' || st.why === 'unpaired') return;
+      st.ticks++;
+      let m = null, relayDown = false;
+      const [r, pLast] = await Promise.all([readRelay(host, { ...opts, now: now() }).catch(() => { relayDown = true; return null; }), st.url ? ping(st.url, host.h, opts) : '']);
+      m = r;
+      if (st.mode !== 'wait') return;
+      if (m && !m.restarting && m.url !== st.url) {
+        const p = await ping(m.url, host.h, opts);
+        if (p === 'on') { if (m.hostName) host.n = m.hostName; return enter(m.url); }
+        if (p === 'off') return wait('off');
+      }
+      if (pLast === 'on') return enter(st.url, { reload: !st.ready });   // it was only a hiccup (the phone's network)
+      if (pLast === 'off') return wait('off');
+      const why = restartingOf(m, now());
+      if (why) return wait(why);
+      if (relayDown && !m) return wait('relay');
+      wait(now() - st.since > QUIET_MS ? 'down' : 'lost');
+    })().catch(() => { }).finally(() => {
+      busy = null;
+      if (st.mode === 'wait' && st.why !== 'unpaired') later(tick, now() - st.since < FAST_FOR ? FAST_MS : SLOW_MS);
+    });
+    return busy;
+  }
+  return {
+    state: () => ({ ...st }),
+    enter,
+    // /go was opened while the computer is away (restarting…): wait here and look quickly, as if it had just gone
+    find(url, why = 'lost') { st.url = url || ''; st.ready = false; wait(why); return tick(); },
+    // the page came back to the front (or the phone woke up): check now instead of at the next round
+    check() { if (st.mode === 'app') { cancel?.(); return watch(); } if (st.mode === 'wait') { cancel?.(); return tick(); } },
+    // what the app in the frame says (already checked with shellAccept)
+    message(d) {
+      if (d.type === 'ready' || d.type === 'alive') { st.ready = true; if (st.mode === 'wait' && st.why !== 'unpaired') enter(st.url, { reload: false }); return; }
+      if (d.type === 'down' && st.mode === 'app') { cancel?.(); wait('lost'); return tick(); }
+      if (d.type === 'unpaired') { delete host.t; save(host); cancel?.(); return wait('unpaired'); }
+      if (d.type === 'paired' && /^[A-Za-z0-9_-]{16,200}$/.test(d.t || '')) { host.t = d.t; delete host.c; save(host); if (st.mode === 'wait') enter(st.url, { reload: false }); }
+    },
+    stop() { cancel?.(); cancel = null; st.mode = 'stopped'; }
+  };
 }

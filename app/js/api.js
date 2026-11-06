@@ -3,21 +3,47 @@
 let CFG={};                      // GET /api/config: {local, pair, …}
 // 4.4: opened from the phone's stable entry (the OCTA site's /go page): keep the token it passed, remember where /go is
 // (to look for the computer again when this address stops working), and take it all out of the address bar
-(()=>{const f=octaFrag(location.hash);if(!f.t&&!f.web&&!f.view)return;
+// 4.14.1: /go usually shows the app inside itself (#…&sh=1): /go stays the page the phone has open, and when the computer
+// restarts (new address) it swaps the address in by itself. The app then talks to /go only (postMessage, checked origin).
+const GOF=octaFrag(location.hash);
+const SHELL=(()=>{try{return !!GOF.sh&&window.parent!==window&&!!shellOrigin(GOF.go)}catch(e){return false}})();
+const SHELL_ORIGIN=SHELL?shellOrigin(GOF.go):'';
+(()=>{const f=GOF;if(!f.t&&!f.web&&!f.view)return;
   if(f.t)store.set('ebot_token',f.t);
   if(f.go)store.set('octa_go',f.go);
   if(f.web)try{sessionStorage.setItem('octa_goweb',f.web)}catch(e){}
   if(f.retry)try{sessionStorage.setItem('octa_goretry',f.retry);sessionStorage.setItem('octa_goretryb',f.web)}catch(e){}   // 4.7 overview.js
   if(f.view)try{sessionStorage.setItem('octa_goview','1')}catch(e){}   // 4.9.2 overview.js
-  history.replaceState(null,'',location.pathname+location.search)})();
-// this address stopped answering (the computer restarted: its address changed): back to /go, which finds the new one
-// (at most once a minute, only when the phone itself is online)
-function backToGo(){const go=store.get('octa_go');if(!go||DESK()||!navigator.onLine)return false;
+  // inside /go there is no address bar: keep the token and /go in the fragment, so a reload still signs in even where
+  // the browser gives this frame no storage of its own (Safari / Chrome partition a frame's storage)
+  history.replaceState(history.state,'',location.pathname+location.search+(SHELL&&f.t?'#'+new URLSearchParams({t:f.t,go:f.go,sh:'1'}):''))})();
+// to /go (the page around the app): only to its exact origin, never '*'
+function toShell(type,data){if(!SHELL)return false;try{window.parent.postMessage({octa:1,type,...(data||{})},SHELL_ORIGIN);return true}catch(e){return false}}
+// from /go: only from the page around this one, at its exact origin
+if(SHELL)addEventListener('message',e=>{if(e.origin!==SHELL_ORIGIN||e.source!==window.parent)return;const d=e.data||{};if(d.octa!==1)return;
+  if(d.type==='wake'){toShell('alive');if(typeof awake==='function')awake()}});
+// the look of the page around the app follows the app (its background behind the safe areas, the theme next time)
+function shellLook(){if(!SHELL)return;try{const c=el=>getComputedStyle(el).backgroundColor,ok=v=>v&&!/^(transparent|rgba\(0, 0, 0, 0\))$/.test(v);
+  toShell('look',{bg:[c(document.body),c(document.documentElement)].find(ok)||'',theme:store.get('octa_theme')||''})}catch(e){}}
+if(SHELL){document.documentElement.classList.add('inshell');
+  addEventListener('DOMContentLoaded',()=>{const t=document.querySelector('title');
+    if(t)new MutationObserver(()=>toShell('title',{title:document.title})).observe(t,{childList:true,characterData:true,subtree:true});
+    new MutationObserver(()=>setTimeout(shellLook,450)).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>setTimeout(shellLook,50))}catch(e){}})}
+// this address stopped answering (the computer restarted: its address changed): back to /go, which finds the new one.
+// Inside /go: tell it (it keeps this frame and swaps in the new address). Opened directly: go to /go now (/go checks the
+// address before it sends the phone back, so a short guard against going round in circles is enough).
+function backToGo(){if(DESK())return false;
+  if(SHELL)return toShell('down');
+  const go=GOF.go||store.get('octa_go');if(!go||!navigator.onLine)return false;
   let last=0;try{last=+sessionStorage.getItem('octa_goback')||0}catch(e){}
-  if(Date.now()-last<60000)return false;
+  if(Date.now()-last<15000)return false;
   try{sessionStorage.setItem('octa_goback',String(Date.now()))}catch(e){}
   location.replace(go);return true}
-let TOKEN=store.get('ebot_token');   // only a paired phone has one; the computer itself needs none
+// is this address still this computer? (a dead quick tunnel answers with Cloudflare's own error page)
+async function hostAlive(){if(DESK())return true;const ac=new AbortController(),t=setTimeout(()=>ac.abort(),5000);
+  try{const r=await fetch('/__octa_ping',{cache:'no-store',signal:ac.signal});return r.ok&&r.headers.has('x-octa-host')}catch(e){return false}finally{clearTimeout(t)}}
+let TOKEN=GOF.t||store.get('ebot_token');   // only a paired phone has one; the computer itself needs none
 let myDev=store.get('octa_dev')||'';
 if(!/^[a-z0-9]{8,40}$/i.test(myDev)){myDev=Math.random().toString(36).slice(2,10)+Date.now().toString(36);store.set('octa_dev',myDev)}
 const EMPTY_S=()=>({bots:[],groups:[],folders:[],routines:[],last:[],ur:[],busy:[],runnerOnline:false,me:'',rev:-1,lastJob:{},queue:{}});
@@ -74,7 +100,7 @@ async function live(){
     try{const d=await Promise.race([api('wait?rev='+S.rev+'&prog='+(S.prog||0)),new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),45000))]);fails=0;if(!liveOn)break;
       if(d.rev!==S.rev)await refresh();
       else if(d.prog!=null&&d.prog!==S.prog){const b=await api('busy');S.busy=b.busy||S.busy;S.prog=b.prog;if(b.queue)S.queue=b.queue;render(false)}}   // only a progress line changed: no full reload
-    catch(e){fails++;if(fails>=3&&TOKEN&&backToGo())return;await new Promise(r=>setTimeout(r,Math.min(30000,1000*2**fails)))}
+    catch(e){fails++;if(TOKEN&&!(await hostAlive())&&!(await hostAlive())&&backToGo()&&!SHELL)return;await new Promise(r=>setTimeout(r,Math.min(30000,1000*2**fails)))}   // 4.14.1: the computer is gone: at once, not after three tries
   }
   liveOn=false}
 const awake=()=>{if(S.loaded&&!$('app').hidden){refresh();if(!liveOn)live()}};

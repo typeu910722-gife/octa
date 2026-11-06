@@ -1221,7 +1221,7 @@ handle('octa:update-install', () => {
   if (upd.state === 'ready') {
     quitting = true; stopRunner();
     cfg = { ...cfg, updating: { to: upd.version, from: app.getVersion(), at: Date.now() } }; writeCfg(cfg);
-    setTimeout(async () => { await closeBrowsers(); freeInstallDir(); reopenAfterUpdate(); autoUpdater.quitAndInstall(true, true); }, 800);
+    setTimeout(async () => { await announceRestart('update'); await closeBrowsers(); freeInstallDir(); reopenAfterUpdate(); autoUpdater.quitAndInstall(true, true); }, 800);
   }
   return upd;
 });
@@ -1384,8 +1384,17 @@ app.on('second-instance', () => {
   const r = dialog.showMessageBoxSync({ type: 'info', title: 'OCTA', message: 'OCTA 還在啟動中。', detail: '如果一直沒有出現，按「重新啟動」。', buttons: ['重新啟動', '再等一下'], defaultId: 0, cancelId: 1 });
   if (r === 0) { app.relaunch(); app.exit(0); }
 });
+// 4.14.1: the phones' /go page hears at once that this computer is going away (an update, a restart, 結束), so it shows
+// 電腦正在更新／重新啟動 and swaps in the new address by itself when OCTA is back. At most 2.5 seconds.
+let announced = false;
+async function announceRestart(why) {
+  if (announced || !server?.announceRestart) return;
+  announced = true;
+  try { await Promise.race([server.announceRestart(why), new Promise(r => setTimeout(r, 2500))]); } catch { }
+}
 app.on('before-quit', e => {
   quitting = true;
+  if (!announced && server?.announceRestart) { e.preventDefault(); announceRestart('quit').finally(() => app.quit()); return; }
   if (browsersClosed || !runnerMod?.closeAllBrowsers) return;
   e.preventDefault(); Promise.all([closeBrowsers(), flushLogins()]).finally(() => app.quit());
 });
@@ -1502,7 +1511,7 @@ async function start() {
     { label: '開啟 OCTA', click: showWindow },
     { label: '打開檔案資料夾', click: () => { const p = cfg.store || join(dataDir, 'files'); mkdirSync(p, { recursive: true }); shell.openPath(p); } },
     { type: 'separator' },
-    { label: '結束（機器人會停止工作）', click: async () => { quitting = true; await closeBrowsers(); stopRunner(); await server.close(); app.quit(); } }
+    { label: '結束（機器人會停止工作）', click: async () => { quitting = true; await announceRestart('quit'); await closeBrowsers(); stopRunner(); await server.close(); app.quit(); } }
   ]));
   tray.on('click', showWindow);
 

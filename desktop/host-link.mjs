@@ -84,9 +84,11 @@ const withTimeout = (fetch, ms) => (url, init = {}) => {
 
 // the host: tell the linked computers where it is now
 // (key: seal with another secret on the same topic — the phones' copy, phoneKeyOf(secret))
-export async function publishHost({ secret, key, url, epoch, hostId, hostName, fetch = globalThis.fetch, relay = RELAY, now = Date.now() }) {
-  const body = seal({ v: 1, url: trimUrl(url), epoch: +epoch || 0, hostId, hostName: hostName || '', ts: now }, key || secret);
-  const r = await withTimeout(fetch, 15000)(`${relay}/${topicOf(secret)}`, { method: 'POST', body, headers: { 'content-type': 'text/plain' } });
+// 4.14.1 restarting: 'update' | 'restart' | 'quit' — the host is about to go away (this address dies with it): the
+// phones' /go page shows 電腦正在更新／重新啟動 and keeps looking quickly instead of showing an error
+export async function publishHost({ secret, key, url, epoch, hostId, hostName, restarting, fetch = globalThis.fetch, relay = RELAY, now = Date.now(), timeout = 15000 }) {
+  const body = seal({ v: 1, url: trimUrl(url), epoch: +epoch || 0, hostId, hostName: hostName || '', ts: now, ...(restarting ? { restarting: String(restarting) } : {}) }, key || secret);
+  const r = await withTimeout(fetch, timeout)(`${relay}/${topicOf(secret)}`, { method: 'POST', body, headers: { 'content-type': 'text/plain' } });
   if (!r.ok) throw Object.assign(new Error('轉送服務回應 ' + r.status), { code: 'relay-down' });
   return true;
 }
@@ -124,6 +126,7 @@ export async function pollHost({ secret, key, fetch = globalThis.fetch, relay = 
     if (ev?.event !== 'message') continue;
     const m = unseal(ev.message, key || secret);
     if (!m || m.v !== 1 || !(m.gone === true || hostUrlOk(m.url)) || !Number.isFinite(m.epoch) || typeof m.hostId !== 'string' || !m.hostId) continue;
+    if (m.restarting) continue;   // 4.14.1: only the phones act on 「正在重新啟動」; computers keep the last address and retry
     if (!Number.isFinite(m.ts) || m.ts > now + 10 * 60000) continue;   // a clock far in the future is not trusted
     if (!best || m.epoch > best.epoch || (m.epoch === best.epoch && m.ts > best.ts)) best = m;
   }
