@@ -250,7 +250,7 @@ export const EXTRA_SKILLS = {
       '',
       '## 加字幕（whisper.cpp，在這台電腦上辨識，不上傳）',
       '- `octa-subtitle 影片.mp4 --lang zh`：做出 影片.srt 和「影片-字幕.mp4」（字幕可開關）',
-      '- 字幕要燒進畫面（社群平台用）：加 `--burn`',
+      '- 字幕要燒進畫面（社群平台用）：加 `--burn`，做出「影片-燒字幕.mp4」',
       '- 只要逐字稿：`octa-subtitle 錄音.m4a --lang zh --text` → .txt',
       '- 比較準但慢：`--model small`（要先「🧰安裝：whisper:small」）',
       '- 辨識結果可能有錯字：讀一遍 .srt，明顯的錯字直接改檔案再燒進去。',

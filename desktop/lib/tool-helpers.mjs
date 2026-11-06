@@ -81,7 +81,7 @@ try {
   console.log(out);
   let video = false;
   try { video = / Video: /.test(String(spawnSync(ffmpeg, ['-hide_banner', '-i', input], { windowsHide: true }).stderr || '')); } catch { }
-  const mp4 = base + '-字幕.mp4';
+  const mp4 = base + (burn ? '-燒字幕.mp4' : '-字幕.mp4');
   if (textOnly || !video) { /* audio or transcript only: done */ }
   else if (burn) {
     // the subtitles filter reads a path: a plain name in a temporary folder avoids Windows drive-letter escaping
