@@ -1,5 +1,27 @@
 [
  {
+  "v": "4.12.0",
+  "date": "2026-11-06",
+  "notes": [
+   "機器人可以從 GitHub 學新技能：自己找、整理說明和風險給你看，你按核准才學；學會的技能在「它記得什麼」看得到來源，可更新、移除、分給其他機器人",
+   "每種 AI 各自找最適合自己的：Claude 先找 Claude 的技能庫、ChatGPT（Codex）找 OpenAI 的、Gemini 找 Gemini 的，裝成各自的格式",
+   "工具箱：剪影片的 FFmpeg、修圖的 ImageMagick、yt-dlp、Python 等審核過的工具，機器人需要時自己安裝（下載會核對檔案）；清單外的工具一律要你核准",
+   "生成圖片和影片：在設定 → 技能與工具填入 OpenAI、Google Gemini 或 Replicate 的金鑰，機器人就能做圖、做影片，成品直接出現在對話裡"
+  ],
+  "notes_en": [
+   "Bots can learn new skills from GitHub: they search, show you what it does and its risks, and learn it only after you approve; learned skills show their source in \"What it remembers\" and can be updated, removed or shared with other bots",
+   "Each AI looks for what suits it best: Claude searches Claude's skill library first, ChatGPT (Codex) OpenAI's, Gemini Gemini's, each installed in its own format",
+   "Toolbox: vetted tools such as FFmpeg, ImageMagick, yt-dlp and Python install themselves when a bot needs them (downloads are verified); anything else needs your approval",
+   "Image and video generation: add an OpenAI, Google Gemini or Replicate key in Settings → Skills & tools and bots can make pictures and videos, delivered right in the chat"
+  ],
+  "notes_ja": [
+   "ボットが GitHub から新しいスキルを学べるように：自分で探し、内容とリスクを示し、承認後に習得。学んだスキルは「覚えていること」で出所を確認でき、更新・削除・他ボットへの共有が可能",
+   "AI ごとに最適なものを探索：Claude は Claude のスキル集、ChatGPT（Codex）は OpenAI、Gemini は Gemini のものを優先し、それぞれの形式で導入",
+   "ツール箱：FFmpeg・ImageMagick・yt-dlp・Python など審査済みツールは必要時に自動導入（ダウンロードを検証）、それ以外は承認が必要",
+   "画像・動画生成：設定 → スキルとツールで OpenAI・Google Gemini・Replicate のキーを入れると、ボットが画像や動画を作り、チャットに届けます"
+  ]
+ },
+ {
   "v": "4.11.1",
   "date": "2026-11-05",
   "notes": [
