@@ -312,8 +312,8 @@ export function gcDispatch(env, db, U = 'local') {
         .first();
       if (!j) break;
       const claimed = await db
-        .prepare("UPDATE jobs SET status='running', started=?, ext=?, beat=? WHERE id=? AND status='pending'")
-        .bind(now(), now(), now(), j.id)
+        .prepare("UPDATE jobs SET status='running', started=?, ext=?, beat=?, progress=? WHERE id=? AND status='pending'")
+        .bind(now(), now(), now(), JSON.stringify({ text: '正在交給 Grok Bot…', kind: 'cloud', cloud: 'sending', at: now() }), j.id)
         .run();
       if (!claimed.meta.changes) continue;
       n++;
