@@ -216,9 +216,8 @@ export async function installSkill(db, U, { name, data, bots }, by) {
   const src = data.src === 'catalog' ? 'catalog' : by === 'trusted' ? 'trusted' : 'github';
   for (const id of all)
     await db.prepare('INSERT OR REPLACE INTO mem_src (user_id,kind,owner,k,by_,ts) VALUES (?,?,?,?,?,?)').bind(U, 'lskill', id, nm, src, now()).run();
-  const whence = data.src === 'catalog' ? 'OCTA 內建' : `來源 ${c.repo}@${String(c.sha || '').slice(0, 7)}`;
-  const howOk = by === 'trusted' ? '信任的來源，自動' : by === 'catalog' ? '內建' : '你核准';
-  for (const id of all.slice(0, 20)) await addMsg(db, U, id, 'sys', `🧩 學會技能「${nm}」（${whence}，${howOk}）`, null, null, 'note');
+  const why = data.src === 'catalog' ? 'OCTA 內建' : `來源 ${c.repo}@${String(c.sha || '').slice(0, 7)}，${by === 'trusted' ? '信任的來源，自動' : '你核准'}`;
+  for (const id of all.slice(0, 20)) await addMsg(db, U, id, 'sys', `🧩 學會技能「${nm}」（${why}）`, null, null, 'note');
   return { name: nm };
 }
 export async function removeSkill(db, U, name) {
@@ -254,7 +253,7 @@ export async function skillsView(db, U, botId, engine) {
         rv = JSON.parse(r.review || '{}');
       } catch {}
       return {
-        name: r.name, ver: String(r.ver).slice(0, 7), src: r.src, repo: r.repo, path: r.path, url: r.url, license: r.license, desc: r.descr, by: r.by_, ts: r.ts,
+        name: r.name, ver: r.src === 'catalog' ? String(r.ver) : String(r.ver).slice(0, 7), src: r.src, repo: r.repo, path: r.path, url: r.url, license: r.license, desc: r.descr, by: r.by_, ts: r.ts,
         bots: botsCol(r.bots), scripts: (rv.scripts || []).length, level: rv.level || 'low',
         ...(engine ? { way: skillWay(engine), where: where(engine) } : {})
       };

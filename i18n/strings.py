@@ -1943,3 +1943,17 @@ T.update({
  '取得金鑰': ('Get a key', 'キーを取得'),
  '填了金鑰，所有機器人都會學會「產生圖片」或「產生影片」的技能（可以在「已學會的技能」改成只給某些機器人）。做出來的圖片和影片會存在機器人的「輸出」資料夾，直接出現在對話裡。價格是大約的，以各服務的帳單為準。': ('With a key, every bot learns the "generate images" or "generate videos" skill (you can limit it to some bots under "Learned skills"). Pictures and videos are saved in the bot\'s output folder and appear right in the chat. Prices are approximate; each service\'s bill is what counts.', 'キーを入れると、すべてのボットが「画像の生成」「動画の生成」スキルを学びます（「習得したスキル」で一部のボットだけにできます）。作った画像や動画はボットの「出力」フォルダーに保存され、会話にそのまま表示されます。料金は目安で、各サービスの請求が正です。'),
 })
+
+# 4.12: the toolbox catalog and the generation costs (sent by the server, translated on the page)
+T.update({
+ '影片、聲音轉檔剪接': ('Convert and cut video and audio', '動画・音声の変換と編集'),
+ '圖片縮放、裁切、轉檔、加字': ('Resize, crop, convert and caption pictures', '画像の拡大縮小・切り抜き・変換・文字入れ'),
+ '下載網路影片（只用在你有權使用的影片）': ('Download online videos (only ones you have the right to use)', 'ネット動画のダウンロード（使用する権利がある動画だけ）'),
+ 'Python 套件與 Python 本身的管理工具': ('Manages Python packages and Python itself', 'Python パッケージと Python 本体の管理ツール'),
+ '執行 Python 程式（很多技能的程式是 Python）': ('Runs Python programs (many skills use Python)', 'Python プログラムを実行（多くのスキルが Python を使います）'),
+ '執行 JavaScript 程式': ('Runs JavaScript programs', 'JavaScript プログラムを実行'),
+ '用自己的顯示卡產生圖片影片，不用付 API 費用': ('Generate pictures and videos on your own graphics card, no API fees', '自分のグラフィックカードで画像・動画を生成（API 料金なし）'),
+ '圖片每張約 US$0.01–0.25（看尺寸與品質）': ('About US$0.01–0.25 per picture (depends on size and quality)', '画像 1 枚あたり約 US$0.01–0.25（サイズと品質による）'),
+ '圖片每張約 US$0.02–0.06；影片每秒約 US$0.15–0.75（8 秒一段）': ('About US$0.02–0.06 per picture; about US$0.15–0.75 per second of video (8-second clips)', '画像 1 枚約 US$0.02–0.06、動画 1 秒約 US$0.15–0.75（1 本 8 秒）'),
+ '依模型計價：圖片每張約 US$0.003–0.05；影片每段約 US$0.25–1.5': ('Priced per model: about US$0.003–0.05 per picture, US$0.25–1.5 per video clip', 'モデルごとの料金：画像 1 枚約 US$0.003–0.05、動画 1 本約 US$0.25–1.5'),
+})

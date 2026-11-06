@@ -66,7 +66,7 @@ function skBox(el,d){const T=d.tools,inst=T.installed||{};
     const state=i?.ok?`<span class="pill ok"><span>已安裝</span> <span data-u>${esc(i.version||'')}</span></span>`
       :t.way==='download'||t.way==='uv-python'||t.way==='bundled'?`<button type="button" class="btn sm" data-tlin="${esc(t.id)}">安裝</button>`
       :t.way==='later'?'<span class="pill">之後開放</span>':t.how?`<small class="hmuted"><span>請自己安裝：</span><code data-u>${esc(t.how)}</code></small>`:'<span class="pill">這台電腦不支援</span>';
-    return `<div class="skrow"><div class="sktx"><b data-u>${esc(t.label)}</b> <small class="hmuted" data-u>${esc(t.version||'')}</small><p class="hmuted" data-u>${esc(t.what)}</p>
+    return `<div class="skrow"><div class="sktx"><b data-u>${esc(t.label)}</b> <small class="hmuted" data-u>${esc(t.version||'')}</small><p class="hmuted">${esc(I18N.t(t.what))}</p>
       <small class="hmuted"><a href="${esc(t.source)}" target="_blank" rel="noopener">${esc(I18N.t('官方來源'))}</a>${t.sha256?` · <span>SHA-256</span> <code data-u>${esc(t.sha256.slice(0,12))}…</code>`:''}${t.size?' · '+fsize(t.size):''}</small>
       ${i?.ok?skAssign('tool',t.id,i.assign):''}</div><div class="mv-acts">${state}${i?.ok&&t.way!=='bundled'?`<button type="button" class="ghost sm danger" data-tlrm="${esc(t.id)}">移除</button>`:''}</div></div>`};
   const others=Object.entries(inst).filter(([k])=>!T.catalog.some(t=>t.id===k)).map(([k,i])=>`<div class="skrow"><div class="sktx"><b data-u>${esc(k)}</b> <small class="hmuted" data-u>${esc(i.version||'')}</small>${i.source?`<p class="hmuted"><a href="${esc(i.source)}" target="_blank" rel="noopener" data-u>${esc(i.source)}</a></p>`:''}${skAssign('tool',k,i.assign)}</div>
@@ -84,7 +84,7 @@ function skBox(el,d){const T=d.tools,inst=T.installed||{};
     if(t.closest('#tlGo')){const q=$('tlQ').value.trim();if(!q)return;try{const x=await api('tools/install','POST',{what:q,bot:$('tlBot').value});toast(x.text&&!x.req?x.text:I18N.t('核准卡在那個機器人的對話裡'))}catch(y){toast(y.message)}return}
     skAssignClick(e)}}
 function skGen(el,d){const kinds=k=>k.map(x=>x==='video'?I18N.t('影片'):I18N.t('圖片')).join('、');
-  el.innerHTML=Object.entries(d.gen).map(([k,p])=>`<div class="skrow"><div class="sktx"><b data-u>${esc(p.label)}</b> <small class="hmuted">${kinds(p.kinds)}</small><p class="hmuted" data-u>${esc(p.cost)}</p>
+  el.innerHTML=Object.entries(d.gen).map(([k,p])=>`<div class="skrow"><div class="sktx"><b data-u>${esc(p.label)}</b> <small class="hmuted">${kinds(p.kinds)}</small><p class="hmuted">${esc(I18N.t(p.cost))}</p>
       ${p.key?`<small class="hmuted"><span>金鑰</span> <code data-u>${esc(p.key)}</code></small>`:`<div class="row2"><input type="password" autocomplete="off" data-genk="${k}" placeholder="API key" aria-label="API key"><button type="button" class="btn sm" data-gensave="${k}">儲存</button><a class="ghost sm" href="${esc(p.site)}" target="_blank" rel="noopener">取得金鑰</a></div>`}</div>
     <div class="mv-acts">${p.key?`<button type="button" class="ghost sm danger" data-gendel="${k}">移除</button>`:''}</div></div>`).join('')+
     '<p class="hmuted">填了金鑰，所有機器人都會學會「產生圖片」或「產生影片」的技能（可以在「已學會的技能」改成只給某些機器人）。做出來的圖片和影片會存在機器人的「輸出」資料夾，直接出現在對話裡。價格是大約的，以各服務的帳單為準。</p>';
