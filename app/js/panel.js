@@ -128,8 +128,8 @@ function curCard(x){const st=stateOf(x.bot_id),steps=(WP.steps[x.job]||[]).slice
     :steps.length?`<ol class="wsteps">${steps.map((s,i)=>`<li${i===steps.length-1?' class="now"':''}><span data-u>${esc(s.p)}</span></li>`).join('')}</ol>`:`<p class="wsub">${I18N.t('準備中…')}</p>`;
   const head=v.has||ps?`<div class="wprog"><div class="jl">${progLine(x)}</div>${progBar(x)}</div>`:'';
   return `<div class="wcur${ps?' '+ps:''}"><div class="wch"><span class="av" data-u>${avOf(x.bot_id,'always')}</span><div class="t"><b data-u>${esc(nameOf(x.bot_id))}</b>
-    <small><span class="pst">${ps==='paused'?I18N.t('已暫停'):x.kind==='open'?I18N.t('打開瀏覽器'):x.kind==='code'?I18N.t('程式任務'):I18N.t(STATE_LABEL[st]||'工作中')}</span>${x.started?` · <span class="el" data-since="${x.started}">${elapsed(x.started)}</span>`:''}${eng}</small></div>
-    <div class="wbtns">${x.kind==='open'?'':pauseBtn(x).replace('class="jb"','class="ghost sm jb"')}<button type="button" class="ghost sm" data-wstop>${ic('stop')}<span>停止</span></button></div></div>
+    <small><span class="pst">${ps==='paused'?I18N.t('已暫停'):x.kind==='open'?I18N.t('打開瀏覽器'):x.kind==='code'?I18N.t('程式任務'):I18N.t(STATE_LABEL[st]||'工作中')}</span>${x.started?` · <span class="el" data-since="${x.started}">${elapsed(x.started)}</span>`:''}${eng}${x.ext?` · <span class="wcloud">${I18N.t('在 Grok Bot 雲端電腦上')}</span>`:''}</small></div>
+    <div class="wbtns">${x.kind==='open'||x.ext?'':pauseBtn(x).replace('class="jb"','class="ghost sm jb"')}<button type="button" class="ghost sm" data-wstop>${ic('stop')}<span>停止</span></button></div></div>
     ${head}${plan}
     ${ps==='pausing'?`<p class="wnote">${I18N.t('它會做完目前這一步再暫停。')}</p>`:''}
     ${st==='browsing'&&WP.tab!=='web'?`<button type="button" class="link" data-wt="web">${ic('globe')}<span>在瀏覽器分頁看它操作</span></button>`:''}</div>`}

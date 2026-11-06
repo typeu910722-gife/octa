@@ -181,6 +181,7 @@ function quotaPop(refresh){const old=$('quotaPop');if(old&&!refresh){old.remove(
   const el=old||document.createElement('div');el.id='quotaPop';el.className='qpop';el.setAttribute('role','dialog');el.setAttribute('aria-label',I18N.t('AI 剩餘額度'));
   el.innerHTML=`<div class="qph"><b>${esc(I18N.t('AI 剩餘額度'))}</b><button type="button" class="ib sm" data-qx aria-label="${esc(I18N.t('關閉'))}">${ic('x')}</button></div>`+list.map(x=>`<div class="qpe"><div class="qpn"><b data-u>${esc(nm(x.eng))}</b>${x.plan?`<small data-u>${esc(x.plan)}</small>`:''}${u.today?.[x.eng]?`<small>${esc(I18N.t('今天'))} ${u.today[x.eng]} ${esc(I18N.t('次'))}</small>`:''}</div>
     ${x.wins.map(w=>`<div class="qpw ${quotaTone(w.left)}"><span>${esc(I18N.t(QW_LAB[w.k]||w.k))}</span><span class="qbar"><i style="width:${w.left}%"></i></span><b>${w.left}%</b>${rs(w.reset)}</div>`).join('')}</div>`).join('')+
+    (used.has('grokcloud')?`<div class="qpe"><div class="qpn"><b>Grok Bot（雲端）</b><small>${esc(I18N.t('使用你的 Grok Bot 額度'))}</small></div></div>`:'')+
     `<p class="qpn2">${esc(I18N.t('每一輪用了多少，在工作面板的紀錄裡。'))}</p><button type="button" class="ghost sm" data-qset>${ic('settings')}<span>${esc(I18N.t('AI 連線設定'))}</span></button>`;
   if(!old)document.body.appendChild(el);
   el.onclick=e=>{if(e.target.closest('[data-qx]'))el.remove();else if(e.target.closest('[data-qset]')){el.remove();openSettings('ai')}}}

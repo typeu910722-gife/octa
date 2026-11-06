@@ -247,3 +247,11 @@ body.yblock::after{content:"";position:fixed;inset:0;z-index:89;background:trans
 .pair-card p{color:var(--ink2)}
 .pair-card .field{text-align:left}
 .pair-lang select{width:auto;margin:0 auto;display:block;font-size:13px;padding:6px 32px 6px 10px}
+/* 4.14 Grok Bot（雲端）setup: 已送出 → Grok Bot 開始了 → 已回覆 */
+.gcs h4{margin:14px 0 4px;font-size:14px}
+.gcs textarea{width:100%;min-height:120px;font-size:12px}
+.gcsteps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:8px 0 0;padding:0}
+.gcsteps li{padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted,inherit);font-size:13px}
+.gcsteps li.done{border-color:var(--ok,#3a9);color:var(--ok,#3a9)}
+.gcsteps li.done::before{content:'✓ '}
+#gbWin .rows{display:block;margin-top:8px}

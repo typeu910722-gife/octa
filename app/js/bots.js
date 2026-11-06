@@ -24,7 +24,7 @@ const ENG={
 const MODELS={claude:['sonnet','opus','haiku'],codex:['gpt-5-codex','gpt-5.5','gpt-5.4','gpt-5.4-mini'],gemini:[],
   grok:[],grokbot:[],copilot:[],cursor:[],qwen:['qwen3-coder-plus'],opencode:[]};
 const modelsFor=k=>[...new Set([...(MODELS[k]||[]),...((S.models||{})[k]||[])])];
-const engState=k=>S.engines?(S.engines[k]?'ok':'no'):'unknown';
+const engState=k=>k==='grokcloud'?'ok':S.engines?(S.engines[k]?'ok':'no'):'unknown';   // 4.14: Grok Bot（雲端）needs nothing installed
 const ENG_ORDER=['claude','codex','gemini','opencode'];
 const firstEngine=()=>ENG_ORDER.find(k=>!ENG[k]?.hide&&engState(k)==='ok')||'claude';
 const anyAI=()=>Object.entries(S.engines||{}).some(([k,v])=>v&&ENG[k]&&!ENG[k].hide);
@@ -140,9 +140,9 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
   body+=dsec('rt','例行任務','clock',`<div class="rt" id="rt" data-conv="${esc(id)}"></div>`,true);
   if(!g){
     body+=dsec('mem','記憶','brain',memHtml(c),false);
-    const opts=Object.entries(ENG).filter(([k,v])=>!v.hide).flatMap(([k,v])=>[[k,v.full+(k==='claude'?'（預設 sonnet，較省額度）':'（預設模型）')],...modelsFor(k).map(m=>[k+'|'+m,v.full+'・'+m])]),fb=c.fb||[];
+    const opts=Object.entries(ENG).filter(([k,v])=>!v.hide&&k!=='grokcloud').flatMap(([k,v])=>[[k,v.full+(k==='claude'?'（預設 sonnet，較省額度）':'（預設模型）')],...modelsFor(k).map(m=>[k+'|'+m,v.full+'・'+m])]),fb=c.fb||[];
     const sel=(i,only)=>`<select id="sf_fb${i}"><option value="">不使用</option>${opts.filter(([v])=>!only||v.split('|')[0]===only).map(([v,l])=>`<option value="${esc(v)}"${fb[i]===v?' selected':''}>${esc(l)}${engState(v.split('|')[0])==='ok'?'':'（還沒連接）'}</option>`).join('')}</select>`;
-    body+=dsec('ai','AI 與模型','sparkle',`<label class="field"><span>AI 引擎</span><select id="sf_e">${Object.entries(ENG).filter(([k,v])=>!v.hide||c.engine===k).map(([k,v])=>`<option value="${k}" ${(c.engine||'claude')===k?'selected':''}>${v.full}${k==='grokbot'&&grokWin()?'　'+I18N.t('（Windows 不支援，請改用交接網址）'):engState(k)==='ok'?'　✓ 已連接':engState(k)==='no'?'　（還沒連接）':''}</option>`).join('')}</select></label>
+    body+=dsec('ai','AI 與模型','sparkle',`<label class="field"><span>AI 引擎</span><select id="sf_e">${Object.entries(ENG).filter(([k,v])=>!v.hide||c.engine===k).map(([k,v])=>`<option value="${k}" ${(c.engine||'claude')===k?'selected':''}>${v.full}${k==='grokbot'&&grokWin()?'　'+I18N.t('（Windows 不支援，請改用 Grok Bot（雲端））'):k==='grokcloud'?'　'+I18N.t(S.gc?.[id]?.ready?'✓ 已設定':'（要設定 Webhook）'):engState(k)==='ok'?'　✓ 已連接':engState(k)==='no'?'　（還沒連接）':''}</option>`).join('')}</select></label>
       <label class="field"><span>模型</span><select id="sf_m"></select></label><p class="hmuted" id="sf_hint"></p>
       <div class="field"><span>備援 AI</span><div class="fbs"><label><small>第一備援</small>${sel(0)}</label><label><small>第二備援</small>${sel(1)}</label><label><small>本機 Ollama</small>${sel(2,'opencode')}</label></div></div>
       <p class="hmuted">第一、第二備援，以及可選的本機 Ollama。模型說流量不夠或額度用完，會立刻改叫下一個備援，接手後該查的頁面、該建的例行任務一樣要做；這台電腦沒裝的會跳過。HTTP 429 先重試一次再切換。登入或 API Key 無效不會重複呼叫。程式錯誤不會因此換模型。</p>${powerHtml(id)}`,false);
@@ -189,10 +189,12 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
     if(c.name&&/[\s　]/.test(c.name))$('se').textContent=I18N.t('名稱有空格，群組裡 @ 不到它，建議改名');
     const fillModels=()=>{const k=$('sf_e').value,list=modelsFor(k),curM=(c.engine===k?c.model:'')||'',curShort=k==='opencode'?curM.replace(/^ollama\//,''):curM;
       const opts=[...list];if(curShort&&!opts.includes(curShort))opts.push(curShort);
+      $('sf_m').closest('label').hidden=k==='grokcloud';
+      if(k==='grokcloud'){$('sf_m').innerHTML='<option value=""></option>';return}
       if(k==='grokbot'){$('sf_m').innerHTML=opts.length?opts.map(m=>`<option value="${esc(m)}" ${m===curShort?'selected':''} data-u>${esc(m)}</option>`).join(''):`<option value="">${esc(I18N.t('讀不到 Grok Bot 機器人，先到 AI 連線測試'))}</option>`;return}
       $('sf_m').innerHTML=(k==='opencode'&&!opts.length?`<option value="">${esc(I18N.t('這台電腦還沒下載模型，先到 AI 連線下載'))}</option>`:`<option value="">${esc(I18N.t('預設（推薦）'))}</option>`)+opts.map(m=>`<option value="${esc(m)}" ${m===curShort?'selected':''} data-u>${esc(m)}</option>`).join('')};
     const upd=()=>{const k=$('sf_e').value;fillModels();
-      if(k==='grokbot'&&grokWin()){$('sf_hint').innerHTML='<span class="errmsg">Windows 不支援，請改用交接網址</span> <a href="#" id="sf_conn">取得交接網址</a>';$('sf_conn').onclick=ev=>{ev.preventDefault();openSettings('ai','grokbot')};return}
+      if(k==='grokcloud'||(k==='grokbot'&&grokWin())){gcHint(id,k);return}
       $('sf_hint').innerHTML=engState(k)==='ok'?'<span class="okt">這台電腦已連接這個 AI。</span>':`<span>這台電腦還沒連接這個 AI。</span><a href="#" id="sf_conn">看怎麼連接</a>`;if($('sf_conn'))$('sf_conn').onclick=ev=>{ev.preventDefault();openSettings('ai',k)}};$('sf_e').onchange=upd;upd();
     bindMem(c);browserModes(box);
     box.querySelectorAll('.tpl button').forEach(b=>b.onclick=()=>{const t=$('st');t.value=(t.value?t.value+'；':'')+b.textContent;markDirty()});
