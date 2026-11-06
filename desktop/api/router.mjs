@@ -3,6 +3,7 @@ import { chatRoutes } from './chat-routes.mjs';
 import { codeRoutes } from './code-routes.mjs';
 import { auth, bump, ensureSchema, newSession } from './db.mjs';
 import { fileRoutes } from './files.mjs';
+import { grokRoutes } from './grokcloud.mjs';
 import { hookRoute } from './hooks.mjs';
 import { mailRoutes } from './mail-routes.mjs';
 import { manageRoutes } from './manage-routes.mjs';
@@ -45,7 +46,7 @@ export async function onRequest(ctx) {
 // handlers in the order the old single router checked them; each returns a Response or nothing
 // mailRoutes before runnerRoutes: a bot's call to a mailbox (4.7) is answered there
 // skillRoutes before runnerRoutes: runner/skill and runner/genkeys (4.12) are answered there
-const HANDLERS = [fileRoutes, mailRoutes, skillRoutes, runnerRoutes, screenRoutes, chatRoutes, jobRoutes, manageRoutes, codeRoutes, settingsRoutes, overviewRoutes, memoryRoutes, alertRoutes, rolesRoutes];
+const HANDLERS = [fileRoutes, mailRoutes, skillRoutes, runnerRoutes, screenRoutes, chatRoutes, jobRoutes, manageRoutes, codeRoutes, settingsRoutes, overviewRoutes, memoryRoutes, alertRoutes, rolesRoutes, grokRoutes];
 
 async function route({ request: req, env, params }) {
   const db = env.DB;

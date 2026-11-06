@@ -8,6 +8,7 @@ import { continueJob, nextWork } from './jobs.mjs';
 import { progressOf, sameProgress } from './progress.mjs';
 import { approvalNag, weeklyReview } from './memory.mjs';
 import { fireEvent, fireRoutines, tidyOnce } from './routines.mjs';
+import { grokTick } from './grokcloud.mjs';
 import { runnerDone } from './runner-done.mjs';
 import { CHUNK, J, MIN, WAIT_MS, clean, err, jobMaxOf, now, uid } from './util.mjs';
 
@@ -55,7 +56,7 @@ export async function runnerRoutes(c) {
       if (body.boot) {
         const lost = (
           await db
-            .prepare("SELECT * FROM jobs WHERE user_id=? AND status='running' AND (kind IS NULL OR kind='' OR kind='chat')")
+            .prepare("SELECT * FROM jobs WHERE user_id=? AND status='running' AND (kind IS NULL OR kind='' OR kind='chat') AND ext IS NULL")
             .bind(U)
             .all()
         ).results;
@@ -66,7 +67,7 @@ export async function runnerRoutes(c) {
       const cands = (
         await db
           .prepare(
-            "SELECT * FROM jobs WHERE user_id=? AND status='running' AND (IFNULL(beat,started)<? OR (started<? AND IFNULL(paused,0)=0))"
+            "SELECT * FROM jobs WHERE user_id=? AND status='running' AND ext IS NULL AND (IFNULL(beat,started)<? OR (started<? AND IFNULL(paused,0)=0))"
           )
           .bind(U, now() - 20 * MIN, now() - 10 * MIN)
           .all()
@@ -105,6 +106,10 @@ export async function runnerRoutes(c) {
         await approvalNag(env, db, U);
       } catch {}
       if (changed) await bump(db, U);
+      // 4.14: Grok Bot（雲端）work goes out from here (and from the server's own timer), never to the runner
+      try {
+        await grokTick(env, db, U);
+      } catch {}
       const slots = body.slots === undefined ? 1 : +body.slots;
       const t0 = now();
       let rev = null;
@@ -123,6 +128,9 @@ export async function runnerRoutes(c) {
         if (r !== rev) {
           // something changed since the last look
           rev = r;
+          try {
+            await grokTick(env, db, U);
+          } catch {}
           const out = await nextWork(env, db, U, slots);
           if (out) return J(out);
         }

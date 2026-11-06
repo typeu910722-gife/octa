@@ -133,7 +133,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   paused INTEGER,                -- 4.7: 1 = the user pressed 暫停 (the runner holds before its next step)
   prio INTEGER,                  -- 4.8: 插隊 — queued jobs with a higher number are taken first (then by id)
   quse TEXT,                     -- 4.8: JSON {eng, k:'5h', before, after}: the plan quota used (%) before and after this run
-  after INTEGER                  -- 4.11: not before this time (quota pause until the window resets, retry back-off, deferred routine)
+  after INTEGER,                 -- 4.11: not before this time (quota pause until the window resets, retry back-off, deferred routine)
+  ext INTEGER                    -- 4.14: sent to Grok Bot（雲端）at this time; running until its reply callback (-1: the reply is being saved)
 );
 CREATE INDEX IF NOT EXISTS job_user ON jobs(user_id, status, id);
 CREATE INDEX IF NOT EXISTS job_created ON jobs(user_id, created);
@@ -284,3 +285,14 @@ CREATE TABLE IF NOT EXISTS alerts (
   retried INTEGER
 );
 CREATE INDEX IF NOT EXISTS alert_user ON alerts(user_id, id);
+-- 4.14 Grok Bot（雲端）(desktop/api/grokcloud.mjs): a bot whose AI is the user's Grok Bot, reached through a routine's webhook
+CREATE TABLE IF NOT EXISTS grokcloud (
+  bot_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token TEXT NOT NULL,           -- the bot's reply token: Grok Bot answers at /api/hook/<token>/reply (published on ntfy.sh like a 交接網址)
+  url TEXT,                      -- the routine's webhook (POST to)
+  key TEXT,                      -- its secret key (Authorization: Bearer …); never shown again in full
+  created INTEGER NOT NULL,
+  test TEXT                      -- JSON {id, state: sent|started|replied|error, at, text}: the last 測試連線
+);
+CREATE TABLE IF NOT EXISTS gc_runs (user_id TEXT NOT NULL, bot_id TEXT NOT NULL, at INTEGER NOT NULL);   -- webhook runs (200 an hour per routine)

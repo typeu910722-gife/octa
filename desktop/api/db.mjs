@@ -217,7 +217,11 @@ const MIGRATIONS = [
   'ALTER TABLE jobs ADD COLUMN prio INTEGER',
   'ALTER TABLE jobs ADD COLUMN quse TEXT',
   // 4.11 全力模式: a queued job that waits until a time (quota resets, retry back-off, a deferred routine)
-  'ALTER TABLE jobs ADD COLUMN after INTEGER'
+  'ALTER TABLE jobs ADD COLUMN after INTEGER',
+  // 4.14 Grok Bot（雲端）
+  'ALTER TABLE jobs ADD COLUMN ext INTEGER',
+  'CREATE TABLE IF NOT EXISTS grokcloud (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, url TEXT, key TEXT, created INTEGER NOT NULL, test TEXT)',
+  'CREATE TABLE IF NOT EXISTS gc_runs (user_id TEXT NOT NULL, bot_id TEXT NOT NULL, at INTEGER NOT NULL)'
 ];
 const schemaReady = new WeakSet();
 export async function ensureSchema(db) {
@@ -251,7 +255,10 @@ export async function ensureSchema(db) {
         'SELECT paused FROM jobs',
         'SELECT upd FROM messages',
         'SELECT prio, quse FROM jobs',
-        'SELECT after FROM jobs'
+        'SELECT after FROM jobs',
+        'SELECT ext FROM jobs',
+        'SELECT bot_id, token, url, key, test FROM grokcloud',
+        'SELECT at FROM gc_runs'
       ].map(q => db.prepare(q + ' LIMIT 0'))
     );
     schemaReady.add(db);

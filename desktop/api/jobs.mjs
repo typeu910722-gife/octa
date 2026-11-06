@@ -13,6 +13,9 @@ import { ROUTINE_SELF, userTurn } from './routines.mjs';
 import { correctionAsk, localNow, scheduleAsk } from './schedule.mjs';
 import { FULL_RETRY_MAX, MAX_ASK_DEPTH, MIN, ROUTINE_QUOTA_CAP, clean, fullOn, jobMaxOf, now, retryDelay, warmOf } from './util.mjs';
 
+// 4.14 Grok Bot（雲端）: chat work of a bot on that AI (or handed to it as a backup) goes out as a webhook call
+// (grokcloud.mjs gcDispatch); the runner never takes it
+export const GC_JOB_SQL = `(IFNULL(j.kind,'chat')='chat' AND ((j.eng IS NULL AND EXISTS (SELECT 1 FROM bots gb WHERE gb.id=j.bot_id AND gb.engine='grokcloud')) OR IFNULL(j.eng,'') LIKE 'grokcloud%'))`;
 export const PARTIAL_TAG = '【中止前已完成的部分】'; // same tag as octa-runner.mjs partialNote()
 // a chat job that stopped halfway (no answer for a long time, or the host computer went offline): the same job again,
 // told to continue from what is done, at most MAX_AUTO_RETRY times (全力模式: FULL_RETRY_MAX, with a growing pause). Other kinds just fail.
@@ -89,7 +92,7 @@ export async function nextWork(env, db, U, slots) {
     // one task per bot at a time; showing its browser on screen ('open') never waits; a 旁聊 runs beside the work (one at a time)
     const j = await db
       .prepare(
-        `SELECT * FROM jobs j WHERE user_id=? AND status='pending' AND (j.pc IS NULL OR j.pc=?) AND IFNULL(j.after,0)<=?4
+        `SELECT * FROM jobs j WHERE user_id=? AND status='pending' AND (j.pc IS NULL OR j.pc=?) AND IFNULL(j.after,0)<=?4 AND NOT ${GC_JOB_SQL}
       AND (j.kind='open' OR NOT EXISTS (SELECT 1 FROM jobs r WHERE r.user_id=j.user_id AND r.bot_id=j.bot_id AND r.status='running' AND r.kind<>'open'
         AND (IFNULL(j.via,'') LIKE ?3) = (IFNULL(r.via,'') LIKE ?3)))
       ORDER BY (j.kind='open') DESC, IFNULL(j.prio,0) DESC, id LIMIT 1`
@@ -162,7 +165,7 @@ export const hhmm = t => {
   const day = new Date(t).toDateString() === new Date().toDateString() ? '' : `${d.getMonth() + 1}/${d.getDate()} `;
   return `${day}${z(d.getHours())}:${z(d.getMinutes())}`;
 };
-async function jobPayload(env, db, U, job) {
+export async function jobPayload(env, db, U, job) {
   if (job.kind === 'code') {
     const task = await db.prepare('SELECT * FROM code_tasks WHERE id=? AND user_id=?').bind(job.url, U).first();
     const repo = task && (await db.prepare('SELECT * FROM code_repos WHERE id=? AND user_id=?').bind(task.repo_id, U).first());

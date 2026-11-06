@@ -10,7 +10,10 @@
 //   GET  hook/<t>/inbox[?peek=1]                → {ok, jobs: [...]}    finished work this token hasn't read yet (marked read)
 //   POST hook/<t>/feedback       {job, text}    → {ok, job}            redo with the correction (new job)
 //   POST hook/<t>/teach          {text, name?}  → {ok, saved}          into the bot's 📌 rules (📘 manual with a name and steps)
+// 4.14: a Grok Bot（雲端）bot's reply token (not a routine's) answers only reply / progress / file/<id> (grokcloud.mjs);
+// those three answer 404 for a routine's token.
 // A missing or wrong token always gets 401 with the same body, whatever the path.
+import { gcByToken, gcHookRoute } from './grokcloud.mjs';
 import { addJob, addMsg, blocked, bump, failed, getSettings, loadAll, putSettings } from './db.mjs';
 import { saveManuals } from './memory.mjs';
 import { noteSrc } from './memory-edit.mjs';
@@ -21,7 +24,7 @@ import { DAY, MIN, clean, now } from './util.mjs';
 export const HOOK_CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, OPTIONS',
-  'access-control-allow-headers': 'content-type',
+  'access-control-allow-headers': 'content-type, authorization',
   'access-control-max-age': '600'
 };
 const HJ = (data, status = 200) =>
@@ -128,12 +131,19 @@ export async function hookRoute({ req, env, db, path, m, url, body, rawBody }) {
   if (m === 'OPTIONS') return new Response(null, { status: 204, headers: HOOK_CORS });
   const [, token = '', ...restParts] = path.split('/');
   const rest = restParts.join('/');
+  const bad = () => (over('bad', BAD_PER_15MIN) ? HJ({ error: '嘗試太多次，請稍後再試' }, 429) : HJ(BAD_TOKEN, 401));
   const r = await routineOf(db, token);
   if (!r) {
-    if (over('bad', BAD_PER_15MIN)) return HJ({ error: '嘗試太多次，請稍後再試' }, 429);
-    return HJ(BAD_TOKEN, 401);
+    const g = await gcByToken(db, token);
+    if (!g) return bad();
+    // a Bearer header, when sent, must be the same token (Grok Bot is told to send it; the OCTA site passes it on)
+    const auth = req?.headers?.get?.('authorization') || '';
+    if (auth && !sameToken(auth.replace(/^Bearer\s+/i, '').trim(), token)) return bad();
+    if ((rawBody || '').length > HOOK_MAX_BODY) return HJ({ error: '內容太大（上限 64 KB）' }, 413);
+    return gcHookRoute({ env, db, m, url, body, rest, g, cors: HOOK_CORS, bad });
   }
   if ((rawBody || '').length > HOOK_MAX_BODY) return HJ({ error: '內容太大（上限 64 KB）' }, 413);
+  if (rest === 'reply' || rest === 'progress' || rest.startsWith('file/')) return HJ({ ok: false, error: '找不到這個功能' }, 404);
   const U = r.user_id,
     key = r.hook;
   const write = async () => {

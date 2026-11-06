@@ -1,6 +1,7 @@
 // Routes that manage bots, groups, folders (分區), routines and templates.
 import { NAME_SPACE, NAME_SPACE_ERR, STANDBY, autoStandby, autonomyOk, noSpaces } from './chat.mjs';
 import { addMsg, getSettings, loadAll } from './db.mjs';
+import { gcForget } from './grokcloud.mjs';
 import { GROKBOT_WIN, PALETTE, avatarOk, colorOk, engineOk, fbOk, grokBotOff, modelOk } from './engines.mjs';
 import { ROUTINE_NEEDS_PROMPT, tidyScan, triggerFrom } from './routines.mjs';
 import { cleanTimes, isEvery, localNow } from './schedule.mjs';
@@ -139,7 +140,8 @@ export async function manageRoutes(c) {
       )
       .run();
     await addMsg(db, U, id, 'sys', task ? '機器人已建立' : '機器人已建立：直接傳訊息告訴它要做什麼，它會自己整理成指定任務');
-    if (task) await autoStandby(db, U, id);
+    // 4.14: a Grok Bot（雲端）bot doesn't patrol by itself (each look would be a Grok Bot run)
+    if (task && engine !== 'grokcloud') await autoStandby(db, U, id);
     return ok({ id });
   }
   if (path.startsWith('bots/')) {
@@ -177,7 +179,7 @@ export async function manageRoutes(c) {
           U
         )
         .run();
-      if (old && task && !String(old.task || '').trim()) await autoStandby(db, U, id); // just got its standing task
+      if (old && task && !String(old.task || '').trim() && engine !== 'grokcloud') await autoStandby(db, U, id); // just got its standing task
       return ok();
     }
     if (m === 'DELETE') {
@@ -205,6 +207,7 @@ export async function manageRoutes(c) {
         db.prepare('DELETE FROM files WHERE conv=? AND user_id=?').bind(id, U),
         db.prepare("DELETE FROM jobs WHERE bot_id=? AND user_id=? AND status='pending'").bind(id, U)
       ]);
+      await gcForget(env, db, U, id); // 4.14: its Grok Bot（雲端）reply token stops working
       return ok();
     }
   }

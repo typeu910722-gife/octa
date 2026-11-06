@@ -30,6 +30,9 @@ import { PARTIAL_TAG, closeSession, partialNote, sessions, warmClaude, warmSend 
 
 // ---------- job handlers ----------
 export async function chatJob(job) {
+  // 4.14: a Grok Bot（雲端）bot's work goes to its Grok Bot webhook from the server, never to an AI on this computer.
+  // (The server doesn't hand these out; if one ever arrives, no CLI is started for it.)
+  if (job.bot?.engine === 'grokcloud') return api('runner/done', { id: job.id, ok: false, text: '⚠ 這件工作要交給 Grok Bot（雲端），不在這台電腦用其他 AI 做。' });
   setShareBrowser(job);
   return chatRun(job);
 }

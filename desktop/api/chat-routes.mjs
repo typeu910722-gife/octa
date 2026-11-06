@@ -13,7 +13,7 @@ import { DAY, J, WAIT_MS, clean, err, fullOn, now, warmOf } from './util.mjs';
 
 // what is running now. bg: the bot is answering / doing what another bot asked (its avatar shows it chatting);
 // job: the id, for the work panel's timeline; created: when it was queued
-const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,paused,eng,prio,
+const BUSY_SQL = `SELECT id AS job,conv,bot_id,status,kind,created,started,progress,paused,eng,prio,ext,
   CASE WHEN prompt LIKE '〔背景:%' OR via LIKE '%"k":"ask"%' OR via LIKE '%"k":"give"%' OR prompt LIKE '同事「%'
     OR instr(substr(prompt,1,80),' 問你：')>0 OR instr(substr(prompt,1,80),'把工作交接給你：')>0 THEN 1 ELSE 0 END AS bg,
   via, substr(prompt,1,48) AS p0
@@ -124,7 +124,14 @@ export async function chatRoutes(c) {
       local: me.kind === 'local',
       rev: rev.results[0]?.rev ?? 0,
       prog: rev.results[0]?.prog ?? 0,
-      engines: JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || 'null'),
+      engines: (e => (e ? { ...e, grokcloud: true } : e))(JSON.parse((await db.prepare('SELECT engines FROM users WHERE id=?').bind(U).first())?.engines || 'null')), // 4.14: Grok Bot（雲端）needs nothing installed
+      // 4.14 Grok Bot（雲端）: which bots have their webhook set, and the last 測試連線 (never the key or the token)
+      gc: Object.fromEntries(
+        (await db.prepare('SELECT bot_id,url,key,test FROM grokcloud WHERE user_id=?').bind(U).all()).results.map(r => [
+          r.bot_id,
+          { ready: !!(r.url && r.key), test: (() => { try { return JSON.parse(r.test || 'null')?.state || ''; } catch { return ''; } })() }
+        ])
+      ),
       runnerOnline: env.runnerOnline ? env.runnerOnline() : true,
       hostOs: env.hostOs || '', // 4.5: the host computer's system (Grok Bot's grok-bot-cli doesn't work on Windows)
       hookTunnel: env.hookTunnel ? env.hookTunnel() : '', // the tunnel address the 交接網址 is forwarded to right now
@@ -329,6 +336,9 @@ export async function chatRoutes(c) {
     const { bots } = await loadAll(db, U);
     const bot = bots.find(b => b.id === conv);
     if (!bot) return err('只有單一機器人的對話可以壓縮', 404);
+    // 4.14: Grok Bot（雲端）gets the recent conversation with every run and keeps its own memory: nothing to compact
+    // (and no other AI is asked to do it)
+    if (bot.engine === 'grokcloud') return err('Grok Bot（雲端）每次都會帶最近的對話，不需要壓縮', 400);
     if (
       await db
         .prepare("SELECT 1 FROM jobs WHERE user_id=? AND conv=? AND status IN ('pending','running') LIMIT 1")

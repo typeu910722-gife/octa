@@ -26,6 +26,7 @@ export async function settingsRoutes(c) {
   if (path === 'engine-install' && m === 'POST') {
     // from any device (the phone too): this computer opens the install window
     const engine = engineOk(body.engine);
+    if (engine === 'grokcloud') return err('Grok Bot（雲端）不用安裝：在機器人的「詳細資料 → AI 與模型」設定 Webhook', 400);
     if (['copilot', 'cursor', 'qwen', 'grok', 'grokbot'].includes(engine)) return err('這個 AI 暫時不開放連接', 400);
     const r = await db
       .prepare("INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,kind,url) VALUES (?,'__test',?,'[]','',?,'install',?)")
@@ -36,6 +37,8 @@ export async function settingsRoutes(c) {
   if (path === 'engine-test' && m === 'POST') {
     const engine = engineOk(body.engine);
     if (engine === 'grokbot' && grokBotOff(env)) return err(GROKBOT_WIN, 400);
+    // 4.14: no CLI to test — each bot's 測試連線 sends a ping through its own Grok Bot webhook (grokcloud/<bot>/test)
+    if (engine === 'grokcloud') return err('Grok Bot（雲端）在每個機器人的「詳細資料 → AI 與模型」按「測試連線」', 400);
     const r = await db
       .prepare("INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,kind,url) VALUES (?,'__test',?,'[]',?,?,'test',?)")
       .bind(U, 'test:' + engine, '這是 OCTA 的連線測試，請只回覆兩個字：OK', now(), engine)

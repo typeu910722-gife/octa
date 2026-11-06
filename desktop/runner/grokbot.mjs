@@ -14,7 +14,7 @@ import { JOB_TIMEOUT_MS, WIN, cfg, q } from './state.mjs';
 // nothing here runs (no looking for the tool or the app's files, no tries): the engine reports unavailable with this
 // reason, and Grok Bot works the other way round — it hands work to OCTA through a 交接網址.
 // (cfg.platform: the tests pretend to be another system)
-export const GROKBOT_WIN_TEXT = '⚠ Windows 不支援 Grok Bot：Windows 版的 Grok Bot App 不會產生 gateway-descriptor.json，grok-bot-cli 沒辦法用。請改用交接網址（AI 連線 → Grok Bot），讓 Grok Bot 把工作交給 OCTA 的機器人。';
+export const GROKBOT_WIN_TEXT = '⚠ Windows 不支援 Grok Bot：Windows 版的 Grok Bot App 不會產生 gateway-descriptor.json，grok-bot-cli 沒辦法用。請改用 Grok Bot（雲端）（機器人的詳細資料 → AI 與模型，OCTA 透過你的 Grok Bot 例行任務 Webhook 交派工作，任何系統都能用），或用交接網址讓 Grok Bot 把工作交給 OCTA 的機器人。';
 export const grokBotUnsupported = () => (cfg.platform || process.platform) === 'win32';
 
 // ---------- Grok Bot (through grok-bot-cli) ----------

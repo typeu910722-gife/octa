@@ -21,7 +21,7 @@ const subtle = () => globalThis.crypto.subtle;
 export const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, OPTIONS',
-  'access-control-allow-headers': 'content-type',
+  'access-control-allow-headers': 'content-type, authorization',
   'access-control-max-age': '600'
 };
 const J = (data, status = 200) =>
@@ -136,6 +136,9 @@ export async function forwardHook(request, token, rest, opts = {}) {
   const search = new URL(request.url).search.slice(0, 200);
   const headers = { 'content-type': request.headers.get('content-type') || 'application/json', 'x-octa-relay': '1' };
   if (request.headers.get('x-line-signature')) headers['x-line-signature'] = request.headers.get('x-line-signature');   // LINE webhooks
+  // 4.14: Grok Bot（雲端）sends its reply token as a Bearer header too (/reply, /progress); the host checks it is the same token
+  const auth = request.headers.get('authorization') || '';
+  if (/^Bearer [0-9a-f]{48}$/i.test(auth)) headers.authorization = auth;
   const send = to => withTimeout(fetch, opts.timeoutMs || FORWARD_MS)(`${to}/api/hook/${token}${rest ? '/' + rest : ''}${search}`, {
     method: request.method, body, redirect: 'manual', headers
   });

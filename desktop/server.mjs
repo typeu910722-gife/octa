@@ -108,7 +108,9 @@ const MIGRATIONS = ["ALTER TABLE bots ADD COLUMN engine TEXT NOT NULL DEFAULT 'c
   // 4.7: markers taken out of a reply (notes, result, approval card) and 暫停
   'ALTER TABLE messages ADD COLUMN meta TEXT', 'ALTER TABLE jobs ADD COLUMN paused INTEGER',
   'ALTER TABLE messages ADD COLUMN upd INTEGER', 'ALTER TABLE jobs ADD COLUMN prio INTEGER', 'ALTER TABLE jobs ADD COLUMN quse TEXT',
-  'ALTER TABLE jobs ADD COLUMN after INTEGER'];
+  'ALTER TABLE jobs ADD COLUMN after INTEGER',
+  // 4.14 Grok Bot（雲端）: the webhook and reply token of each bot on it, its runs (Grok Bot's hourly limit), jobs sent out
+  'ALTER TABLE jobs ADD COLUMN ext INTEGER', 'CREATE TABLE IF NOT EXISTS grokcloud (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL, url TEXT, key TEXT, created INTEGER NOT NULL, test TEXT)', 'CREATE TABLE IF NOT EXISTS gc_runs (user_id TEXT NOT NULL, bot_id TEXT NOT NULL, at INTEGER NOT NULL)'];
 
 // ---------- helpers ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8' };
@@ -198,7 +200,7 @@ export const GO_URL = 'https://octa.yzprojecttw.com/go';
 // 4.5: the 交接網址 other AIs call is <HOOK_BASE>/api/hook/<token>; the OCTA site forwards it to this computer's tunnel
 // (legacy/hook-relay.mjs), which it finds through ntfy.sh (host-link.mjs publishHook)
 export const HOOK_BASE = 'https://octa.yzprojecttw.com';
-const HOOK_PATH = /^\/api\/hook\/[0-9a-zA-Z]{1,64}(\/(job\/[0-9a-zA-Z]{1,40}|inbox|feedback|teach))?\/?(\?[\w=&%.-]*)?$/;
+const HOOK_PATH = /^\/api\/hook\/[0-9a-zA-Z]{1,64}(\/(job\/[0-9a-zA-Z]{1,40}|inbox|feedback|teach|reply|progress|file\/[0-9a-zA-Z-]{1,60}))?\/?(\?[\w=&%.-]*)?$/;
 const PHONE_IDLE = 90 * 86400000;   // a paired phone unused this long is signed out (desktop/api/util.mjs SESSION_IDLE)
 const newCode = () => Array.from({ length: 8 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('');
 
@@ -235,6 +237,7 @@ export async function startServer(opts = {}) {
     base.DB = db;
   }
   const { onRequest } = await import(pathToFileURL(API).href);
+  const { grokTick } = await import(pathToFileURL(join(dirname(API), 'grokcloud.mjs')).href);
 
   const tzOffset = -new Date().getTimezoneOffset();
   let runnerSeen = 0;
@@ -258,9 +261,12 @@ export async function startServer(opts = {}) {
     hookBase,
     hookTunnel: () => (linking?.role() === 'host' ? tunnel.url : ''),
     hooksChanged: () => { setTimeout(() => { hookKeep().catch(() => { }); }, 0); },
+    // 4.14 Grok Bot（雲端）: is this token's current tunnel address on ntfy.sh (else replies go straight to the tunnel)
+    hookPublished: token => { const p = hookPub.get(token); return !!p && !p.error && p.url === tunnel.url; },
     // 4.7 郵件連接器: mail attachments go to (and come from) the bot's folder in the file folder
     getStore: () => hooks.getStore(),
-    mailConnect: opts.mailConnect   // tests only: a plain socket to a fake mail server
+    mailConnect: opts.mailConnect,   // tests only: a plain socket to a fake mail server
+    grokFileAllow: opts.grokFileAllow || [],   // tests only: origins Grok Bot's files may come from besides public https
   };
   const callApi = async (req, res, env, origin) => {
     const request = await toRequest(req, origin);
@@ -447,8 +453,10 @@ export async function startServer(opts = {}) {
   // tunnel's address changes, when a hook is made, and every 6 hours (ntfy.sh keeps messages about 12 hours).
   const hookPub = new Map();   // hook key → { url, at, error }
   const hookState = { error: '', at: 0 };
-  const hookKeys = async () => (await db.prepare('SELECT hook FROM routines WHERE hook IS NOT NULL').all()).results.map(r => r.hook).filter(Boolean);
-  const hooksExist = async () => linking?.role() === 'host' && !!(await db.prepare('SELECT 1 FROM routines WHERE hook IS NOT NULL LIMIT 1').first());
+  // 4.14: a Grok Bot（雲端）bot's reply token is published the same way (Grok Bot answers at /api/hook/<token>/reply)
+  const gcKeys = async () => { try { return (await db.prepare('SELECT token FROM grokcloud').all()).results.map(r => r.token).filter(Boolean); } catch { return []; } };
+  const hookKeys = async () => [...(await db.prepare('SELECT hook FROM routines WHERE hook IS NOT NULL').all()).results.map(r => r.hook).filter(Boolean), ...(await gcKeys())];
+  const hooksExist = async () => linking?.role() === 'host' && (!!(await db.prepare('SELECT 1 FROM routines WHERE hook IS NOT NULL LIMIT 1').first()) || (await gcKeys()).length > 0);
   let hookRun = null;
   function hookKeep() {
     if (hookRun) return hookRun;
@@ -713,6 +721,9 @@ export async function startServer(opts = {}) {
   // drop), and its address kept on the relay for the /go page
   phoneKeep().catch(() => { });
   hookKeep().catch(() => { });   // 4.5: the 交接網址 work from the OCTA site after a restart
+  // 4.14 Grok Bot（雲端）: work for those bots goes out from here too (the runner may be off or busy)
+  let gcBusy = false;
+  const gcTimer = setInterval(async () => { if (gcBusy || linking?.role() === 'remote') return; gcBusy = true; try { await grokTick(base, base.DB); } catch { } gcBusy = false; }, opts.grokMs || 3000);
   const phoneTimer = setInterval(async () => { await tunnelCheck().catch(() => { }); phoneKeep().catch(() => { }); hookKeep().catch(() => { }); }, opts.watchMs || 60000);
   phoneTimer.unref?.();
 
@@ -723,7 +734,7 @@ export async function startServer(opts = {}) {
     cloudImport, link: linking, remotePort,
     // 4.5: before this computer's data is deleted — say goodbye to linked computers, close the tunnel and the database
     async wipeShutdown() {
-      clearInterval(phoneTimer);
+      clearInterval(phoneTimer); clearInterval(gcTimer);
       const said = await linking.farewell().catch(() => ({}));
       linking.stop(); runner?.stop(); runner = null; screen.stopAll?.();
       Object.assign(remote, { on: false, url: '', code: '' }); stopTunnel();
@@ -731,7 +742,8 @@ export async function startServer(opts = {}) {
       local.close(); remoteSrv.close(); local.closeAllConnections?.(); remoteSrv.closeAllConnections?.();
       return said;
     },
-    async close() { clearInterval(phoneTimer); linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); local.closeAllConnections?.(); remoteSrv.closeAllConnections?.(); }
+    get db() { return db; },   // tests: the database itself
+    async close() { clearInterval(phoneTimer); clearInterval(gcTimer); linking.stop(); runner?.stop(); screen.stopAll?.(); tunnel.proc?.kill(); db.save(); local.close(); remoteSrv.close(); local.closeAllConnections?.(); remoteSrv.closeAllConnections?.(); }
   };
 }
 

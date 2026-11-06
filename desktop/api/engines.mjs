@@ -1,10 +1,11 @@
 // AI engines, backups (fb), models and avatars.
 import { clean, now } from './util.mjs';
 
-export const ENGINES = ['claude', 'codex', 'gemini', 'grok', 'grokbot', 'copilot', 'cursor', 'qwen', 'opencode'];
+export const ENGINES = ['claude', 'codex', 'gemini', 'grok', 'grokbot', 'grokcloud', 'copilot', 'cursor', 'qwen', 'opencode'];
 // 4.5: the Grok Bot app for Windows doesn't write gateway-descriptor.json, so grok-bot-cli can't work there.
-// On a Windows host Grok Bot is offered only through the 交接網址 (Grok Bot calls OCTA, not the other way round).
-export const GROKBOT_WIN = 'Windows 不支援，請改用交接網址';
+// On a Windows host Grok Bot is offered only through the 交接網址 (Grok Bot calls OCTA, not the other way round),
+// and (4.14) as Grok Bot（雲端）: OCTA calls the user's Grok Bot routine webhook — no CLI, any OS (grokcloud.mjs).
+export const GROKBOT_WIN = 'Windows 不支援，請改用 Grok Bot（雲端）';
 export const grokBotOff = env => (env?.hostOs || '') === 'win32';
 // backup AIs: up to three "engine|model" entries (two backups plus an optional local Ollama / opencode)
 export const fbParse = v => {
@@ -19,7 +20,7 @@ export const fbOk = v =>
   JSON.stringify(
     (Array.isArray(v) ? v : [])
       .map(x => String(x || '').split('|'))
-      .filter(([e]) => ENGINES.includes(e) && !['copilot', 'cursor', 'qwen', 'grok'].includes(e))
+      .filter(([e]) => ENGINES.includes(e) && !['copilot', 'cursor', 'qwen', 'grok', 'grokcloud'].includes(e))
       .slice(0, 3)
       .map(([e, m]) => e + (clean(m, 80) ? '|' + clean(m, 80) : ''))
   );
@@ -78,6 +79,7 @@ export const ENGINE_NAMES = {
   codex: 'ChatGPT',
   gemini: 'Antigravity',
   grokbot: 'Grok Bot',
+  grokcloud: 'Grok Bot（雲端）',
   opencode: 'Ollama'
 };
 export const engineOk = e => (ENGINES.includes(e) ? e : 'claude');
