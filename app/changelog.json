@@ -1,5 +1,24 @@
 [
  {
+  "v": "4.14.1",
+  "date": "2026-11-06",
+  "notes": [
+   "手機更新後不用再重連：從主畫面的 OCTA（/go）打開時，電腦更新或重新啟動期間會顯示「電腦正在更新，馬上回來…」，好了自動接回，不用按任何東西",
+   "手機重新整理或從背景回來都會停在固定網址，不再看到 Cloudflare 錯誤頁；外觀和語言設定也會跟著帶過去",
+   "提醒：在 /go 裡 iPhone 不允許系統通知，新訊息改成 App 內提示，背景通知請用 Telegram 或 LINE"
+  ],
+  "notes_en": [
+   "No more reconnecting the phone after updates: opened from the home-screen OCTA (/go), it shows \"The computer is updating, back soon…\" during an update or restart and reconnects by itself",
+   "Reloading or returning from the background always lands on the fixed address — no more Cloudflare error page; appearance and language settings carry over",
+   "Note: inside /go the iPhone does not allow system notifications; new messages show as in-app hints — use Telegram or LINE for background alerts"
+  ],
+  "notes_ja": [
+   "更新後のスマホ再接続が不要に：ホーム画面の OCTA（/go）から開くと、PC の更新・再起動中は「PC を更新中、すぐ戻ります…」と表示し、終わると自動で再接続",
+   "再読み込みやバックグラウンドからの復帰でも固定アドレスに戻り、Cloudflare のエラー画面は出ません。外観と言語の設定も引き継ぎ",
+   "注意：/go 内では iPhone のシステム通知が使えないため、新着はアプリ内表示に。バックグラウンド通知は Telegram か LINE を"
+  ]
+ },
+ {
   "v": "4.14.0",
   "date": "2026-11-06",
   "notes": [
