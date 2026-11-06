@@ -1957,3 +1957,33 @@ T.update({
  '圖片每張約 US$0.02–0.06；影片每秒約 US$0.15–0.75（8 秒一段）': ('About US$0.02–0.06 per picture; about US$0.15–0.75 per second of video (8-second clips)', '画像 1 枚約 US$0.02–0.06、動画 1 秒約 US$0.15–0.75（1 本 8 秒）'),
  '依模型計價：圖片每張約 US$0.003–0.05；影片每段約 US$0.25–1.5': ('Priced per model: about US$0.003–0.05 per picture, US$0.25–1.5 per video clip', 'モデルごとの料金：画像 1 枚約 US$0.003–0.05、動画 1 本約 US$0.25–1.5'),
 })
+
+# 4.13: 擴充工具箱 (settings → skills & tools) and its catalog (sent by the server, translated on the page)
+T.update({
+ '授權': ('License', 'ライセンス'),
+ '下載約': ('Download about', 'ダウンロード約'),
+ '擴充工具箱': ('Extended toolbox', '拡張ツールボックス'),
+ '開源的圖片、影片、聲音工具：去背、放大、做字幕、剪掉空白；有 NVIDIA 顯示卡還能在本機產生圖片影片。要用到才下載，都從官方來源下載固定版本並比對檢查碼。關著就跟原本一樣：不下載、也不告訴機器人有這些工具。': ('Open-source picture, video and audio tools: remove backgrounds, upscale, make subtitles, cut silences; with an NVIDIA graphics card, also generate pictures and videos on this computer. Downloaded only when used, fixed versions from official sources, checked against their checksums. Off, everything stays as before: nothing is downloaded and bots are not told about these tools.', 'オープンソースの画像・動画・音声ツール：背景除去、拡大、字幕作成、無音カット。NVIDIA のグラフィックカードがあれば、このパソコンで画像・動画も生成できます。使うときだけ、公式の入手元から固定バージョンをダウンロードし、チェックサムを照合します。オフのままなら今まで通り：何もダウンロードせず、ボットにも知らせません。'),
+ '顯示卡：': ('Graphics card: ', 'グラフィックカード：'),
+ '機器人要用時會自己裝（不用問你）；ComfyUI 和它的模型很大，下載前一定會先問你。': ('Bots install these themselves when they need them (without asking you); ComfyUI and its models are big, so you are always asked before they are downloaded.', 'ボットは必要なときに自分でインストールします（確認なし）。ComfyUI とそのモデルは大きいので、ダウンロード前に必ず確認します。'),
+ '全部安裝（不含 ComfyUI）': ('Install all (except ComfyUI)', 'すべてインストール（ComfyUI を除く）'),
+ '擴充工具箱已打開': ('Extended toolbox on', '拡張ツールボックスをオンにしました'),
+ '擴充工具箱已關閉': ('Extended toolbox off', '拡張ツールボックスをオフにしました'),
+ '先勾要加裝的模型': ('Tick the models to add first', '追加するモデルを先に選んでください'),
+ '顯示卡記憶體要': ('Needs graphics memory of', '必要なグラフィックメモリ'),
+ '加裝勾選的模型': ('Add the ticked models', '選んだモデルを追加'),
+ '要下載約': ('This downloads about', 'ダウンロード量は約'),
+ '，會占用不少硬碟空間。確定嗎？': (' and takes a lot of disk space. Go ahead?', 'で、ディスク容量をかなり使います。よろしいですか？'),
+ '自動（本機有模型就用本機，不然用雲端）': ('Automatic (this computer when it has a model, else the cloud)', '自動（このパソコンにモデルがあればローカル、なければクラウド）'),
+ '只用本機（ComfyUI）': ('This computer only (ComfyUI)', 'このパソコンのみ（ComfyUI）'),
+ '只用雲端（API 金鑰）': ('Cloud only (API keys)', 'クラウドのみ（API キー）'),
+ '本機 ComfyUI 已經可以用。': ('Local ComfyUI is ready.', 'ローカルの ComfyUI を使えます。'),
+ '本機 ComfyUI 還沒裝（需要 NVIDIA 顯示卡，在上面的擴充工具箱安裝）。': ('Local ComfyUI is not installed yet (needs an NVIDIA graphics card; install it in the extended toolbox above).', 'ローカルの ComfyUI はまだありません（NVIDIA のグラフィックカードが必要。上の拡張ツールボックスでインストール）。'),
+ '在哪裡產生': ('Where to generate', '生成する場所'),
+ '圖片放大 2–4 倍並補回細節（照片、插圖都可以；用顯示卡，任何品牌）': ('Upscale pictures 2–4× and restore detail (photos or illustrations; uses any brand of graphics card)', '画像を 2〜4 倍に拡大して細部を復元（写真・イラスト可。どのメーカーのグラフィックカードでも可）'),
+ '圖片去背（人像、商品都可以，只用 CPU）': ('Remove picture backgrounds (people or products; CPU only)', '画像の背景除去（人物・商品どちらも。CPU のみ）'),
+ '把影片或錄音轉成文字、做字幕（在自己電腦上跑，不上傳）': ('Turn videos or recordings into text and subtitles (runs on this computer, nothing is uploaded)', '動画や録音を文字起こし・字幕化（このパソコンで処理、アップロードなし）'),
+ '自動剪掉影片裡沒有聲音的空白片段': ('Cut the silent parts out of videos automatically', '動画の無音部分を自動でカット'),
+ '用 Python 程式批次處理圖片：縮圖、裁切、浮水印、調色、轉檔': ('Batch-process pictures with Python: thumbnails, cropping, watermarks, colour, conversion', 'Python で画像を一括処理：サムネイル、切り抜き、透かし、色調整、変換'),
+ '用自己的 NVIDIA 顯示卡產生圖片和影片，不用付 API 費用': ('Generate pictures and videos on your own NVIDIA graphics card, no API fees', '自分の NVIDIA グラフィックカードで画像・動画を生成（API 料金なし）'),
+})

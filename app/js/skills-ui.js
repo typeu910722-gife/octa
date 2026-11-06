@@ -1,6 +1,7 @@
 /* OCTA web app — 4.12 設定 → 技能與工具: learning skills from GitHub (find, token, trusted sources, 自己找),
    the skills learned so far (version, source, which bots, 更新／移除), the toolbox on this computer and the keys for
-   image / video generation. Installs from GitHub and off-catalog tools always come back as an approval card in a chat. */
+   image / video generation. 4.13: 擴充工具箱 (off by default) with its tools, model packs, the size check before a big
+   download, 全部安裝 and where pictures / videos are made (自動／本機／雲端). Installs from GitHub and off-catalog tools always come back as an approval card in a chat. */
 'use strict';
 const SKU={d:null};
 const skBots=ids=>ids===null?I18N.t('全部機器人'):(ids||[]).map(id=>bot(id)?.name).filter(Boolean).join('、')||I18N.t('（沒有）');
@@ -61,33 +62,63 @@ function skAssignClick(e){const t=e.target;
   const a=t.closest('[data-skassign]');if(!a)return;const st=a.closest('.stack');
   const bots=st.querySelector('[data-skall]').checked?null:[...st.querySelectorAll('.skbots input:checked')].map(i=>i.value);
   api(a.dataset.skassign==='tool'?'tools/assign':'skills/assign','POST',a.dataset.skassign==='tool'?{id:a.dataset.key,bots}:{name:a.dataset.key,bots}).then(()=>{toast(I18N.t('已儲存 ✓'));SEC.skills()}).catch(x=>toast(x.message))}
+// 4.13: sizes in GB / MB as people say them
+const skBytes=n=>!n?'':n>=1e9?(n/1e9).toFixed(1)+' GB':Math.max(1,Math.round(n/1e6))+' MB';
 function skBox(el,d){const T=d.tools,inst=T.installed||{};
   const row=t=>{const i=inst[t.id];
     const state=i?.ok?`<span class="pill ok"><span>已安裝</span> <span data-u>${esc(i.version||'')}</span></span>`
-      :t.way==='download'||t.way==='uv-python'||t.way==='bundled'?`<button type="button" class="btn sm" data-tlin="${esc(t.id)}">安裝</button>`
+      :t.way==='download'||t.way==='uv-python'||t.way==='uv-venv'||t.way==='bundled'?`<button type="button" class="btn sm" data-tlin="${esc(t.id)}">安裝</button>`
       :t.way==='later'?'<span class="pill">之後開放</span>':t.how?`<small class="hmuted"><span>請自己安裝：</span><code data-u>${esc(t.how)}</code></small>`:'<span class="pill">這台電腦不支援</span>';
-    return `<div class="skrow"><div class="sktx"><b data-u>${esc(t.label)}</b> <small class="hmuted" data-u>${esc(t.version||'')}</small><p class="hmuted">${esc(I18N.t(t.what))}</p>
-      <small class="hmuted"><a href="${esc(t.source)}" target="_blank" rel="noopener">${esc(I18N.t('官方來源'))}</a>${t.sha256?` · <span>SHA-256</span> <code data-u>${esc(t.sha256.slice(0,12))}…</code>`:''}${t.size?' · '+fsize(t.size):''}</small>
+    const size=t.extra?(t.total||t.size):t.size;
+    return `<div class="skrow" data-tlrow="${esc(t.id)}"><div class="sktx"><b data-u>${esc(t.label)}</b> <small class="hmuted" data-u>${esc(t.version||'')}</small><p class="hmuted">${esc(I18N.t(t.what))}</p>
+      <small class="hmuted"><a href="${esc(t.source)}" target="_blank" rel="noopener">${esc(I18N.t('官方來源'))}</a>${t.extra?` · <span>授權</span> <span data-u>${esc(t.license)}</span>`:''}${t.sha256?` · <span>SHA-256</span> <code data-u>${esc(t.sha256.slice(0,12))}…</code>`:''}${size?` · ${t.extra?`<span>下載約</span> `:''}<span data-u>${skBytes(size)}</span>`:''}</small>
+      ${t.packs?.length?skPacks(t,i):''}
       ${i?.ok?skAssign('tool',t.id,i.assign):''}</div><div class="mv-acts">${state}${i?.ok&&t.way!=='bundled'?`<button type="button" class="ghost sm danger" data-tlrm="${esc(t.id)}">移除</button>`:''}</div></div>`};
-  const others=Object.entries(inst).filter(([k])=>!T.catalog.some(t=>t.id===k)).map(([k,i])=>`<div class="skrow"><div class="sktx"><b data-u>${esc(k)}</b> <small class="hmuted" data-u>${esc(i.version||'')}</small>${i.source?`<p class="hmuted"><a href="${esc(i.source)}" target="_blank" rel="noopener" data-u>${esc(i.source)}</a></p>`:''}${skAssign('tool',k,i.assign)}</div>
+  const others=Object.entries(inst).filter(([k])=>!T.catalog.some(t=>t.id===k)&&!/^(realesrgan|rembg|whisper|auto-editor|pyimage|comfyui)$/.test(k)).map(([k,i])=>`<div class="skrow"><div class="sktx"><b data-u>${esc(k)}</b> <small class="hmuted" data-u>${esc(i.version||'')}</small>${i.source?`<p class="hmuted"><a href="${esc(i.source)}" target="_blank" rel="noopener" data-u>${esc(i.source)}</a></p>`:''}${skAssign('tool',k,i.assign)}</div>
     <div class="mv-acts"><button type="button" class="ghost sm danger" data-tlrm="${esc(k)}">移除</button></div></div>`).join('');
+  const base=T.catalog.filter(t=>!t.extra),extra=T.catalog.filter(t=>t.extra),g=T.gpuInfo;
   el.innerHTML=`${T.seen?'':'<p class="note-box">電腦上的 OCTA 還沒回報它裝了哪些工具，等一下再打開這頁。</p>'}
     <h4>OCTA 驗證過的工具（直接安裝）</h4><p class="hmuted">固定版本、官方來源、下載後比對檢查碼，對不上就不裝。裝好之後機器人在指令列直接能用。</p>
-    ${T.catalog.map(row).join('')}
+    ${base.map(row).join('')}
+    <h4>擴充工具箱</h4>
+    ${toggleRow('skExtra','擴充工具箱',T.extra,'開源的圖片、影片、聲音工具：去背、放大、做字幕、剪掉空白；有 NVIDIA 顯示卡還能在本機產生圖片影片。要用到才下載，都從官方來源下載固定版本並比對檢查碼。關著就跟原本一樣：不下載、也不告訴機器人有這些工具。')}
+    ${T.extra?`<p class="hmuted">機器人要用時會自己裝（不用問你）；ComfyUI 和它的模型很大，下載前一定會先問你。</p>
+      <div class="row2"><button type="button" class="ghost sm" id="tlAll">全部安裝（不含 ComfyUI）</button></div>
+      ${extra.map(row).join('')}
+      ${g?`<p class="hmuted"><span>顯示卡：</span><span data-u>${esc(g.name+' · '+g.vram+' GB')}</span></p>`:'<p class="hmuted">本機產生圖片影片（ComfyUI）需要 NVIDIA 顯示卡，這台電腦沒有偵測到。</p>'}`:''}
     <h4>其他來源（要你核准）</h4>${others||'<p class="hmuted">還沒有。</p>'}
     <div class="row2 skfind"><select id="tlBot" aria-label="給哪個機器人">${skBotOpts(S.bots[0]?.id)}</select><input id="tlQ" maxlength="120" placeholder="npm:套件、pip:套件、mcp:套件、github:擁有者/專案" aria-label="要裝什麼"><button type="button" class="ghost sm" id="tlGo">申請安裝</button></div>
-    <p class="hmuted">會先查好版本、大小和授權，在那個機器人的對話裡出現核准卡。</p>
-    ${T.gpu?'':'<p class="hmuted">本機產生圖片影片（ComfyUI）需要 NVIDIA 顯示卡，這台電腦沒有偵測到。</p>'}`;
+    <p class="hmuted">會先查好版本、大小和授權，在那個機器人的對話裡出現核准卡。</p>`;
+  const install=async(btn,id,packs,confirm)=>{btn.disabled=true;
+    try{const r=await api('tools/install','POST',{id,bots:null,...(packs?{packs}:{}),...(confirm?{confirm:true}:{})});
+      if(r.needConfirm){btn.disabled=false;skSure(btn.closest('.skrow'),r.size,()=>install(btn,id,r.packs,true));return}
+      toast(r.text||I18N.t('安裝中'))}catch(x){toast(x.message);btn.disabled=false}};
   el.onclick=async e=>{const t=e.target;
-    const i=t.closest('[data-tlin]');if(i){i.disabled=true;try{const r=await api('tools/install','POST',{id:i.dataset.tlin,bots:null});toast(r.text||I18N.t('安裝中'))}catch(x){toast(x.message);i.disabled=false}return}
+    if(t.closest('#skExtra')){const on=!$('skExtra').classList.contains('on');swSet($('skExtra'),on);try{await api('skills/settings','PUT',{extra:on});toast(I18N.t(on?'擴充工具箱已打開':'擴充工具箱已關閉'));SEC.skills()}catch(x){toast(x.message)}return}
+    if(t.closest('#tlAll')){const b=t.closest('#tlAll');b.disabled=true;try{const r=await api('tools/install-all','POST',{});toast(r.text||I18N.t('安裝中'))}catch(x){toast(x.message)}b.disabled=false;return}
+    const i=t.closest('[data-tlin]');if(i){const rw=i.closest('.skrow'),picks=[...rw.querySelectorAll('[data-tlpack]:checked')].map(x=>x.value);install(i,i.dataset.tlin,rw.querySelector('[data-tlpack]')?picks:null,false);return}
+    const m=t.closest('[data-tlmore]');if(m){const rw=m.closest('.skrow'),picks=[...rw.querySelectorAll('[data-tlpack]:checked')].map(x=>x.value);if(!picks.length){toast(I18N.t('先勾要加裝的模型'));return}install(m,m.dataset.tlmore,picks,false);return}
     const r=t.closest('[data-tlrm]');if(r){confirmIn(r.closest('.skrow'),async()=>{try{await api('tools/remove','POST',{id:r.dataset.tlrm});toast(I18N.t('移除中'))}catch(y){toast(y.message)}});return}
     if(t.closest('#tlGo')){const q=$('tlQ').value.trim();if(!q)return;try{const x=await api('tools/install','POST',{what:q,bot:$('tlBot').value});toast(x.text&&!x.req?x.text:I18N.t('核准卡在那個機器人的對話裡'))}catch(y){toast(y.message)}return}
     skAssignClick(e)}}
+// the model packs of a tool (whisper's models, ComfyUI's image / video models): size, license, whether this card can run it
+function skPacks(t,i){const have=i?.packs||[];
+  const one=p=>{const got=have.includes(p.id);
+    return `<label class="chk"><input type="checkbox" data-tlpack value="${esc(p.id)}" ${got?'checked disabled':p.pick&&!i?.ok?'checked':''} ${!p.fits&&!got?'disabled':''}><span><span data-u>${esc(p.label)}</span> <small class="hmuted"><span data-u>${skBytes(p.size)} · ${esc(p.license)}</span>${got?` · <span>已安裝</span>`:''}${!p.fits&&!got?` · <span>顯示卡記憶體要</span> <span data-u>${p.minVram} GB</span>`:''}</small></span></label>`};
+  return `<div class="stack skpacks"><small class="hmuted">模型</small>${t.packs.map(one).join('')}${i?.ok&&t.packs.some(p=>!have.includes(p.id)&&p.fits)?`<div class="row2"><button type="button" class="ghost sm" data-tlmore="${esc(t.id)}">加裝勾選的模型</button></div>`:''}</div>`}
+// a big download: say how big, then 下載 or 取消
+function skSure(row,size,go){if(!row||row.querySelector('.mv-sure'))return;const s=document.createElement('div');s.className='mv-sure';
+  s.innerHTML=`<span><span>要下載約</span> <b data-u>${skBytes(size)}</b><span>，會占用不少硬碟空間。確定嗎？</span></span><button type="button" class="ghost sm" data-n>取消</button><button type="button" class="btn sm" data-y>下載</button>`;row.appendChild(s);
+  s.onclick=ev=>{ev.stopPropagation();if(ev.target.closest('[data-y]')){s.remove();go()}else if(ev.target.closest('[data-n]'))s.remove()}}
 function skGen(el,d){const kinds=k=>k.map(x=>x==='video'?I18N.t('影片'):I18N.t('圖片')).join('、');
   el.innerHTML=Object.entries(d.gen).map(([k,p])=>`<div class="skrow"><div class="sktx"><b data-u>${esc(p.label)}</b> <small class="hmuted">${kinds(p.kinds)}</small><p class="hmuted">${esc(I18N.t(p.cost))}</p>
       ${p.key?`<small class="hmuted"><span>金鑰</span> <code data-u>${esc(p.key)}</code></small>`:`<div class="row2"><input type="password" autocomplete="off" data-genk="${k}" placeholder="API key" aria-label="API key"><button type="button" class="btn sm" data-gensave="${k}">儲存</button><a class="ghost sm" href="${esc(p.site)}" target="_blank" rel="noopener">取得金鑰</a></div>`}</div>
     <div class="mv-acts">${p.key?`<button type="button" class="ghost sm danger" data-gendel="${k}">移除</button>`:''}</div></div>`).join('')+
-    '<p class="hmuted">填了金鑰，所有機器人都會學會「產生圖片」或「產生影片」的技能（可以在「已學會的技能」改成只給某些機器人）。做出來的圖片和影片會存在機器人的「輸出」資料夾，直接出現在對話裡。價格是大約的，以各服務的帳單為準。</p>';
+    '<p class="hmuted">填了金鑰，所有機器人都會學會「產生圖片」或「產生影片」的技能（可以在「已學會的技能」改成只給某些機器人）。做出來的圖片和影片會存在機器人的「輸出」資料夾，直接出現在對話裡。價格是大約的，以各服務的帳單為準。</p>'+
+    // 4.13: with 擴充工具箱 on, where pictures and videos are made (本機 = ComfyUI on this computer)
+    (d.tools.extra?`<label class="field"><span>在哪裡產生</span><select id="genWhere">${[['auto','自動（本機有模型就用本機，不然用雲端）'],['local','只用本機（ComfyUI）'],['cloud','只用雲端（API 金鑰）']].map(([k,l])=>`<option value="${k}" ${d.tools.genLocal===k?'selected':''}>${l}</option>`).join('')}</select></label>
+      <p class="hmuted">${d.tools.localReady?'本機 ComfyUI 已經可以用。':'本機 ComfyUI 還沒裝（需要 NVIDIA 顯示卡，在上面的擴充工具箱安裝）。'}</p>`:'');
+  if($('genWhere'))$('genWhere').onchange=async()=>{try{await api('skills/settings','PUT',{genLocal:$('genWhere').value});toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}};
   el.onclick=async e=>{const t=e.target;
     const s=t.closest('[data-gensave]');if(s){const k=s.dataset.gensave,v=el.querySelector(`[data-genk="${k}"]`).value.trim();if(!v)return;try{await api('gen-keys','POST',{provider:k,secret:v});toast(I18N.t('已儲存 ✓'));SEC.skills()}catch(x){toast(x.message)}return}
     const g=t.closest('[data-gendel]');if(g){try{await api('gen-keys/'+g.dataset.gendel,'DELETE');toast(I18N.t('已移除'));SEC.skills()}catch(x){toast(x.message)}}}}
