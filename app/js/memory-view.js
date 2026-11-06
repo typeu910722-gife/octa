@@ -5,7 +5,7 @@
 const MV={id:null,data:null,q:'',edit:null};
 const MV_KINDS=[['rule','📌','規則','它被糾正或學到的做法，每次工作都會照做。'],['fact','📇','事實','固定的資料，例如名單、網址、帳號名稱。'],['manual','📘','做事手冊','做完多步驟的工作後寫下的流程，做類似的事時會照著做。'],
   ['skill','🧩','技能','存起來可以再叫它做的流程，輸入 / 叫用。'],['allow','✅','一律允許','做這些事不會再問你。']];
-const MV_SRC={user:'你設定的',bot:'機器人自己記的',hook:'外部 AI 教的（交接網址）',fix:'你糾正後核准的',review:'每週自我檢討，你核准的',tpl:'範本預設',old:'來源不明（舊資料）'};
+const MV_SRC={user:'你設定的',bot:'機器人自己記的',hook:'外部 AI 教的（交接網址）',fix:'你糾正後核准的',review:'每週自我檢討，你核准的',tpl:'範本預設',old:'來源不明（舊資料）',github:'從 GitHub 學的，你核准的',trusted:'從信任的 GitHub 來源自動學的',catalog:'OCTA 內建'};
 const mvNamed=k=>k==='manual'||k==='skill';
 function openMemory(id,back){
   MV.id=id||'shared';MV.q='';MV.edit=null;MV.data=null;
@@ -38,6 +38,7 @@ function paintMemory(){const d=MV.data,box=$('mvBody');if(!d||!box)return;let h=
       if(MV.q&&!list.length)continue;
       h+=`<section class="mv-sec" data-sec="${k}"><h3><span aria-hidden="true">${emo}</span> <span>${title}</span> <small data-u>${(d.items[k]||[]).length}</small></h3><p class="hmuted">${desc}</p>
         <div class="mv-list">${list.map(it=>mvItem(k,it,b.id)).join('')||'<p class="mv-none">還沒有</p>'}</div>${MV.q?'':mvAdd(k,b.id)}</section>`}
+    h+=mvLearned(d,b);   // 4.12 學來的技能
     if(d.folder)h+=`<p class="hmuted mv-link"><span>它也會讀分區資料：</span><button type="button" class="link" data-mvshared><span data-u>${esc(d.folder.name)}</span></button></p>`;
     h+=`<p class="hmuted mv-link"><span>所有機器人都會讀的共用資料和網站筆記：</span><button type="button" class="link" data-mvshared>共用資料（所有機器人）</button></p>`}
   else{const sh=d.shared;
@@ -52,8 +53,26 @@ function paintMemory(){const d=MV.data,box=$('mvBody');if(!d||!box)return;let h=
   if(MV.q&&!shown)h+=`<div class="empty"><span>找不到「</span><span data-u>${esc(MV.q)}</span><span>」</span></div>`;
   setHTML(box,h);paintIcons(box);
   const ed=box.querySelector('.mv-it.ed textarea,.mv-it.ed input');if(ed)ed.focus()}
+// 4.12: skills learned from GitHub or built in — source and version, how they reach this bot's AI, 更新／移除／給其他機器人
+function mvLearned(d,b){const list=(d.items.lskill||[]).filter(it=>mvHit(it.name,it.desc,it.repo));if(MV.q&&!list.length)return '';
+  const others=(d.bots||[]).filter(x=>x.id!==b.id);
+  return `<section class="mv-sec" data-sec="lskill"><h3><span aria-hidden="true">🧠</span> <span>學來的技能</span> <small data-u>${(d.items.lskill||[]).length}</small></h3><p class="hmuted">從 GitHub 學的或 OCTA 內建的技能。做相關的工作時會照它做。</p>
+    <div class="mv-list">${list.map(it=>`<div class="mv-it" data-ls="${esc(it.name)}"><div class="mv-tx"><b data-u>${esc(it.name)}</b><p data-u class="mv-steps">${esc(it.desc||'')}</p>
+      <div class="mv-ls">${it.url?`<a href="${esc(it.url)}" target="_blank" rel="noopener" class="pill" data-u>${esc(it.repo||'')}@${esc(it.ver)}</a>`:`<span class="pill">${esc(I18N.t('OCTA 內建'))}</span>`}${it.scripts?` <span class="pill warn"><span>含程式</span> <span data-u>${it.scripts}</span></span>`:''} <small class="hmuted" data-u>${esc(it.where||'')}</small></div>${mvSrc(it)}</div>
+      <div class="mv-acts">${it.src==='github'?`<button type="button" class="ghost sm" data-lsupd="${esc(it.name)}">更新</button>`:''}<button type="button" class="ib sm" data-lsdel="${esc(it.name)}" aria-label="從這個機器人移除" title="從這個機器人移除">${ic('trash')}</button></div></div>`).join('')||'<p class="mv-none">還沒有。說「去 GitHub 學 pdf」，它會找適合自己的技能給你核准。</p>'}</div>
+    ${list.length&&others.length&&!MV.q?`<div class="row2 mv-add"><select data-lsname aria-label="技能">${list.map(it=>`<option value="${esc(it.name)}" data-u>${esc(it.name)}</option>`).join('')}</select><select data-lsto aria-label="給哪個機器人">${others.map(x=>`<option value="${esc(x.id)}" data-u>${esc(x.name)}</option>`).join('')}</select><button type="button" class="ghost sm" data-lsadd>也給它</button></div>`:''}</section>`}
+async function mvLs(e){const t=e.target,d=MV.data,b=d?.bot;if(!b)return false;
+  const it=n=>(d.items.lskill||[]).find(x=>x.name===n);
+  const u=t.closest('[data-lsupd]');if(u){u.disabled=true;try{const r=await api('skills/update','POST',{name:u.dataset.lsupd});toast(r.text||I18N.t('有新版本，核准卡在對話裡'))}catch(x){toast(x.message)}u.disabled=false;return true}
+  const del=t.closest('[data-lsdel]');if(del){const s=it(del.dataset.lsdel);if(!s)return true;
+    confirmIn(del.closest('.mv-it'),async()=>{const all=(d.bots||[]).map(x=>x.id),cur=s.bots===null?all:s.bots,rest=cur.filter(x=>x!==b.id);
+      try{if(rest.length)await api('skills/assign','POST',{name:s.name,bots:rest});else await api('skills/'+encodeURIComponent(s.name),'DELETE');toast(I18N.t('已移除'));loadMemory()}catch(x){toast(x.message)}});return true}
+  if(t.closest('[data-lsadd]')){const sec=t.closest('.mv-sec'),s=it(sec.querySelector('[data-lsname]').value),to=sec.querySelector('[data-lsto]').value;if(!s)return true;
+    if(s.bots===null){toast(I18N.t('所有機器人都已經有了'));return true}
+    try{await api('skills/assign','POST',{name:s.name,bots:[...new Set([...s.bots,to])]});toast(I18N.t('已儲存 ✓'));loadMemory()}catch(x){toast(x.message)}return true}
+  return false}
 async function mvSave(body){try{await api('memview/item','POST',body);toast(I18N.t('已儲存 ✓'));MV.edit=null;await loadMemory();refresh();return true}catch(e){toast(e.message);return false}}
-function mvClick(e){const it=e.target.closest('.mv-it');
+function mvClick(e){if(e.target.closest('[data-lsupd],[data-lsdel],[data-lsadd]')){mvLs(e);return}const it=e.target.closest('.mv-it');
   if(e.target.closest('[data-mvshared]')){$('mvWho').value='shared';MV.id='shared';MV.edit=null;loadMemory();return}
   if(e.target.closest('[data-mvx]')){MV.edit=null;paintMemory();return}
   if(!it)return;const kind=it.dataset.kind,key=it.dataset.key,owner=it.dataset.owner;

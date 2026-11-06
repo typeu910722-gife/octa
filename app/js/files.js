@@ -19,8 +19,15 @@ function fico(name,mime){const e=fext(name).toLowerCase();
   if(/^image\//.test(mime||''))return '🖼';if(/^audio\//.test(mime||'')||/^(mp3|wav|m4a|ogg)$/.test(e))return '🎵';if(/^video\//.test(mime||'')||/^(mp4|mov|webm|mkv)$/.test(e))return '🎬';
   if(e==='pdf')return '📕';if(/^(xlsx?|csv|numbers)$/.test(e))return '📊';if(/^(docx?|txt|md|rtf|pages)$/.test(e))return '📝';if(/^(pptx?|key)$/.test(e))return '📽';if(/^(json|xml|ya?ml|toml)$/.test(e))return '🧾';if(/^(zip|rar|7z|gz|tar)$/.test(e))return '🗜';if(/^(js|mjs|ts|py|go|rs|java|c|cpp|h|css|html|sh)$/.test(e))return '💻';return '📄'}
 function filesHtml(fs){if(!fs||!fs.length)return '';return `<div class="files">${fs.map(f=>/^image\//.test(f.mime)?`<img class="thumb" data-file="${esc(f.id)}" alt="${esc(f.name)}">`
+  :/^video\//.test(f.mime)?`<button type="button" class="fcard vcard" data-vplay="${esc(f.id)}" title="${esc(f.name)}"><span class="fico">▶</span><span class="ft"><b data-u>${esc(f.name)}</b><small><span>播放影片</span>${f.size?' · '+fsize(f.size):''}</small></span></button>`   // 4.12: a generated video plays right in the chat
   :`<button type="button" class="fcard" data-open-file="${esc(f.id)}" title="${esc(f.name)}"><span class="fico">${fico(f.name,f.mime)}</span><span class="ft"><b data-u>${esc(f.name)}</b><small data-u>${esc([fext(f.name)||I18N.t('檔案'),fsize(f.size)].filter(Boolean).join(' · '))}</small></span></button>`).join('')}</div>`}
 function loadThumbs(root){root.querySelectorAll('img[data-file]:not([src]):not([data-err])').forEach(im=>fileData(im.dataset.file).then(d=>im.src=`data:${d.mime};base64,${d.data}`).catch(e=>{im.dataset.err=1;im.replaceWith(Object.assign(document.createElement('button'),{type:'button',className:'fchip',textContent:'🖼 '+(im.alt||'')+' · '+I18N.t('點一下重新載入'),onclick(){openFile(im.dataset.file)}}))}))}
+// 4.12: the video loads only when you press play (it can be tens of MB)
+async function playVideo(btn){const id=btn.dataset.vplay;btn.disabled=true;
+  try{const d=await fileData(id);const u=URL.createObjectURL(await (await fetch(`data:${d.mime};base64,${d.data}`)).blob());
+    const v=document.createElement('video');v.className='vplay';v.controls=true;v.autoplay=true;v.playsInline=true;v.src=u;v.setAttribute('aria-label',d.name);btn.replaceWith(v)}
+  catch(e){btn.disabled=false;toast(e.message)}}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-vplay]');if(b)playVideo(b)});
 async function openFile(id){const t=setTimeout(()=>toast(I18N.t('讀取檔案中…')),400);
   try{const d=await fileData(id);clearTimeout(t);const u=URL.createObjectURL(await (await fetch(`data:${d.mime};base64,${d.data}`)).blob());
     if(/^image\//.test(d.mime))return viewImage(d,u);

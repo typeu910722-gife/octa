@@ -15,8 +15,10 @@ function apprDecision(m,after,who){const a=String(m?.text||'').match(APPR);if(!a
   return {state:'wait',act,plan}}
 // what the action will touch: the bot's own 「影響：」 line, otherwise a plain guess from the words
 // OCTA's own cards (建立排程／記住規則／整理排程): only 核准 or 不用了
-const apprOwn=act=>/^(建立排程|記住規則|整理排程)[:：]/.test(String(act||''));
-const APPR_IMPACT=[[/^照計畫/,'照計畫開始做，做完會回報'],[/^建立排程[:：]/,'會新增一個例行任務，時間到就自動執行'],[/^記住規則[:：]/,'會寫進它的規則，之後每次工作都照做'],[/^整理排程[:：]/,'會修改或合併現有的例行任務'],[/更新規則/,'會改寫它的規則，之後每次工作都照新規則做'],[/付款|付錢|轉帳|刷卡|扣款|購買|下單|儲值/,'會花錢，付出去就收不回來'],
+const apprOwn=act=>/^(建立排程|記住規則|整理排程|安裝技能|安裝工具)[:：]/.test(String(act||''));
+// 4.12: 安裝技能／安裝工具 — the reviewed install cards (對象／內容 shown in full; 一律允許 only when the API says so)
+const apprInstall=act=>/^(安裝技能|安裝工具)[:：]/.test(String(act||''));
+const APPR_IMPACT=[[/^照計畫/,'照計畫開始做，做完會回報'],[/^安裝技能[:：]/,'它之後做相關的工作會照這個技能做'],[/^安裝工具[:：]/,'會下載並安裝到這台電腦，機器人之後可以執行它'],[/^建立排程[:：]/,'會新增一個例行任務，時間到就自動執行'],[/^記住規則[:：]/,'會寫進它的規則，之後每次工作都照做'],[/^整理排程[:：]/,'會修改或合併現有的例行任務'],[/更新規則/,'會改寫它的規則，之後每次工作都照新規則做'],[/付款|付錢|轉帳|刷卡|扣款|購買|下單|儲值/,'會花錢，付出去就收不回來'],
   [/刪除|刪掉|清空|移除|作廢/,'刪掉後無法復原'],[/傳送|發送|送出|傳給|寄出|回覆|發訊息|貼文|發布|公告/,'訊息會送到對方那邊，送出就收不回來'],
   [/訂房|預訂|預約|取消|退訂|改期/,'會改到訂單或預約'],[/提交|表單|申請|報名|登記/,'會正式送出申請或表單'],[/密碼|帳號|權限/,'會動到帳號或權限']];
 function apprImpact(act,text){const own=String(text||'').match(/^\s*(?:會)?影響[:：]\s*(.+)$/m);if(own)return own[1].trim();

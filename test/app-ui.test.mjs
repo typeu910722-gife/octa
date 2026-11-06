@@ -106,9 +106,9 @@ test('text size applies to the whole interface and is remembered on the device',
   assert.match(css, /\.bub\{[^}]*font-size:calc\(15px \* var\(--fz\)\)/);
 });
 
-test('settings is one page with eight sections', () => {
+test('settings is one page with nine sections', () => {
   const secs = [...fnSrc('SECTIONS').matchAll(/\['(\w+)','([^']+)'/g)].map(m => [m[1], m[2]]);
-  assert.deepEqual(secs, [['look', '外觀與語言'], ['ai', 'AI 連線'], ['browser', '瀏覽器'], ['noti', '通知'], ['remote', '手機遠端'], ['pcs', '電腦'], ['work', '工作與排程'], ['adv', '進階']]);
+  assert.deepEqual(secs, [['look', '外觀與語言'], ['ai', 'AI 連線'], ['browser', '瀏覽器'], ['noti', '通知'], ['remote', '手機遠端'], ['pcs', '電腦'], ['work', '工作與排程'], ['skills', '技能與工具'], ['adv', '進階']]);
   for (const [k] of secs) assert.match(js, new RegExp('SEC\\.' + k + '='), k + ' renders');
   // switching sections asks about unsaved edits first; sub pages have a way back
   assert.match(fnSrc('settingsFrame'), /\.snav \[data-s\]'\)\.forEach\(b=>b\.onclick=\(\)=>leaveOk\(/);

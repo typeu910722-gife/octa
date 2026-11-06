@@ -680,9 +680,12 @@ test('generation round: files land in 輸出 and become the reply’s deliverabl
 test('app: the install cards are OCTA’s own (核准／拒絕), videos get a player, settings and 它記得什麼 show skills', () => {
   const all = js;
   assert.match(all, /安裝技能\|安裝工具/);
-  assert.match(all, /<video/);
+  assert.match(all, /createElement\('video'\)/);
+  assert.match(all, /data-vplay/);
   assert.match(all, /SEC\.skills/);
   assert.match(all, /data-lsupd/);
   assert.match(all, /data-lsdel/);
+  assert.match(all, /data-skalways/);
+  assert.match(all, /data-skupd/);
   for (const k of ['技能與工具', '允許機器人自己找技能', '信任的來源', '工具箱', '產生圖片與影片']) assert.ok(dict.en.t[k], k);
 });

@@ -79,6 +79,8 @@ html.pip .msgs::after{content:"";flex:none;height:var(--pip,0px)}
 .thumb{max-width:min(280px,100%);max-height:260px;border-radius:var(--r);border:1px solid var(--line);cursor:zoom-in;background:var(--sunk);min-width:60px;min-height:40px;object-fit:cover}
 .fcard,.fchip{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);text-align:left;max-width:280px;color:var(--ink)}
 .fcard:hover{border-color:var(--line2);box-shadow:var(--sh-1)}
+.vplay{max-width:min(420px,100%);max-height:320px;border-radius:var(--r);border:1px solid var(--line);background:#000}
+.vcard .fico{font-size:15px}
 .fico{font-size:22px;flex:none}
 .ft{display:grid;min-width:0}
 .ft b{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

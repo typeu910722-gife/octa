@@ -1,5 +1,5 @@
-/* OCTA web app — Settings: one page, eight sections.
-   外觀與語言 · AI 連線 · 瀏覽器 · 通知 · 手機遠端 · 電腦（4.3, link.js） · 工作與排程 · 進階 */
+/* OCTA web app — Settings: one page, nine sections.
+   外觀與語言 · AI 連線 · 瀏覽器 · 通知 · 手機遠端 · 電腦（4.3, link.js） · 工作與排程 · 技能與工具（4.12, skills-ui.js） · 進階 */
 'use strict';
 const SECTIONS=[
   ['look','外觀與語言','palette','配色、主題色、字體大小、版面、快捷鍵、語言'],
@@ -9,6 +9,7 @@ const SECTIONS=[
   ['remote','手機遠端','phone','用手機指揮這台電腦'],
   ['pcs','電腦','monitor','另一台電腦當遙控器、換主機'],
   ['work','工作與排程','clock','例行任務、工作時間、紀錄'],
+  ['skills','技能與工具','wrench','從 GitHub 學技能、工具箱、產生圖片影片'],
   ['adv','進階','sliders','共用資料、檔案、連接器、版本']];
 const SEC={};   // section key → render(arg)
 let secNow='';

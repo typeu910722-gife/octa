@@ -55,10 +55,11 @@ function apprHtml(m){if(!APPR.test(m.text||''))return '';
     const lab={ok:d.plan?'已同意':'已核准',no:'已拒絕',answered:'已回覆',stale:'已略過'}[d.state];
     return `<div class="apcard ${d.state}" data-ap="${m.id}">${head({ok:ic('check'),no:ic('x'),answered:ic('reply'),stale:'–'}[d.state],lab)}<div class="apwho">${line}</div></div>`}
   const btns=d.plan?`<button type="button" class="btn sm" data-approve="${m.id}">照做</button><button type="button" class="ghost sm" data-revise="${m.id}" data-plan="1">修改</button>`   // 📋計畫: run it as written, or say what to change
+    :apprInstall(d.act)?`<button type="button" class="btn sm" data-approve="${m.id}">${ic('check')}<span>核准</span></button>${msgMeta(m)?.skillreq?.always?`<button type="button" class="ghost sm" data-skalways="${m.id}">一律允許</button>`:''}<button type="button" class="ghost sm danger" data-deny="${m.id}">拒絕</button>`   // 4.12 安裝技能／安裝工具
     :apprOwn(d.act)?`<button type="button" class="btn sm" data-approve="${m.id}">核准</button><button type="button" class="ghost sm" data-deny="${m.id}">不用了</button>`   // OCTA's own: 建立排程／記住規則／整理排程
     :`<button type="button" class="btn sm" data-approve="${m.id}">${ic('check')}<span>核准（只這次）</span></button><button type="button" class="ghost sm" data-always="${m.id}">一律允許</button><button type="button" class="ghost sm" data-revise="${m.id}">${ic('edit')}<span>修改</span></button><button type="button" class="ghost sm danger" data-deny="${m.id}">拒絕</button>`;
   // 4.7: 對象／內容／時間 written under ✅待確認 (contract §4); without them, the one-line card as before
-  const f=apprFields(m.text)||{},full=!d.plan&&!apprOwn(d.act)&&(f.to||f.content||f.when);
+  const f=apprFields(m.text)||{},full=!d.plan&&(apprInstall(d.act)||!apprOwn(d.act))&&(f.to||f.content||f.when);
   const impact=`<span>會影響</span><span>${esc(apprImpact(d.act,m.text))}</span>`;
   if(AED.mid===m.id&&full)return `<div class="apcard wait editing" data-ap="${m.id}" role="group" aria-label="修改後核准">${head(ic('edit'),'修改後核准')}
     <div class="aped">${f.to?`<div class="apkv"><span>對象</span><b data-u>${esc(f.to)}</b></div>`:''}
@@ -268,6 +269,7 @@ $('msgs').onclick=e=>{const t=e.target;
   const fc=t.closest('[data-open-file]');if(fc)openFile(fc.dataset.openFile);
   const dn=t.closest('[data-deny]');if(dn){const m=msgById(dn.dataset.deny);if(m){dn.closest('.apcard')?.querySelectorAll('button').forEach(b=>b.disabled=true);const act=m.text.match(APPR)[1].trim();sendMsg((isG(cur)?'@'+nameOf(m.by)+' ':'')+(apprOwn(act)?'不用了：'+act:'不要做：'+act+'。這件事先停下，不用再問。'))}return}
   const al=t.closest('[data-always]');if(al){const m=msgById(al.dataset.always);if(m)alwaysSheet(m);return}
+  const sa=t.closest('[data-skalways]');if(sa){const m=msgById(sa.dataset.skalways);if(m){sa.closest('.apcard')?.querySelectorAll('button').forEach(b=>b.disabled=true);sendMsg((isG(cur)?'@'+nameOf(m.by)+' ':'')+'核准：'+m.text.match(APPR)[1].trim()+'（以後這類事一律允許：同一個來源、沒有程式的技能）')}return}   // 4.12: trust this repo for skills without programs
   const ap=t.closest('[data-approve]'),rv=t.closest('[data-revise]');
   if(ap||rv){const m=msgById((ap||rv).dataset[ap?'approve':'revise']);if(!m)return;
     const at=isG(cur)?'@'+nameOf(m.by)+' ':'';

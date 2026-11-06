@@ -212,3 +212,17 @@
   .al-bar .al-act{width:100%;justify-content:flex-end}
 }
 @media (prefers-reduced-motion:reduce){.al-bar{animation:none}.ov-track i{transition:none}.ov-card::after,.ov-card.flash,.ov-f.need.on::before{animation:none}}
+/* 4.12 技能與工具 (settings) and learned skills in 它記得什麼 */
+.skrow{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}
+.skrow:first-child{border-top:0}
+.sktx{min-width:0;flex:1}
+.sktx p{margin:3px 0}
+.sktx code{font-size:12px}
+.skrow .mv-acts{align-items:center;flex-wrap:wrap}
+.skfind{flex-wrap:wrap}
+.skfind input{flex:1;min-width:180px}
+.skas{margin-top:6px}
+.skbots{display:flex;flex-wrap:wrap;gap:4px 14px}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.chk input{width:16px;height:16px;accent-color:var(--accent)}
+.mv-ls{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin-top:4px}
