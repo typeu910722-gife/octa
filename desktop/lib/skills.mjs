@@ -55,12 +55,16 @@ export function parseFrontMatter(md) {
 // Claude Code: SKILL.md (anywhere, .claude/skills, claude-skills topics); Codex: SKILL.md under .agents/skills or with
 // agents/openai.yaml, codex-skills topics; Antigravity/Gemini: SKILL.md under .agents/skills and gemini-extension.json.
 // SKILL.md works for all three (an open format); a plain SKILL.md search always comes last.
+// each AI maker's own skills collection is looked at first (anthropics/skills, openai/skills, Gemini CLI extensions)
+export const OFFICIAL = { claude: 'repo:anthropics/skills', codex: 'repo:openai/skills', gemini: 'org:gemini-cli-extensions' };
+const OFFICIAL_REPO = { claude: /^anthropics\/skills$/i, codex: /^openai\/skills$/i, gemini: /^gemini-cli-extensions\/[\w.-]+$/i };
 export function searchPlan(keyword, engine = 'claude') {
   const kw = String(keyword || '')
     .replace(/[^\p{L}\p{N} ._-]+/gu, ' ')
     .trim()
     .slice(0, 80);
   const plan = [];
+  if (OFFICIAL[engine]) plan.push({ type: 'code', q: `${kw} ${OFFICIAL[engine]} filename:${engine === 'gemini' ? 'gemini-extension.json' : 'SKILL.md'}`, fit: engine, official: true });
   if (engine === 'codex') {
     plan.push({ type: 'code', q: `${kw} filename:SKILL.md path:.agents/skills`, fit: 'codex' });
     plan.push({ type: 'repo', q: `${kw} topic:codex-skills`, fit: 'codex' });
@@ -93,12 +97,18 @@ export function scoreCandidate(c, { engine = 'claude', trusted = [], keyword = '
   if (c.kind !== 'gemini-ext') s += 6; // has SKILL.md
   s += engineFit(c, engine) * 6;
   if (trusted.some(t => String(t).toLowerCase() === String(c.repo).toLowerCase())) s += 15;
+  // the bot's own AI maker's collection (for other AIs any maker's collection is a good start)
+  if (OFFICIAL_REPO[engine]?.test(String(c.repo))) s += 20;
+  else if (!OFFICIAL_REPO[engine] && Object.values(OFFICIAL_REPO).some(re => re.test(String(c.repo)))) s += 10;
+  if (/(^|\/)(tests?|__tests__|fixtures?|golden|examples?|samples?|node_modules|vendor|archive|deprecated)(\/|$)/i.test(String(c.path))) s -= 40; // test data, not a skill to use
+  const leaf = String(c.path).split('/').pop().toLowerCase();
   const words = String(keyword || '')
     .toLowerCase()
     .split(/[\s_-]+/)
     .filter(w => w.length >= 2);
-  const hay = (String(c.path).split('/').pop() + ' ' + (c.desc || '') + ' ' + c.repo).toLowerCase();
+  const hay = (leaf + ' ' + (c.desc || '') + ' ' + c.repo).toLowerCase();
   s += Math.min(12, words.filter(w => hay.includes(w)).length * 6);
+  if (words.includes(leaf) || words.join('-') === leaf) s += 10; // the folder is named exactly what was asked for
   if (c.archived || c.fork) s -= 10;
   return Math.round(s);
 }
@@ -246,8 +256,12 @@ export function githubClient({ token = '', fetchImpl = globalThis.fetch, cache =
         if (e.limited) break;
       }
       if (out.filter(c => c.kind !== 'repo').length >= max) break;
+      // the AI maker's own collection has it under that very name: no more searches (they are rate-limited)
+      const kw = String(keyword).toLowerCase().trim().replace(/\s+/g, '-');
+      if (step.official && out.some(c => c.kind !== 'repo' && c.path.split('/').pop().toLowerCase() === kw)) break;
     }
-    if (!out.length && errors.length) throw errors[0];
+    // nothing usable and GitHub said no (e.g. the rate limit): say that, not 「沒有找到」
+    if (!out.some(c => c.kind !== 'repo') && errors.length && (errors.some(e => e.limited) || !out.length)) throw errors.find(e => e.limited) || errors[0];
     return out.filter(c => c.repo).slice(0, 40);
   }
   const repoMeta = r => ({

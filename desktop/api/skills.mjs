@@ -103,7 +103,10 @@ export async function findSkill(env, db, U, opts) {
         for (const it of d.items || [])
           found.push({ repo: r.repo, path: it.path.split('/').slice(0, -1).join('/'), sha: (String(it.url).match(/[?&]ref=([0-9a-f]{40})/) || [])[1] || '', kind: 'skill', fit: r.fit, stars: r.stars, pushed: r.pushed, license: r.license });
       } catch (e) {
-        if (e.limited) break;
+        if (e.limited) {
+          if (!found.some(c => c.kind !== 'repo')) throw e;
+          break;
+        }
       }
     }
     found = found.filter(c => c.kind !== 'repo');

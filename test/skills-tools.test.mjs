@@ -61,7 +61,7 @@ function fakeGitHub(over = {}) {
     },
     'someone/codex-skills': {
       sha: SHA1, latest: SHA1, stars: 800, pushed: new Date().toISOString(), license: 'MIT',
-      files: { '.agents/skills/pdf-tools/SKILL.md': '---\nname: pdf-tools\ndescription: PDF tools for Codex.\n---\nUse qpdf.\n', '.agents/skills/pdf-tools/agents/openai.yaml': 'interface: {}\n' }
+      files: { '.agents/skills/pdf/SKILL.md': '---\nname: pdf-tools\ndescription: PDF tools for Codex.\n---\nUse qpdf.\n', '.agents/skills/pdf/agents/openai.yaml': 'interface: {}\n' }
     },
     'bad/inject': {
       sha: SHA1, latest: SHA1, stars: 5, pushed: '2020-01-01T00:00:00Z', license: '',
@@ -144,15 +144,23 @@ const reqId = m => +(m.text.match(/（#(\d+)）/) || [])[1];
 // ---------- search preferences per AI ----------
 test('the search asks GitHub for what suits each AI first, SKILL.md for everyone last', () => {
   const c = sk.searchPlan('pdf', 'claude'), x = sk.searchPlan('pdf', 'codex'), g = sk.searchPlan('pdf', 'gemini');
-  assert.match(c[0].q, /topic:claude-skills/);
-  assert.match(x[0].q, /filename:SKILL\.md path:\.agents\/skills/);
-  assert.match(x[1].q, /topic:codex-skills/);
-  assert.match(g[0].q, /filename:gemini-extension\.json/);
+  // each AI maker's own collection first
+  assert.equal(c[0].q, 'pdf repo:anthropics/skills filename:SKILL.md');
+  assert.equal(x[0].q, 'pdf repo:openai/skills filename:SKILL.md');
+  assert.equal(g[0].q, 'pdf org:gemini-cli-extensions filename:gemini-extension.json');
+  assert.match(c[1].q, /topic:claude-skills/);
+  assert.match(x[1].q, /filename:SKILL\.md path:\.agents\/skills/);
+  assert.match(x[2].q, /topic:codex-skills/);
+  assert.match(g[1].q, /filename:gemini-extension\.json/);
   for (const p of [c, x, g]) assert.equal(p.at(-1).q, 'pdf filename:SKILL.md');
   // ranking: the same stars, the one built for Codex (.agents/skills, agents/openai.yaml) wins for a Codex bot
   const a = { repo: 'a/a', path: 'skills/pdf', kind: 'skill', stars: 100, pushed: new Date().toISOString(), license: 'MIT' };
   const b = { ...a, repo: 'b/b', path: '.agents/skills/pdf' };
   assert.equal(sk.rankCandidates([a, b], { engine: 'codex', keyword: 'pdf' })[0].repo, 'b/b');
+  // test fixtures are not skills to use; the official collection and an exact folder name win
+  const fx = { ...a, repo: 'big/repo', path: 'tests/golden/pdf', stars: 20000 };
+  const off = { ...a, repo: 'anthropics/skills', path: 'skills/pdf', stars: 100 };
+  assert.equal(sk.rankCandidates([fx, a, off], { engine: 'claude', keyword: 'pdf' })[0].repo, 'anthropics/skills');
   assert.equal(sk.engineFit({ path: '.claude/skills/x' }, 'claude'), 3);
   assert.equal(sk.engineFit({ path: 'x', kind: 'gemini-ext' }, 'gemini'), 3);
   assert.equal(sk.engineFit({ path: 'x', kind: 'gemini-ext' }, 'claude'), 0);
