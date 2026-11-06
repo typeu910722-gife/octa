@@ -73,7 +73,7 @@ html.shell,html.shell body{overflow:hidden;overscroll-behavior:none}
 html.shell body::before{display:none}
 #frame{position:fixed;top:env(safe-area-inset-top);right:env(safe-area-inset-right);bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);width:calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));height:calc(100% - env(safe-area-inset-top) - env(safe-area-inset-bottom));border:0;background:transparent;display:block}
 #frame[hidden]{display:none}
-html.shell .wrap{position:fixed;inset:0;z-index:2;overflow:auto;background:color-mix(in srgb,var(--bg) 82%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.1);backdrop-filter:blur(14px) saturate(1.1);transition:opacity .25s ease}
+html.shell .wrap{position:fixed;inset:0;z-index:2;overflow:auto;background:var(--bg);background:color-mix(in srgb,var(--bg) 82%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.1);backdrop-filter:blur(14px) saturate(1.1);transition:opacity .25s ease}
 html.shell .wrap.gone{opacity:0;pointer-events:none;visibility:hidden;transition:opacity .25s ease,visibility 0s .25s}
 html.shell .wrap.first{background:var(--bg)}
 .calm{color:var(--mute);font-size:13px;margin-top:14px}
