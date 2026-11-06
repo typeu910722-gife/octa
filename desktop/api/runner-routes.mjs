@@ -25,12 +25,14 @@ export async function runnerRoutes(c) {
     if (
       (body.usage && typeof body.usage === 'object') ||
       (body.models && typeof body.models === 'object') ||
-      (body.coding && typeof body.coding === 'object')
+      (body.coding && typeof body.coding === 'object') ||
+      (body.toolsHere && typeof body.toolsHere === 'object')
     ) {
       const st = await getSettings(db, U);
       if (body.usage) st._usage = body.usage;
       if (body.models) st._models = body.models;
       if (body.coding && JSON.stringify(body.coding).length < 4000) st._coding = body.coding;
+      if (body.toolsHere && JSON.stringify(body.toolsHere).length < 100000) st._tools = body.toolsHere; // 4.12: the toolbox on this computer
       await putSettings(db, U, st);
     }
     // 4.8: how many bots the runner works at once (the 工作 panel's queue estimate)

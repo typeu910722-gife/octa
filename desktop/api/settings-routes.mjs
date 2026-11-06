@@ -55,7 +55,7 @@ export async function settingsRoutes(c) {
       ],
       // 4.7 信箱（應用程式密碼）: the password only ever comes back masked
       mail: (st.connectors || []).filter(c => c.kind === 'mail').map(c => mailView(c, mask)),
-      custom: (st.connectors || []).filter(c => c.kind !== 'mail').map(c => ({
+      custom: (st.connectors || []).filter(c => c.kind !== 'mail' && c.kind !== 'gen').map(c => ({
         id: c.id,
         name: c.name,
         base: c.base,

@@ -34,6 +34,7 @@ import { PARTIAL_TAG, hhmm } from './jobs.mjs';
 import { REVIEW_TAG, parseManuals, saveManuals, statAdd } from './memory.mjs';
 import { needsYou, sendNotify } from './notify.mjs';
 import { gist, replyMeta, sameSaying } from './reply-meta.mjs';
+import { afterDone, askTool, findSkill, skillSet, toolDone } from './skills.mjs';
 import {
   moveTaskSchedules,
   nextText,
@@ -243,6 +244,10 @@ export async function runnerDone(c) {
       }
     }
   }
+  if (job.kind === 'tool') {
+    await toolDone(db, U, job, body); // 4.12 工具箱
+    return ok();
+  }
   if (job.kind === 'test' || job.kind === 'list' || job.kind === 'install') {
     await db
       .prepare('UPDATE jobs SET status=?, finished=?, result=? WHERE id=?')
@@ -321,7 +326,9 @@ export async function runnerDone(c) {
   // 🧩技能：名稱 … 🧩結束 — a workflow saved to rerun later (shown in the / menu)
   const skillsNew = [],
     factsNew = [],
-    manualsNew = [];
+    manualsNew = [],
+    skillAsks = [],
+    toolAsks = [];
   if (good && job.kind === 'chat') {
     text = text.replace(/^\s*📌\s*記住[:：]\s*(.+)$/gm, (_, t) => {
       const v = clean(t, 300);
@@ -353,6 +360,16 @@ export async function runnerDone(c) {
     const pm = parseManuals(text);
     text = pm.text;
     manualsNew.push(...pm.manuals);
+    // 4.12 🧩找技能：關鍵字 (look on GitHub, then a card) and 🧰安裝：名稱 (catalog now, anything else a card)
+    text = text.replace(/^\s*🧩\s*找技能[:：]\s*(.+)$/gm, (_, q) => {
+      const v = clean(q, 80);
+      if (v && skillAsks.length < 2) skillAsks.push(v);
+      return '';
+    });
+    text = text.replace(/^\s*🧰\s*安裝[:：]\s*(.+)$/gm, (_, q) => {
+      for (const v of String(q).split(/[、，,]+/).map(x => clean(x, 120)).filter(Boolean)) if (toolAsks.length < 4) toolAsks.push(v);
+      return '';
+    });
     if (job.prompt.startsWith(REVIEW_TAG)) {
       remember.length = 0;
       factsNew.length = 0;
@@ -450,6 +467,33 @@ export async function runnerDone(c) {
   const vk = viaOf(job)?.k;
   const msgKind =
     vk === 'ask' || vk === 'give' || BG.test(job.prompt) ? 'bg' : !good && !LOGIN_WAIT.test(shown) ? 'fail' : vk === 'compact' ? 'note' : null;
+  // 4.12: what the bot asked for (looked up after the reply is saved; the card comes as its next message)
+  if (skillAsks.length || toolAsks.length) {
+    const st12 = await getSettings(db, U);
+    const asked = /github|技能|學/i.test(job.prompt || '');
+    const go = async () => {
+      for (const q of skillAsks) {
+        if (!skillSet(st12).selfFind && !asked) {
+          await addMsg(db, U, job.conv, 'sys', `「機器人自己找技能」已關掉，沒有去 GitHub 找「${q}」。要找就直接說「去 GitHub 學 ${q}」。`, null, null, 'note');
+          continue;
+        }
+        let r;
+        try {
+          r = await findSkill(env, db, U, { query: q, bot: job.bot_id, conv: job.conv, from: 'bot' });
+        } catch (e) {
+          r = { error: e.message };
+        }
+        if (r.error || r.same || r.installed) await addMsg(db, U, job.conv, 'sys', r.error ? `🧩 找技能「${q}」沒有成功：${r.error}` : r.text, null, null, r.error ? null : 'note');
+      }
+      for (const w of toolAsks) {
+        const r = await askTool(env, db, U, { what: w, bot: job.bot_id, conv: job.conv });
+        if (r.error || r.same) await addMsg(db, U, job.conv, 'sys', r.error ? `🧰 ${r.error}` : r.text, null, null, 'note');
+        else if (r.queued) await addMsg(db, U, job.conv, 'sys', `🧰 ${r.text}`, null, null, 'note');
+      }
+      await bump(db, U);
+    };
+    afterDone(go); // started once this runner/done has saved the reply (router.mjs)
+  }
   // 4.7: the markers handled above leave the text and go to messages.meta (small tags, the ✅／⚠ result, the approval card)
   const notes =
     good && job.kind === 'chat'

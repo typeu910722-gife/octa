@@ -27,6 +27,10 @@ export function freeName(dir, name) {   // don't overwrite: "報表.xlsx" → "�
 }
 // ---------- per-bot workspace (browser profile and AI tool settings) ----------
 const extToken = () => (cfg.getExtToken ? cfg.getExtToken() : cfg.extToken) || '';
+// 4.12: what each bot brings to its AI tool besides the browser: MCP servers from the toolbox, learned skills, its PATH
+// (set by chat.mjs before botDir; a 旁聊 folder "<id>-side" uses the bot's own)
+export const botExtras = new Map();
+const extrasOf = id => botExtras.get(String(id).replace(/-side$/, '')) || { mcp: [], skills: false, env: null };
 // mode 'own': the bot's own Chrome profile (separate logins). mode 'mine': the user's real Chrome through the
 // Playwright Extension, so saved logins and passwords work; each bot gets its own tab group there.
 export function botDir(id, mode = 'own', port = 0) {
@@ -44,21 +48,23 @@ export function botDir(id, mode = 'own', port = 0) {
     : WIN ? { command: 'cmd', args: ['/c', 'npx', '-y', PW_MCP, ...pwArgs], env } : { command: 'npx', args: ['-y', PW_MCP, ...pwArgs], env };
   const put = (f, o) => { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), JSON.stringify(o, null, 2)); };
   // The main turn never receives the browser server. A separate file is handed only to the one round that reads the page.
-  writeFileSync(join(dir, 'mcp.json'), JSON.stringify({ mcpServers: {} }, null, 2));
+  const extra = extrasOf(id);
+  const more = Object.fromEntries((extra.mcp || []).map(m => [m.name, { command: WIN && m.command === 'npx' ? 'cmd' : m.command, args: WIN && m.command === 'npx' ? ['/c', 'npx', ...m.args] : m.args, env: m.env || {} }]));
+  writeFileSync(join(dir, 'mcp.json'), JSON.stringify({ mcpServers: more }, null, 2));
   // a round that uploads a file may reach it outside the bot's folder (its conversation folder, the shared OCTA folder)
   const serverFor = files => (files ? { ...server, args: [...server.args, '--allow-unrestricted-file-access'] } : server);
   const applyBrowser = (on, files) => {
-    const srv = serverFor(on && files), trusted = on ? { browser: { ...srv, timeout: 60000, trust: true } } : {};
-    writeFileSync(join(dir, 'mcp-browser.json'), JSON.stringify({ mcpServers: { browser: srv } }, null, 2));
+    const srv = serverFor(on && files), trusted = { ...Object.fromEntries(Object.entries(more).map(([k, v]) => [k, { ...v, timeout: 60000, trust: true }])), ...(on ? { browser: { ...srv, timeout: 60000, trust: true } } : {}) };
+    writeFileSync(join(dir, 'mcp-browser.json'), JSON.stringify({ mcpServers: { ...more, browser: srv } }, null, 2));
     put('.gemini/settings.json', { mcpServers: trusted });
-    put('.agents/mcp_config.json', { mcpServers: on ? { browser: { ...srv } } : {} });   // Antigravity CLI (agy)
+    put('.agents/mcp_config.json', { mcpServers: { ...more, ...(on ? { browser: { ...srv } } : {}) } });   // Antigravity CLI (agy)
     put('.qwen/settings.json', { mcpServers: trusted });
-    put('.cursor/mcp.json', { mcpServers: on ? { browser: srv } : {} });
-    put('.mcp.json', { mcpServers: on ? { browser: srv } : {} });
-    put('copilot-mcp.json', { mcpServers: on ? { browser: { type: 'local', ...srv, tools: ['*'] } } : {} });
+    put('.cursor/mcp.json', { mcpServers: { ...more, ...(on ? { browser: srv } : {}) } });
+    put('.mcp.json', { mcpServers: { ...more, ...(on ? { browser: srv } : {}) } });
+    put('copilot-mcp.json', { mcpServers: { ...Object.fromEntries(Object.entries(more).map(([k, v]) => [k, { type: 'local', ...v, tools: ['*'] }])), ...(on ? { browser: { type: 'local', ...srv, tools: ['*'] } } : {}) } });
   };
   applyBrowser(false);
-  return { dir, profile, server, serverFor, put, applyBrowser };
+  return { dir, profile, server, serverFor, put, applyBrowser, extra, more };
 }
 export function findChrome() {
   if (cfg.chrome && existsSync(cfg.chrome)) return cfg.chrome;

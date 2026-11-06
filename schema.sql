@@ -256,13 +256,20 @@ CREATE INDEX IF NOT EXISTS code_event_task ON code_events(task_id, id);
 -- stay in users.settings; kind='_base' marks when this started (older items are 'old': 來源不明). desktop/api/memory-edit.mjs
 CREATE TABLE IF NOT EXISTS mem_src (
   user_id TEXT NOT NULL,
-  kind TEXT NOT NULL,            -- rule | fact | manual | skill | allow | site | _base
+  kind TEXT NOT NULL,            -- rule | fact | manual | skill | allow | site | _base | lskill (4.12, learned skill)
   owner TEXT NOT NULL,           -- bot id (site: the domain)
   k TEXT NOT NULL,               -- the item's text (manual / skill: its name)
-  by_ TEXT NOT NULL,             -- user | bot | hook | fix | review | tpl | old
+  by_ TEXT NOT NULL,             -- user | bot | hook | fix | review | tpl | old | github | trusted | catalog
   ts INTEGER NOT NULL,
   PRIMARY KEY (user_id, kind, owner, k)
 );
+-- 4.12 技能與工具 (desktop/api/skills.mjs creates these too): skills learned from GitHub or the catalog, one version per name;
+-- the files themselves (SKILL.md, scripts), where they came from (repo, commit), who approved and when, which bots have them (NULL: all)
+CREATE TABLE IF NOT EXISTS lskills (user_id TEXT NOT NULL, name TEXT NOT NULL, ver TEXT NOT NULL, src TEXT NOT NULL, repo TEXT, path TEXT, url TEXT, license TEXT, descr TEXT, files TEXT, review TEXT, bots TEXT, by_ TEXT, ts INTEGER, engine TEXT, PRIMARY KEY (user_id, name));
+-- install requests waiting for 核准 (kind skill | tool), with the reviewed files / the looked-up package
+CREATE TABLE IF NOT EXISTS skill_reqs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT, bots TEXT, data TEXT, status TEXT NOT NULL, conv TEXT, by_ TEXT, ts INTEGER, done_ts INTEGER);
+-- GitHub API answers kept a while (search: 6 hours, repo facts: a day), for the rate limit
+CREATE TABLE IF NOT EXISTS gh_cache (k TEXT PRIMARY KEY, ts INTEGER NOT NULL, body TEXT);
 -- 4.7 異常主動推播: one row per failed job that was logged out / hit a broken API / missed its data (desktop/api/notify.mjs)
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

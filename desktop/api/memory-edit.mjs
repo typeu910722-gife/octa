@@ -5,6 +5,7 @@
 import { bump, getSettings, putSettings } from './db.mjs';
 import { MANUAL_MAX } from './memory.mjs';
 import { J, clean, err, now } from './util.mjs';
+import { skillsView } from './skills.mjs';
 
 // kind → [settings key, item cap, item length]
 export const MEM_KINDS = {
@@ -18,7 +19,8 @@ export const MEM_KINDS = {
 // who set an item: the person here or in 任務設定 (user), the bot itself from a conversation (bot), another AI through
 // a 交接網址 (hook), a correction the person approved (fix), the weekly self-review the person approved (review),
 // a role template (tpl); old: it was there before 4.7 started keeping this
-export const SOURCES = ['user', 'bot', 'hook', 'fix', 'review', 'tpl', 'old'];
+// 4.12 learned skills (kind lskill): github (you approved), trusted (a repo you trust, no programs), catalog (OCTA's own)
+export const SOURCES = ['user', 'bot', 'hook', 'fix', 'review', 'tpl', 'old', 'github', 'trusted', 'catalog'];
 const KEY_MAX = 300;
 const keyOf = (kind, item) => clean(kind === 'manual' || kind === 'skill' ? item?.name : item, KEY_MAX);
 
@@ -181,10 +183,15 @@ export async function memoryRoutes(c) {
       const folders = (await db.prepare('SELECT id,name,notes FROM folders WHERE user_id=? ORDER BY created').bind(U).all()).results;
       return J({ shared: await sharedMemory(db, U), folders: folders.map(f => ({ id: f.id, name: f.name, notes: f.notes || '' })) });
     }
-    const b = await db.prepare('SELECT id,name,task,folder FROM bots WHERE id=? AND user_id=?').bind(id, U).first();
+    const b = await db.prepare('SELECT id,name,task,folder,engine FROM bots WHERE id=? AND user_id=?').bind(id, U).first();
     if (!b) return err('找不到這個機器人', 404);
     const f = b.folder ? await db.prepare('SELECT id,name FROM folders WHERE id=? AND user_id=?').bind(b.folder, U).first() : null;
-    return J({ bot: { id: b.id, name: b.name, task: b.task || '' }, folder: f, items: await botMemory(db, U, b.id) });
+    const items = await botMemory(db, U, b.id);
+    // 4.12: skills learned from GitHub or the catalog — source, version, and how they reach this bot's AI
+    const src = await srcMap(db, U, [b.id]);
+    items.lskill = (await skillsView(db, U, b.id, b.engine || 'claude')).map(x => ({ ...x, by: src.get('lskill\u0000' + b.id + '\u0000' + x.name)?.by || (x.src === 'catalog' ? 'catalog' : x.by === 'trusted' ? 'trusted' : 'github') }));
+    const all = (await db.prepare('SELECT id,name,engine FROM bots WHERE user_id=?').bind(U).all()).results;
+    return J({ bot: { id: b.id, name: b.name, task: b.task || '', engine: b.engine || 'claude' }, folder: f, items, bots: all.map(x => ({ id: x.id, name: x.name, engine: x.engine || 'claude' })) });
   }
   if (path === 'memview/item' && m === 'POST') {
     const kind = String(body.kind || '');

@@ -14,6 +14,7 @@ import { rolesRoutes } from './roles.mjs';
 import { runnerRoutes } from './runner-routes.mjs';
 import { screenRoutes } from './screen-routes.mjs';
 import { settingsRoutes } from './settings-routes.mjs';
+import { flushAfter, skillRoutes } from './skills.mjs';
 import { J, err } from './util.mjs';
 
 // requests that don't change anything other devices need to see
@@ -32,6 +33,7 @@ export async function onRequest(ctx) {
     try {
       await alertSweep(env, env.DB, res._u || 'local');
     } catch {}
+  if (path === 'runner/done') flushAfter(); // 4.12: a bot's 🧩找技能／🧰安裝, now that its reply is saved
   if (req.method !== 'GET' && res.status < 300 && res._u && !NO_BUMP.test(path)) {
     try {
       await bump(env.DB, res._u);
@@ -42,7 +44,8 @@ export async function onRequest(ctx) {
 
 // handlers in the order the old single router checked them; each returns a Response or nothing
 // mailRoutes before runnerRoutes: a bot's call to a mailbox (4.7) is answered there
-const HANDLERS = [fileRoutes, mailRoutes, runnerRoutes, screenRoutes, chatRoutes, jobRoutes, manageRoutes, codeRoutes, settingsRoutes, overviewRoutes, memoryRoutes, alertRoutes, rolesRoutes];
+// skillRoutes before runnerRoutes: runner/skill and runner/genkeys (4.12) are answered there
+const HANDLERS = [fileRoutes, mailRoutes, skillRoutes, runnerRoutes, screenRoutes, chatRoutes, jobRoutes, manageRoutes, codeRoutes, settingsRoutes, overviewRoutes, memoryRoutes, alertRoutes, rolesRoutes];
 
 async function route({ request: req, env, params }) {
   const db = env.DB;

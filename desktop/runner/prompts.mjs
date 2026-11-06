@@ -3,6 +3,9 @@ import os from 'node:os';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 import { connectorLines, takeConnectorTask } from '../lib/connectors.mjs';
+import { skillPromptLines } from '../lib/skills.mjs';
+import { readSkill, skillDir } from './skills.mjs';
+import { takeGenTasks } from '../lib/gen.mjs';
 import { ENGINES, browseKind } from './engines.mjs';
 import { storeDir } from './files.mjs';
 import { browserWindowAsk } from './live.mjs';
@@ -203,6 +206,7 @@ export function buildPrompt(job, here) {
   lines.push('', '你的運作環境（使用者問到你用什麼 AI、方案、還剩多少流量時，照這些資料回答，不要說你查不到）：', ...aboutMe(job));
   lines.push(...memoryLines(job));
   if (job.skills?.length) lines.push('', '你會的技能（使用者說「執行技能 X」或要做相同的事時，照步驟做）：', ...job.skills.map(k => `【${k.name}】\n${k.steps}`));
+  lines.push(...skillPromptLines(job, { readSkill, skillDir, full: !!job.full }));   // 4.12 技能與工具
   if (job.notes) lines.push('', '共用資料（所有機器人都要知道）：', job.notes);
   if (job.folderNotes) lines.push('', `分區「${job.folder}」的資料：`, job.folderNotes);
   lines.push(
@@ -409,6 +413,9 @@ export function keepBrowserTask(text) {
   const conn = takeConnectorTask(raw);
   const k = raw.lastIndexOf('【回覆】');
   let out = k >= 0 ? (raw.slice(k + 4).trim() || raw.replace(/【回覆】/g, '').trim()) : raw.trim();
+  // 4.12: 【產生】 blocks written before 【回覆】 still go to the generation round
+  const gens = [...raw.matchAll(/【產生】[\s\S]*?【產生完】/g)].map(m => m[0]).filter(g => !out.includes(g));
+  if (gens.length && takeGenTasks(gens.join('\n')).length) out = `${out}\n${gens.join('\n')}`.trim();
   if (conn && !takeConnectorTask(out)) out = `【連接器】\n名稱：${conn.name}\n動作：${conn.action}${conn.path ? '\n路徑：' + conn.path : ''}${conn.content ? '\n內容：' + conn.content : ''}\n【接完】\n${out}`.trim();
   if (task && !takeBrowserTask(out)) out = `【派瀏覽】\n網址：${task.url || '目前頁面'}\n要做的事：${task.prompt}\n【派完】\n${out}`.trim();
   return out;

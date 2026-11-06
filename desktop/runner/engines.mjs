@@ -87,7 +87,8 @@ export const engineReady = async (k, fresh) => !(k === 'grokbot' && grokBotUnsup
 export async function spawnCli(bin, args, dir, input, opts = {}) {
   if (!(await has(bin))) return { code: -1, out: '', err: '', missing: true };
   return new Promise(resolve => {
-    const child = spawn(WIN && /\s/.test(bin) ? `"${bin}"` : bin, WIN ? args.map(q) : args, { cwd: dir, shell: WIN, windowsHide: true });
+    const env = opts.env || opts.ctl?.env;   // 4.12: the bot's tools first on its PATH
+    const child = spawn(WIN && /\s/.test(bin) ? `"${bin}"` : bin, WIN ? args.map(q) : args, { cwd: dir, shell: WIN, windowsHide: true, ...(env ? { env } : {}) });
     const out = [], err = [];
     let killed = '', part = '', done = false, quietTimer = null, fallback = null;
     // On Windows the CLI runs under a shell: child.kill() ended only the shell, the AI (and its browser tool) kept running,
@@ -146,18 +147,21 @@ export const browseKind = engine => (DIRECT_BROWSE.includes(engine || 'claude') 
 // skill / slash command is still described to the model on each request. When this Claude Code supports them, load only
 // the tools a bot can use (Bash stays: bots compute lists from their record files) and skip skills and slash commands.
 export let claudeFlags = null;
-export function leanFlags(help, worker) {
+// 4.12: a bot with learned skills keeps the Skill tool and skills (--disable-slash-commands turns all skills off)
+export function leanFlags(help, worker, skills = false) {
   const out = [];
-  if (/--tools\b/.test(help)) out.push('--tools', worker ? 'Read' : PARENT_TOOLS + ',Bash');
-  if (/--disable-slash-commands/.test(help)) out.push('--disable-slash-commands');
+  if (/--tools\b/.test(help)) out.push('--tools', worker ? 'Read' : PARENT_TOOLS + ',Bash' + (skills ? ',Skill' : ''));
+  if (/--disable-slash-commands/.test(help) && !(skills && !worker)) out.push('--disable-slash-commands');
   return out;
 }
-export async function claudeLean(worker) {
+// what the main turn may use without asking: + Skill when it has learned skills, + each MCP server from its toolbox
+export const allowedFor = (base, extra) => base + (extra?.skills ? ',Skill' : '') + (extra?.mcp || []).map(m => ',mcp__' + m.name).join('');
+export async function claudeLean(worker, skills = false) {
   if (claudeFlags === null) {
     claudeFlags = await new Promise(res => execFile('claude', ['--help'], { shell: WIN, windowsHide: true, timeout: 20000, maxBuffer: 1 << 20 }, (e, out) => res(String(out || ''))));
     if (!claudeFlags) setTimeout(() => { claudeFlags = null; }, 600000);   // try again later rather than never
   }
-  return leanFlags(claudeFlags, worker);
+  return leanFlags(claudeFlags, worker, skills);
 }
 // what a local model can do, from `ollama show` ("Capabilities: completion, tools, vision, thinking")
 // what Claude Code is doing right now, in words, from its stream-json events
@@ -215,7 +219,9 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
       const c = ['approval_policy="never"', 'model_reasoning_effort="high"', `sandbox_workspace_write.writable_roots=${toml([store, dir])}`,
         ...(useBrowser ? [`mcp_servers.browser.command=${toml(server.command)}`, `mcp_servers.browser.args=${toml(server.args)}`,
           'mcp_servers.browser.startup_timeout_sec=60', 'mcp_servers.browser.default_tools_approval_mode="approve"',
-          ...Object.entries(server.env || {}).map(([k, v]) => `mcp_servers.browser.env.${k}=${toml(v)}`)] : [])];
+          ...Object.entries(server.env || {}).map(([k, v]) => `mcp_servers.browser.env.${k}=${toml(v)}`)] : []),
+        // 4.12: MCP servers from the bot's toolbox (Codex reads them from -c, like the browser)
+        ...Object.entries(b.more || {}).flatMap(([k, v]) => [`mcp_servers.${k}.command=${toml(v.command)}`, `mcp_servers.${k}.args=${toml(v.args)}`, `mcp_servers.${k}.startup_timeout_sec=60`])];
       const codex = sandbox => spawnCli('codex', ['exec', '--skip-git-repo-check', '--sandbox', sandbox, '-C', dir, '-o', last,
         ...m('-m'), ...c.flatMap(x => ['-c', x]), '-'], dir, prompt, { ctl: live.ctl, ...lines });
       r = await codex('workspace-write');
@@ -256,7 +262,7 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
       b.put('opencode.json', {
         $schema: 'https://opencode.ai/config.json', enabled_providers: ['ollama'], model: 'ollama/' + runName,
         provider: { ollama: { npm: '@ai-sdk/openai-compatible', name: 'Ollama', options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { [runName]: { name: runName } } } },
-        mcp: useBrowser ? { browser: { type: 'local', command: [server.command, ...server.args], environment: server.env || {}, enabled: true } } : {},
+        mcp: { ...Object.fromEntries(Object.entries(b.more || {}).map(([k, v]) => [k, { type: 'local', command: [v.command, ...v.args], enabled: true }])), ...(useBrowser ? { browser: { type: 'local', command: [server.command, ...server.args], environment: server.env || {}, enabled: true } } : {}) },
         tools: { task: false, todowrite: false, todoread: false, grep: false, glob: false }   // grep/glob need ripgrep, often missing on Windows; small local models misuse sub-agents and to-do lists, then reply about the error
       });
       // /no_think: qwen3-style models skip their long hidden reasoning (several times faster on a laptop)
@@ -273,7 +279,7 @@ export async function runEngine(engine, prompt, b, model, live = {}) {
         '--add-dir', store, '--model', model || CLAUDE_DEFAULT_MODEL,
         ...(ses?.id ? (ses.resume ? ['--resume', ses.id] : ['--session-id', ses.id]) : []),
         // 4.11 全力模式: no lean flags — every built-in tool, skill and slash command stays available
-        '--allowedTools', worker ? WORKER_TOOLS : useBrowser ? DIRECT_ALLOWED : PARENT_ALLOWED, ...(live.full ? [] : await claudeLean(worker))], dir, prompt, {
+        '--allowedTools', allowedFor(worker ? WORKER_TOOLS : useBrowser ? DIRECT_ALLOWED : PARENT_ALLOWED, worker ? null : b.extra), ...(live.full ? [] : await claudeLean(worker, !!b.extra?.skills))], dir, prompt, {
         ctl: live.ctl, quietMs: live.full ? QUIET_FULL_MS : QUIET_MS,
         onLine: l => {
           let e; try { e = JSON.parse(l); } catch { return; }

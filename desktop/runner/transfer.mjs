@@ -13,10 +13,13 @@ import { CHUNK, log, workDir } from './state.mjs';
 
 // ---------- the bot's own Claude Code skills (.claude/skills in its folder) travel with the account ----------
 const SKILL_EXT = /\.(md|txt|json|ya?ml|py|js|mjs|ts|sh|ps1|csv|html|css|toml)$/i;
+// 4.12: the skills OCTA linked or copied in (learned from GitHub, listed in .octa-skills.json) are not the bot's own
 function skillFiles(root) {
   const out = {}; let total = 0;
+  const managed = new Set(['.octa-skills.json']);
+  try { for (const n of JSON.parse(readFileSync(join(root, '.octa-skills.json'), 'utf8')).names || []) managed.add(n); } catch { }
   const walk = (d, pre) => { let es = []; try { es = readdirSync(d, { withFileTypes: true }); } catch { return; }
-    for (const e of es) { const p = join(d, e.name), r = pre ? pre + '/' + e.name : e.name;
+    for (const e of es) { if (!pre && managed.has(e.name)) continue; const p = join(d, e.name), r = pre ? pre + '/' + e.name : e.name;
       if (e.isDirectory()) { if (!/^(node_modules|\.git)$/.test(e.name)) walk(p, r); }
       else if (SKILL_EXT.test(e.name)) { try { const st = statSync(p); if (st.size > 60000 || total + st.size > 250000) continue; total += st.size; out[r] = readFileSync(p, 'utf8'); } catch { } } } };
   walk(root, ''); return out;

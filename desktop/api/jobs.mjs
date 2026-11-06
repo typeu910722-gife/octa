@@ -1,4 +1,5 @@
 // Work for the runner: what to do next, the job payload, and continuing a job that stopped halfway.
+import { genKeys, skillSet, skillsForBot, toolsForBot } from './skills.mjs';
 import { publicConnectors } from '../lib/connectors.mjs';
 import { MAX_AUTO_RETRY, retryPrompt } from '../lib/model-route.mjs';
 import { SIDE_LIKE, autonomyOk, turnsOf, viaOf } from './chat.mjs';
@@ -181,6 +182,13 @@ async function jobPayload(env, db, U, job) {
   if (job.kind === 'test') return { id: job.id, kind: 'test', engine: engineOk(job.url), prompt: job.prompt };
   if (job.kind === 'list') return { id: job.id, kind: 'list', what: job.url };
   if (job.kind === 'install') return { id: job.id, kind: 'install', engine: engineOk(job.url) };
+  if (job.kind === 'tool') {
+    let spec = {};
+    try {
+      spec = JSON.parse(job.prompt || '{}');
+    } catch {}
+    return { id: job.id, kind: 'tool', spec };
+  }
   const { bots, groups, folders } = await loadAll(db, U);
   const name = id => (id === 'me' ? '使用者' : id === 'sys' ? '系統' : bots.find(b => b.id === id)?.name || '已刪除的機器人');
   const bot = bots.find(b => b.id === job.bot_id);
@@ -281,6 +289,11 @@ async function jobPayload(env, db, U, job) {
     allowed: (st.allow || {})[bot.id] || [],
     ...mem,
     skills: (st.skills || {})[bot.id] || [],
+    // 4.12 技能與工具: learned skills (the runner fetches their files), tools on its PATH, MCP servers, finding more
+    lskills: await skillsForBot(db, U, bot.id),
+    ...toolsForBot(st, bot.id),
+    skillSelf: skillSet(st).selfFind,
+    gen: Object.keys(genKeys(st)),
     nskills: (st.nskills || {})[bot.id] || null,
     routines: (
       await db

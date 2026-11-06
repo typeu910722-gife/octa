@@ -6,7 +6,11 @@ import { stripConnectorTask, takeConnectorTask, toolForBrowse } from '../lib/con
 import { api, saveUpload } from './api-client.mjs';
 import { busyBots, cdp, cdpInfo, embedPortOf, ensureBrowser, ensureHealthy, pagesOf, setShareBrowser, shareBrowser, syncOut, touchBrowser } from './browser.mjs';
 import { browseKind, has, runEngine } from './engines.mjs';
-import { botDir, convDir, freeName, newFiles, newestImage, rel, safeName, storeDir } from './files.mjs';
+import { botDir, botExtras, convDir, freeName, newFiles, newestImage, rel, safeName, storeDir } from './files.mjs';
+import { GEN_PROVIDERS, generate, stripGenTasks, takeGenTasks } from '../lib/gen.mjs';
+import { skillWay } from '../lib/skills.mjs';
+import { syncSkills } from './skills.mjs';
+import { mcpFor, toolEnv } from './toolbox.mjs';
 import { chromeForGoogle, moving, wantsGoogle } from './google.mjs';
 import { runGrokBot } from './grokbot.mjs';
 import { browserSnapshot, captureEyes, finishBrowserWindow, pushLive, settleBrowserWindow } from './live.mjs';
@@ -40,6 +44,9 @@ async function chatRun(job) {
     if (port) { try { port = await ensureHealthy(job.bot, port); } catch (e) { log('瀏覽器：' + e.message); job.browserDown = e.message; port = 0; } }
     if (job.browserDown) job.browserNote = `你的瀏覽器這次打不開（${String(job.browserDown).slice(0, 80)}），OCTA 已自動重開仍不行。要看網頁的部分不要猜：回覆第一行寫「⚠ 沒做成：瀏覽器沒有回應」，再說哪些沒做。`;
   }   // a Grok Bot works on xAI's cloud computer
+  // 4.12: its toolbox (PATH, MCP servers) and whether its AI loads learned skills itself, before its folder is set up
+  const env12 = toolEnv(job.tools);
+  botExtras.set(String(job.bot.id), { mcp: mcpFor(job.mcp), skills: !!job.lskills?.length && skillWay(job.bot.engine) === 'native', env: env12 });
   let b = botDir(side ? job.bot.id + '-side' : job.bot.id, side ? 'own' : job.bot.browser, port), { dir } = b;
   const here = convDir(job.conv || job.bot);
   if (port) busyBots.add(job.bot.id);
@@ -58,6 +65,7 @@ async function chatRun(job) {
     }
   }
   restoreSkills(dir, job.nskills);
+  try { await syncSkills(job, dir); } catch (e) { log('🧩 技能：' + e.message); }   // 4.12: learned skills where this AI loads them
   const start = Date.now() - 1000;
   log(`${side ? '💬' : '▶'} ${job.bot.name}［${job.bot.engine || 'claude'}］${job.group ? ' @' + job.group.name : ''}：${job.prompt.slice(0, 40)}`);
   job.bot.livePort = port;
@@ -76,7 +84,7 @@ async function chatRun(job) {
   // live progress (at most every 4 s): 4.7 step x of y from the AI's 🧭 lines, and what it is doing. The answer says whether
   // 停止, 接手 or 暫停 was pressed: 停止 and 接手 stop the run now; 暫停 holds before the next step (see holdPaused)
   // 單件工作最長時間, for every AI tool (4.11 全力模式 with 不限: none at all)
-  const ctl = { maxMs: job.maxMin ? job.maxMin * 60000 : job.full ? Infinity : undefined };
+  const ctl = { maxMs: job.maxMin ? job.maxMin * 60000 : job.full ? Infinity : undefined, env: env12 };
   // AI 待機 belongs to Claude: a bot that moved to another AI (or turned standby off) lets its waiting session go
   if (!side && (engine !== 'claude' || !job.warm) && sessions.has(job.bot.id)) closeSession(job.bot.id, `${job.bot.name}：換了 AI 或關掉待機，結束待機的對話`);
   const tr = stepTracker(), pmode = engine === 'claude' ? 'step' : 'turn';   // step: Claude stops between two actions; others after this AI run
@@ -212,6 +220,8 @@ async function chatRun(job) {
   }
   finally { clearTimeout(timerP); clearInterval(beat); clearInterval(liveBeat); clearInterval(dog); moving.delete(job.bot.id); if (port) { busyBots.delete(job.bot.id); touchBrowser(job.bot.id); } }
   if (job.handed && res) { res.ok = true; res.text = '我先停手。你在旁邊的畫面登入或看完，按繼續我就重新讀頁再做。'; }
+  // 4.12 【產生】: pictures and videos with the person's own keys, saved in 輸出 (they go out with the reply)
+  if (res?.ok && !side && takeGenTasks(res.text).length) res = await genRound(job, here, res, progress);
   if (res?.text) res.text = hideSecrets(stripStepMarks(stripConnectorTask(stripBrowserTask(res.text))), job) || '這次沒有新的結果。';
   if (port && res?.text) res.text = await finishBrowserWindow(port, job, res.text);
   if (port && shareBrowser) await syncOut(port);
@@ -259,6 +269,29 @@ async function chatRun(job) {
   try { cfg.onDone?.(job, res); } catch { }
 }
 
+// 4.12: one 【產生】 block after another (at most GEN_MAX): the keys come from the local API to this runner only
+export async function genRound(job, here, res, progress, opts = {}) {
+  const tasks = takeGenTasks(res.text);
+  let text = stripGenTasks(res.text);
+  let keys = {};
+  try { keys = (await (opts.api || api)('runner/genkeys', {})).keys || {}; } catch (e) { log('產生：' + e.message); }
+  const out = join(here, '輸出'), lines = [];
+  mkdirSync(out, { recursive: true });
+  const d = new Date(), z = n => String(n).padStart(2, '0'), stamp = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
+  for (const t of tasks) {
+    const word = t.kind === 'video' ? '影片' : '圖片';
+    progress?.(`產生${word}中${t.kind === 'video' ? '（要等幾分鐘）' : ''}`, 'tool');
+    const r = await generate(t, keys, opts.gen || {});
+    if (!r.ok) { lines.push(`⚠ ${word}沒有產生：${r.text}`); log(`🎨 ${job.bot.name}：${word}沒有產生：${r.text}`); continue; }
+    for (const f of r.files) {
+      const p = freeName(out, safeName(t.name || `${word}-${stamp}`) + '.' + f.ext);
+      writeFileSync(p, f.buf);
+      lines.push(`🎨 已產生${word}：${basename(p)}（${GEN_PROVIDERS[r.provider]?.label || r.provider}）`);
+    }
+    log(`🎨 ${job.bot.name}：已產生${word}（${r.provider}）`);
+  }
+  return { ...res, text: [text, lines.join('\n')].filter(Boolean).join('\n\n') };
+}
 // 4.8.1: the bot's browser moved to its own Chrome window mid-turn (Gmail and Google's other apps only work there)
 export const MOVED_PROMPT = '（OCTA 剛把你的瀏覽器換成這個機器人自己的 Chrome 視窗：Gmail 等 Google 服務只能在那裡用，登入也在那裡）接著做剛才的工作。瀏覽器工具現在連到 Chrome 視窗：先用 browser_tabs 和 browser_snapshot 看目前的頁面，需要的網址重新打開；已經做完的步驟不要重做。要登入 Google 就照規則請使用者在 Chrome 視窗登入。做完照原本的規則寫回覆（單獨一行【回覆】之後）。';
 // 4.7: what a paused Claude session is told when 繼續 is pressed (same session, --resume)

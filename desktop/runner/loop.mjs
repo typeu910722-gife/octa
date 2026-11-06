@@ -12,6 +12,7 @@ import { checkWatches, openJob, resetWatches } from './live.mjs';
 import { engineReport, installJob, modelReport, resetReports, usageReport } from './reports.mjs';
 import { MAX, PW_MCP, VERSION, WIN, cfg, configure, log, workDir } from './state.mjs';
 import { exportJob, importJob } from './transfer.mjs';
+import { toolJob, toolsHere } from './toolbox.mjs';
 import { closeSession, sessions, testJob } from './warm.mjs';
 
 // ---------- main loop: long-poll, so work starts the moment it's sent ----------
@@ -78,7 +79,7 @@ async function codingProbe() {
 }
 function runJob(job) {
   active++; holding.add(job.id);
-  const handlers = { code: codeJob, open: openJob, test: testJob, list: listJob, install: installJob, export: exportJob, import: importJob };
+  const handlers = { code: codeJob, open: openJob, test: testJob, list: listJob, install: installJob, export: exportJob, import: importJob, tool: toolJob };
   (Object.hasOwn(handlers, job.kind) ? handlers[job.kind] : chatJob)(job)
     .catch(e => { log('任務錯誤：' + e.message); return api('runner/done', { id: job.id, ok: false, text: '⚠ ' + e.message }).catch(() => { }); })
     .finally(() => { active--; holding.delete(job.id); kick(); });
@@ -103,6 +104,9 @@ export function sideReport(fn) {
 }
 const reportsBg = { engines: sideReport(engineReport), usage: sideReport(usageReport), models: sideReport(modelReport), coding: sideReport(codingProbe) };
 let firstLook = true;
+// 4.12: the toolbox on this computer goes up at the start and then once a minute (a small file read)
+let toolsAt = 0;
+const toolsTick = () => { if (Date.now() - toolsAt < 60000) return undefined; toolsAt = Date.now(); try { return toolsHere(); } catch { return undefined; } };
 async function reports() {
   if (firstLook) { firstLook = false; return { engines: await engineReport(), usage: reportsBg.usage(), models: reportsBg.models(), coding: await codingProbe() }; }
   return { engines: reportsBg.engines(), usage: reportsBg.usage(), models: reportsBg.models(), coding: reportsBg.coding() };
@@ -116,7 +120,7 @@ async function loop() {
       poll = new AbortController();
       const r = await api('runner/next', {
         wait: true, slots, max: MAX, running: [...holding], ...(await reports()), ...(booting ? { boot: true } : {}),
-        version: VERSION, app: cfg.appVersion || undefined, store: storeDir()
+        version: VERSION, app: cfg.appVersion || undefined, store: storeDir(), toolsHere: toolsTick()
       }, 'POST', slots ? undefined : poll.signal).catch(e => {
         if (e.name === 'AbortError' && poll.signal.aborted) return {};
         if (e.name === 'TimeoutError' || e.name === 'AbortError') throw new Error('等待工作逾時，重新連線');

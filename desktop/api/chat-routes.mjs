@@ -5,6 +5,7 @@ import { cloneFile } from './files.mjs';
 import { applyRuleUpdates, groupAsk } from './memory.mjs';
 import { noteListChange } from './memory-edit.mjs';
 import { ownApproval, routinesOut } from './routines.mjs';
+import { skillApproval } from './skills.mjs';
 import { localNow } from './schedule.mjs';
 import { busyRows, queueInfo } from './progress.mjs';
 import { metaOf } from './reply-meta.mjs';
@@ -254,6 +255,7 @@ export async function chatRoutes(c) {
       }
     }
     await addMsg(db, U, conv, 'me', text || '（附件）', files, quoted?.id || null);
+    if (await skillApproval(env, db, U, conv, text)) return ok(); // 4.12: 安裝技能／安裝工具 cards
     if (await ownApproval(env, db, U, conv, text, bots, group)) return ok();
     // 核准 a 每週自我檢討 suggestion: write the rules directly, no AI run needed
     const ru = bot && text.match(/^核准[:：]\s*更新規則[:：]\s*([\s\S]+)$/);

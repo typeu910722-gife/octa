@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { api } from './api-client.mjs';
 import {
-  DIRECT_ALLOWED, ENGINES, PARENT_ALLOWED, claudeEvent, claudeFlags, claudeLean, claudeTokens, decode, has, leanFlags,
+  DIRECT_ALLOWED, ENGINES, PARENT_ALLOWED, allowedFor, claudeEvent, claudeFlags, claudeLean, claudeTokens, decode, has, leanFlags,
   runEngine
 } from './engines.mjs';
 import { botDir, storeDir } from './files.mjs';
@@ -38,7 +38,7 @@ function startSession(job, b) {
   if (b.applyBrowser) b.applyBrowser(direct, direct);
   const child = spawn('claude', (WIN ? a => a.map(q) : a => a)(['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
     '--mcp-config', join(dir, direct ? 'mcp-browser.json' : 'mcp.json'), '--strict-mcp-config', '--add-dir', storeDir(), ...m, '--session-id', sid,
-    '--allowedTools', direct ? DIRECT_ALLOWED : PARENT_ALLOWED, ...(job.full ? [] : leanFlags(claudeFlags || '', false))]), { cwd: dir, shell: WIN, windowsHide: true });
+    '--allowedTools', allowedFor(direct ? DIRECT_ALLOWED : PARENT_ALLOWED, b.extra), ...(job.full ? [] : leanFlags(claudeFlags || '', false, !!b.extra?.skills))]), { cwd: dir, shell: WIN, windowsHide: true, ...(b.extra?.env ? { env: b.extra.env } : {}) });
   if (claudeFlags === null && !job.full) claudeLean(false);   // known from the next session on
   const s = { child, turn: null, err: [], sid, botId: job.bot.id, usedAt: Date.now() };
   let part = '';
@@ -141,7 +141,7 @@ export async function warmClaude(job, b, here, live) {
   const fp = JSON.stringify([
     VERSION, job.memory, job.facts, (job.skills || []).map(k => k.name + k.steps), job.bot.task, job.bot.model, job.bot.browser,
     job.bot.livePort, job.browse, job.notes, job.folderNotes, job.group, (job.colleagues || []).map(c => c.name + c.task), job.allowed, job.lang,
-    storeDir(), job.conv?.id, job.nick, !!job.full
+    storeDir(), job.conv?.id, job.nick, !!job.full, (job.lskills || []).map(k => k.id), (job.tools || []).map(t => t.id), (job.mcp || []).map(m => m.name)
   ]);
   let s = sessions.get(job.bot.id), text;
   const ids = job.history.map(h => h.id || 0), newest = Math.max(0, ...ids);
