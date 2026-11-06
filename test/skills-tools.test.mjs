@@ -505,10 +505,11 @@ test('catalog: every download has a pinned version, an official source and a SHA
   assert.equal(tb.buildFor(tb.catalogItem('ffmpeg'), 'mac-arm64').way, 'manual');
   assert.match(tb.buildFor(tb.catalogItem('ffmpeg'), 'mac-arm64').how, /brew/);
   assert.equal(tb.buildFor(tb.catalogItem('python'), 'win-x64').way, 'uv-python');
-  assert.equal(tb.buildFor(tb.catalogItem('comfyui')).way, 'later');
-  // ComfyUI (local generation) only shows on a computer with an NVIDIA GPU
-  assert.ok(!tb.catalogView('win-x64', false).some(t => t.id === 'comfyui'));
-  assert.ok(tb.catalogView('win-x64', true).some(t => t.id === 'comfyui' && t.later));
+  // 4.13: ComfyUI (local generation) is in 擴充工具箱: only when that is on and the computer has an NVIDIA GPU
+  assert.equal(tb.buildFor(tb.catalogItem('comfyui'), 'win-x64').way, 'download');
+  assert.ok(!tb.catalogView('win-x64', true).some(t => t.id === 'comfyui'));
+  assert.ok(!tb.catalogView('win-x64', false, { extra: true }).some(t => t.id === 'comfyui'));
+  assert.ok(tb.catalogView('win-x64', true, { extra: true }).some(t => t.id === 'comfyui' && t.big));
   assert.deepEqual(tb.parseToolAsk('npm:sharp@0.33.1'), { type: 'npm', pkg: 'sharp', version: '0.33.1' });
   assert.deepEqual(tb.parseToolAsk('pip:rembg'), { type: 'pip', pkg: 'rembg', version: '' });
   assert.deepEqual(tb.parseToolAsk('mcp:@modelcontextprotocol/server-everything'), { type: 'mcp', pkg: '@modelcontextprotocol/server-everything', version: '' });

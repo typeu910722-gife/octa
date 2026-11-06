@@ -12,7 +12,8 @@ import { checkWatches, openJob, resetWatches } from './live.mjs';
 import { engineReport, installJob, modelReport, resetReports, usageReport } from './reports.mjs';
 import { MAX, PW_MCP, VERSION, WIN, cfg, configure, log, workDir } from './state.mjs';
 import { exportJob, importJob } from './transfer.mjs';
-import { toolJob, toolsHere } from './toolbox.mjs';
+import { refreshGpu, toolJob, toolsHere } from './toolbox.mjs';
+import { stopComfy } from './comfy.mjs';
 import { closeSession, sessions, testJob } from './warm.mjs';
 
 // ---------- main loop: long-poll, so work starts the moment it's sent ----------
@@ -159,6 +160,7 @@ export function startRunner(opts) {
     log('準備瀏覽器工具…');
     spawnSync(WIN ? 'cmd' : 'npx', WIN ? ['/c', 'npx', '-y', PW_MCP, '--version'] : ['-y', PW_MCP, '--version'], { stdio: 'ignore', timeout: 180000 });
   }
+  refreshGpu().catch(() => { });   // 4.13: NVIDIA or not (擴充工具箱 offers ComfyUI only there), in the background
   loop();
   recoverCodeTasks().catch(e => log('程式任務恢復失敗：' + e.message));
   const reaper = setInterval(() => reapBrowsers(false).catch(() => { }), 5 * 60000);
@@ -172,6 +174,7 @@ export function startRunner(opts) {
       clearInterval(reaper); clearInterval(watcher); clearTimeout(firstWatch);
       if (!opts.keepBrowsers) reapBrowsers(true).catch(() => { });
       for (const id of [...sessions.keys()]) closeSession(id);
+      if (!opts.keepBrowsers) stopComfy().catch(() => { });   // 4.13: local ComfyUI does not outlive OCTA
     },
     active: () => active, standby: () => standby
   };

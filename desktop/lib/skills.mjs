@@ -413,8 +413,16 @@ export function skillPromptLines(job, { readSkill = () => '', skillDir = () => '
   }
   const tools = job.tools || [];
   if (tools.length) L.push('', `這台電腦已經裝好給你用的工具（在指令列直接打名字就能用）：${tools.map(t => `${t.bin || t.id}（${t.what}）`).join('、')}。`);
+  // 4.13 擴充工具箱 (only when the person turned it on): open-source image / video / audio tools, one line each
+  const extra = (job.extraTools || []).filter(t => t.id !== 'comfyui' || t.installed);
+  if (extra.length) {
+    L.push('', '擴充工具箱（開源工具，OCTA 驗證過的官方檔案；「已裝好」的直接用，其他的在回覆最後寫「🧰安裝：名稱」就會裝好，不用問使用者）：');
+    for (const t of extra) L.push(`- ${t.id}${t.installed ? '（已裝好）' : ''}：${t.what}。${t.id === 'comfyui' ? '用【產生】區塊加「服務：本機」' : '用法：' + t.hint}`);
+  }
+  const big = (job.extraTools || []).find(t => t.id === 'comfyui' && !t.installed);
   const ask = [];
-  ask.push('缺工具時在回覆最後單獨一行寫「🧰安裝：名稱」：ffmpeg、imagemagick、yt-dlp、uv、python 會直接裝好（OCTA 驗證過的官方檔案）；其他來源寫「🧰安裝：npm:套件名」「🧰安裝：pip:套件名」「🧰安裝：mcp:npm套件名」「🧰安裝：github:擁有者/專案」，要使用者核准才會裝。裝好之後下一次工作就能用。');
+  ask.push(`缺工具時在回覆最後單獨一行寫「🧰安裝：名稱」：ffmpeg、imagemagick、yt-dlp、uv、python${extra.length ? '、' + extra.filter(t => !t.installed).map(t => t.id).join('、') : ''} 會直接裝好（OCTA 驗證過的官方檔案）；其他來源寫「🧰安裝：npm:套件名」「🧰安裝：pip:套件名」「🧰安裝：mcp:npm套件名」「🧰安裝：github:擁有者/專案」，要使用者核准才會裝。裝好之後下一次工作就能用。`);
+  if (big) ask.push('這台電腦有 NVIDIA 顯示卡，可以裝 ComfyUI 在本機產生圖片影片（不用 API 費用，但要下載 10–20 GB）：只有使用者想在本機產生時才寫「🧰安裝：comfyui」，OCTA 會先請使用者確認大小。');
   if (job.skillSelf !== false)
     ask.push(`需要新本事（例如做 PDF、簡報、某種網站的流程）而你不會時，在回覆最後單獨一行寫「🧩找技能：英文關鍵字」：OCTA 會到 GitHub 找適合你（${engineLabel(engine)}）的技能，看過內容後請使用者核准才裝。使用者說「去 GitHub 學 X」也這樣寫。不要自己下載或安裝 GitHub 上的東西。`);
   L.push('', ...ask);

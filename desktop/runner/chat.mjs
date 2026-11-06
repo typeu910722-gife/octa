@@ -7,10 +7,12 @@ import { api, saveUpload } from './api-client.mjs';
 import { busyBots, cdp, cdpInfo, embedPortOf, ensureBrowser, ensureHealthy, pagesOf, setShareBrowser, shareBrowser, syncOut, touchBrowser } from './browser.mjs';
 import { browseKind, has, runEngine } from './engines.mjs';
 import { botDir, botExtras, convDir, freeName, newFiles, newestImage, rel, safeName, storeDir } from './files.mjs';
-import { GEN_PROVIDERS, generate, stripGenTasks, takeGenTasks } from '../lib/gen.mjs';
+import { GEN_PROVIDERS, generate, localFirst, stripGenTasks, takeGenTasks } from '../lib/gen.mjs';
+import { catalogItem } from '../lib/toolbox.mjs';
+import { comfyGenerate, packFor } from './comfy.mjs';
 import { skillWay } from '../lib/skills.mjs';
 import { syncSkills } from './skills.mjs';
-import { mcpFor, toolEnv } from './toolbox.mjs';
+import { mcpFor, readInstalled, toolEnv } from './toolbox.mjs';
 import { chromeForGoogle, moving, wantsGoogle } from './google.mjs';
 import { runGrokBot } from './grokbot.mjs';
 import { browserSnapshot, captureEyes, finishBrowserWindow, pushLive, settleBrowserWindow } from './live.mjs';
@@ -273,20 +275,26 @@ async function chatRun(job) {
 export async function genRound(job, here, res, progress, opts = {}) {
   const tasks = takeGenTasks(res.text);
   let text = stripGenTasks(res.text);
-  let keys = {};
-  try { keys = (await (opts.api || api)('runner/genkeys', {})).keys || {}; } catch (e) { log('產生：' + e.message); }
+  let keys = {}, mode = 'off';
+  try { const g = await (opts.api || api)('runner/genkeys', {}); keys = g.keys || {}; mode = g.local || 'off'; } catch (e) { log('產生：' + e.message); }
+  // 4.13: ComfyUI on this computer (擴充工具箱), when it has a model for that kind and the setting allows it
+  const comfy = mode === 'off' ? null : readInstalled().comfyui, item = catalogItem('comfyui');
+  const canLocal = kind => !!(comfy?.ok && packFor(item, comfy, kind));
   const out = join(here, '輸出'), lines = [];
   mkdirSync(out, { recursive: true });
   const d = new Date(), z = n => String(n).padStart(2, '0'), stamp = `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`;
   for (const t of tasks) {
     const word = t.kind === 'video' ? '影片' : '圖片';
     progress?.(`產生${word}中${t.kind === 'video' ? '（要等幾分鐘）' : ''}`, 'tool');
-    const r = await generate(t, keys, opts.gen || {});
+    const where = localFirst(t, keys, mode, canLocal(t.kind));
+    const r = where === 'local' ? await comfyGenerate(t, item, comfy, opts.comfy || {})
+      : where === 'none' ? { ok: false, text: `設定成「只用本機」，但本機 ComfyUI 沒有${word}模型（設定 → 技能與工具）` }
+      : await generate(t.provider === 'local' ? { ...t, provider: '' } : t, keys, opts.gen || {});
     if (!r.ok) { lines.push(`⚠ ${word}沒有產生：${r.text}`); log(`🎨 ${job.bot.name}：${word}沒有產生：${r.text}`); continue; }
     for (const f of r.files) {
       const p = freeName(out, safeName(t.name || `${word}-${stamp}`) + '.' + f.ext);
       writeFileSync(p, f.buf);
-      lines.push(`🎨 已產生${word}：${basename(p)}（${GEN_PROVIDERS[r.provider]?.label || r.provider}）`);
+      lines.push(`🎨 已產生${word}：${basename(p)}（${r.provider === 'local' ? '本機 ComfyUI' : GEN_PROVIDERS[r.provider]?.label || r.provider}）`);
     }
     log(`🎨 ${job.bot.name}：已產生${word}（${r.provider}）`);
   }

@@ -7,11 +7,14 @@
 //   - 🧰安裝：名稱 → a catalog tool is installed right away by the runner (checksum-verified); anything else gets a card.
 //   - Keys for OpenAI / Gemini / Replicate (st.connectors, kind 'gen', masked like other connector secrets) and the
 //     two catalog skills that tell bots how to ask for pictures and videos.
-import { GEN_PROVIDERS, GEN_SKILLS, genSkillMd } from '../lib/gen.mjs';
+//   - 4.13 擴充工具箱 (st.toolset.extra, default off): off, its tools are not in the catalog, not on the settings page and
+//     not told to bots (4.12 as it was). On: offered, installed on demand without a card, three built-in recipe skills;
+//     anything over BIG_BYTES (ComfyUI and its models) only after the person confirms the size (settings) or a card (bot).
+import { EXTRA_SKILLS, GEN_PROVIDERS, GEN_SKILLS, genSkillMd, skillWords } from '../lib/gen.mjs';
 import {
   ENGINE_SKILLS, engineLabel, extensionAsSkill, githubClient, rankCandidates, reviewSkill, reviewText, safeSkillName, skillWay
 } from '../lib/skills.mjs';
-import { CATALOG, catalogItem, catalogView, mcpName, parseToolAsk, pickAsset, toolKey } from '../lib/toolbox.mjs';
+import { BIG_BYTES, CATALOG, buildFor, catalogItem, catalogView, defaultPacks, downloadSize, extraForBots, extraItems, mcpName, packList, parseToolAsk, pickAsset, toolKey } from '../lib/toolbox.mjs';
 import { addMsg, bump, getSettings, loadAll, mask, putSettings } from './db.mjs';
 import { ensureMemSrc } from './memory-edit.mjs';
 import { J, clean, err, now } from './util.mjs';
@@ -239,7 +242,7 @@ export async function skillsForBot(db, U, botId) {
       const b = botsCol(r.bots);
       return b === null || b.includes(botId);
     })
-    .map(r => ({ name: r.name, id: `${r.name}@${String(r.ver).slice(0, 12)}`, desc: r.descr || '', src: r.src, repo: r.repo || '', words: GEN_SKILLS[r.name]?.words || '' }));
+    .map(r => ({ name: r.name, id: `${r.name}@${String(r.ver).slice(0, 12)}`, desc: r.descr || '', src: r.src, repo: r.repo || '', words: skillWords(r.name) }));
 }
 // for 它記得什麼: a bot's learned skills with where they came from, and how each reaches its AI
 export async function skillsView(db, U, botId, engine) {
@@ -261,7 +264,15 @@ export async function skillsView(db, U, botId, engine) {
 }
 
 // ---------- tools: catalog right away, anything else after approval ----------
-const toolSt = st => st._tools || {}; // what the runner on this computer reports: { platform, gpu, installed: { key: {...} } }
+const toolSt = st => st._tools || {}; // what the runner on this computer reports: { platform, gpu, gpuInfo, installed: { key: {...} } }
+// 4.13 擴充工具箱: off unless the person turned it on; where pictures / videos are made: 自動 | 只用本機 | 只用雲端
+export const extraOn = st => st.toolset?.extra === true;
+export const genLocalMode = st => (!extraOn(st) ? 'off' : ['auto', 'local', 'cloud'].includes(st.toolset?.genLocal) ? st.toolset.genLocal : 'auto');
+const comfyReady = st => {
+  const c = toolSt(st).installed?.comfyui;
+  return !!(c?.ok && (c.packs || []).length);
+};
+const gbText = n => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(n / 1e6)) + ' MB');
 const assignOf = (st, key) => (st.toolset?.assign && key in st.toolset.assign ? st.toolset.assign[key] : undefined);
 export async function queueTool(db, U, spec) {
   const r = await db
@@ -310,23 +321,55 @@ export async function toolInfo(env, ask, platform) {
 }
 const kb = n => (!n ? '未知' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB');
 // a tool asked for by a bot (🧰安裝：…) or the person (settings): catalog → installed now; off-catalog → card
-export async function askTool(env, db, U, { what, bot, conv, bots }) {
+// 4.13: packs (whisper:small, comfyui:wan-1.3b) and, for a big download, confirm: true (settings) or a card (a bot)
+export async function askTool(env, db, U, { what, bot, conv, bots, packs, confirm }) {
   await ensureSkillTables(db);
-  const ask = parseToolAsk(what);
-  if (!ask) return { error: `不認得「${clean(what, 60)}」。可以寫 ffmpeg、imagemagick、yt-dlp、uv、python，或 npm:套件、pip:套件、mcp:套件、github:擁有者/專案` };
   const st = await getSettings(db, U);
+  const extra = extraOn(st);
+  const ask = parseToolAsk(what, extra);
+  if (!ask)
+    return { error: `不認得「${clean(what, 60)}」。可以寫 ffmpeg、imagemagick、yt-dlp、uv、python${extra ? '、' + extraItems().map(t => t.id).join('、') : ''}，或 npm:套件、pip:套件、mcp:套件、github:擁有者/專案` };
   const here = toolSt(st);
   const key = toolKey(ask);
   const { bots: all } = await loadAll(db, U);
   const asker = all.find(b => b.id === bot);
   if (ask.type === 'catalog') {
-    const item = catalogItem(ask.id);
+    const item = catalogItem(ask.id, extra);
     if (item.later) return { error: `${item.label} 之後的版本才會開放（只在有 NVIDIA 顯示卡的電腦）。` };
-    if (here.installed?.[key]?.ok) return { same: true, text: `${item.label} 已經裝好了。` };
-    await queueTool(db, U, { key, type: 'catalog', id: item.id, conv: conv || asker?.id || null, bots: bots ?? null, by: asker?.id || 'me' });
-    if (bots !== undefined) setAssign(st, key, bots);
+    if (item.needsGpu && !here.gpu) return { error: `${item.label} 需要 NVIDIA 顯示卡，這台電腦沒有偵測到。` };
+    const b = buildFor(item, here.platform || undefined, here.gpuInfo);
+    if (item.extra && b.way === 'manual') return { error: `${item.label} 在這台電腦請自己安裝：${b.how}` };
+    const have = here.installed?.[key];
+    const want = (Array.isArray(packs) && packs.length ? packs : ask.packs || []).map(String).filter(p => item.packs?.[p]);
+    const morePacks = have?.ok ? want.filter(p => !(have.packs || []).includes(p)) : [];
+    if (have?.ok && !morePacks.length) return { same: true, text: `${item.label} 已經裝好了。` };
+    const pick = have?.ok ? morePacks : want.length ? want : defaultPacks(item, here.gpuInfo?.vram);
+    const size = have?.ok ? packList(item).filter(p => pick.includes(p.id)).reduce((n, p) => n + p.size, 0) : downloadSize(item, here.platform || undefined, pick, here.gpuInfo);
+    const spec = { key, type: 'catalog', id: item.id, ...(item.packs ? { packs: pick } : {}), ...(have?.ok ? { op: 'packs' } : {}), conv: conv || asker?.id || null, bots: bots ?? null, by: asker?.id || 'me' };
+    const what2 = `${item.label}${pick.length && item.packs ? `（${packList(item).filter(p => pick.includes(p.id)).map(p => p.label).join('、')}）` : ''}`;
+    if (size > BIG_BYTES && confirm !== true) {
+      // the person in settings: asked to confirm the size there; a bot: a card in its chat
+      if (!asker) return { needConfirm: true, size, packs: pick, text: `${what2} 要下載約 ${gbText(size)}，確定要下載嗎？` };
+      const r = await db
+        .prepare("INSERT INTO skill_reqs (user_id,kind,name,bots,data,status,conv,by_,ts) VALUES (?,'tool',?,?,?,'wait',?,?,?)")
+        .bind(U, key, JSON.stringify(bots?.length ? bots : [asker.id]), JSON.stringify({ key, spec, size }), conv || asker.id, asker.id, now())
+        .run();
+      const id = r.meta.last_row_id;
+      const text = [
+        `我想用 ${what2}。它在 OCTA 驗證過的清單裡，但檔案很大，你確定才會下載：`,
+        `✅待確認：安裝工具：${key}（#${id}）`,
+        `對象：${asker.name}（裝在這台電腦的 OCTA 工具資料夾，不需要管理員權限）`,
+        `內容：${item.what}\n來源：${item.source}\n版本：${b.version || item.version || ''}，下載約 ${gbText(size)}，授權：${item.license}${pick.length && item.packs ? `\n模型：${packList(item).filter(p => pick.includes(p.id)).map(p => `${p.label}（${p.license}，${gbText(p.size)}）`).join('、')}` : ''}`,
+        `影響：會占用約 ${gbText(size * 1.5)} 硬碟空間；下載的每個檔案都比對官方檢查碼`
+      ].join('\n');
+      await addMsg(db, U, conv || asker.id, asker.id, text, null, null, null, { skillreq: { id, kind: 'tool', always: false } });
+      await bump(db, U);
+      return { req: id, text };
+    }
+    await queueTool(db, U, spec);
+    if (bots !== undefined && !have?.ok) setAssign(st, key, bots);
     await putSettings(db, U, st);
-    return { queued: key, text: `正在安裝 ${item.label}（OCTA 驗證過的官方檔案，不用核准）` };
+    return { queued: key, text: `正在${have?.ok ? '加裝' : '安裝'} ${what2}（OCTA 驗證過的官方檔案，不用核准）` };
   }
   if (!asker) return { error: '要指定是哪個機器人要用' };
   let info;
@@ -373,11 +416,10 @@ export function toolsForBot(st, botId) {
     const a = assignOf(st, key);
     if (a !== undefined && a !== null && !a.includes(botId)) continue;
     if (a === undefined && t.type && t.type !== 'catalog' && t.by && t.by !== botId && t.by !== 'me') continue; // off-catalog: only the bot that asked, until given to others
+    const item = catalogItem(key);
+    if (item?.extra && !extraOn(st)) continue; // 4.13: 擴充工具箱 off — its tools stay installed but bots do not get them
     if (t.type === 'mcp') mcp.push({ name: mcpName(t.pkg), command: 'npx', args: ['-y', `${t.pkg}@${t.version}`] });
-    else {
-      const item = catalogItem(key);
-      out.push({ id: key, what: item?.what || t.summary || key, bin: (t.bins || item?.bins || [key]).slice(0, 3).join('／') });
-    }
+    else if (item?.via !== 'comfyui') out.push({ id: key, what: item?.what || t.summary || key, bin: (t.bins || item?.bins || [key]).slice(0, 3).join('／'), ...(item?.hint ? { hint: item.hint } : {}) });
   }
   return { tools: out, mcp };
 }
@@ -416,6 +458,16 @@ export async function skillApproval(env, db, U, conv, text) {
     return true;
   }
   const st = await getSettings(db, U);
+  if (data.spec?.type === 'catalog') {
+    // 4.13: a big catalog download the bot asked for (only the vetted files; what was on the card)
+    if (!extraOn(st) && catalogItem(data.spec.id)?.extra) {
+      await addMsg(db, U, conv, 'sys', '「擴充工具箱」已經關掉了，沒有安裝。', null, null, 'note');
+      return true;
+    }
+    await queueTool(db, U, { ...data.spec, conv });
+    await addMsg(db, U, conv, 'sys', `🧰 正在下載 ${catalogItem(data.spec.id)?.label || data.key}（約 ${gbText(data.size || 0)}）…`, null, null, 'note');
+    return true;
+  }
   setAssign(st, data.key, bots);
   await putSettings(db, U, st);
   await queueTool(db, U, { key: data.key, type: data.ask.type, ask: data.ask, info: data.info, conv, bots, by: req.by_ });
@@ -434,6 +486,7 @@ export async function toolDone(db, U, job, body) {
   const st = await getSettings(db, U);
   if (body.tools && typeof body.tools === 'object' && JSON.stringify(body.tools).length < 100000) st._tools = body.tools;
   await putSettings(db, U, st);
+  if (catalogItem(spec.key)?.extra) await ensureExtraSkills(db, U, st);
   const label = catalogItem(spec.key)?.label || spec.key;
   const line = spec.op === 'remove' ? (good ? `🧰 移除了 ${label}` : `⚠ ${label} 沒有移除：${clean(body.text, 300)}`) : good ? `🧰 安裝了 ${label}${body.version ? `（${body.version}）` : ''}` : `⚠ ${label} 沒有裝好：${clean(body.text, 300)}`;
   const to = new Set([spec.conv, ...(spec.bots || [])].filter(Boolean));
@@ -458,6 +511,18 @@ async function ensureGenSkills(db, U, st) {
   }
 }
 
+// 4.13: the recipe skills of 擴充工具箱 — there while it is on; octa-local-gen only once ComfyUI has a model
+export async function ensureExtraSkills(db, U, st) {
+  await ensureSkillTables(db);
+  const want = new Set(extraOn(st) ? ['octa-image-tools', 'octa-video-tools', ...(comfyReady(st) ? ['octa-local-gen'] : [])] : []);
+  for (const name of Object.keys(EXTRA_SKILLS)) {
+    const row = await db.prepare('SELECT 1 AS n FROM lskills WHERE user_id=? AND name=?').bind(U, name).first();
+    if (want.has(name) && !row)
+      await installSkill(db, U, { name, bots: null, data: { src: 'catalog', ver: 'octa-4.13', review: { desc: EXTRA_SKILLS[name].desc, license: 'MIT', paths: ['SKILL.md'], scripts: [], level: 'low', noScripts: true }, files: { 'SKILL.md': { t: 'text', d: genSkillMd(name) } } } }, 'catalog');
+    if (!want.has(name) && row) await removeSkill(db, U, name);
+  }
+}
+
 // ---------- routes ----------
 export async function skillRoutes(c) {
   const { env, db, path, m, url, body, U, me, ok } = c;
@@ -472,7 +537,8 @@ export async function skillRoutes(c) {
   }
   if (path === 'runner/genkeys' && m === 'POST') {
     if (me.kind !== 'local') return err('需要執行器金鑰', 403);
-    return J({ keys: genKeys(await getSettings(db, U)) }); // only the runner on this computer, never the AI
+    const st = await getSettings(db, U);
+    return J({ keys: genKeys(st), local: genLocalMode(st) }); // only the runner on this computer, never the AI
   }
   if (!/^(skills|tools|gen-keys)(\/|$)/.test(path)) return null;
   await ensureSkillTables(db);
@@ -488,7 +554,12 @@ export async function skillRoutes(c) {
       tools: {
         platform: here.platform || '',
         gpu: !!here.gpu,
-        catalog: catalogView(here.platform || undefined, !!here.gpu),
+        gpuInfo: extraOn(st) ? here.gpuInfo || null : null,
+        extra: extraOn(st),
+        genLocal: genLocalMode(st),
+        localReady: extraOn(st) && comfyReady(st),
+        bigBytes: BIG_BYTES,
+        catalog: catalogView(here.platform || undefined, !!here.gpu, { extra: extraOn(st), gpuInfo: here.gpuInfo }),
         installed: Object.fromEntries(Object.entries(here.installed || {}).map(([k, v]) => [k, { ...v, assign: assignOf(st, k) ?? null }])),
         seen: !!here.platform
       },
@@ -511,7 +582,12 @@ export async function skillRoutes(c) {
     if (Array.isArray(body.trusted))
       next.trusted = [...new Set(body.trusted.map(x => String(x).trim().replace(/^https:\/\/github\.com\//, '').replace(/\/+$/, '')).filter(x => /^[\w.-]+\/[\w.-]+$/.test(x)))].slice(0, 50);
     st.skillset = next;
+    // 4.13 擴充工具箱 on / off, and where pictures and videos are made
+    const was = extraOn(st);
+    if ('extra' in body) st.toolset = { ...(st.toolset || {}), extra: body.extra === true };
+    if (['auto', 'local', 'cloud'].includes(body.genLocal)) st.toolset = { ...(st.toolset || {}), genLocal: body.genLocal };
     await putSettings(db, U, st);
+    if (was !== extraOn(st)) await ensureExtraSkills(db, U, st);
     return ok();
   }
   if (path === 'skills/find' && m === 'POST') {
@@ -557,8 +633,25 @@ export async function skillRoutes(c) {
     return ok();
   }
   if (path === 'tools/install' && m === 'POST') {
-    const r = await askTool(env, db, U, { what: clean(body.what || body.id, 120), bot: clean(body.bot, 64), conv: clean(body.bot, 64) || null, bots: body.bots === undefined ? undefined : body.bots });
+    const r = await askTool(env, db, U, {
+      what: clean(body.what || body.id, 120), bot: clean(body.bot, 64), conv: clean(body.bot, 64) || null, bots: body.bots === undefined ? undefined : body.bots,
+      packs: Array.isArray(body.packs) ? body.packs.map(x => clean(x, 40)).slice(0, 8) : undefined, confirm: body.confirm === true
+    });
     return r.error ? err(r.error, 400) : ok(r);
+  }
+  // 4.13 「全部安裝（不含 ComfyUI）」: every 擴充工具箱 tool this computer can take that is not here yet (nothing big)
+  if (path === 'tools/install-all' && m === 'POST') {
+    const st = await getSettings(db, U);
+    if (!extraOn(st)) return err('先打開「擴充工具箱」');
+    const here = toolSt(st);
+    const queued = [];
+    for (const t of extraItems()) {
+      if (t.big || t.needsGpu || here.installed?.[t.id]?.ok) continue;
+      if (!['download', 'uv-venv'].includes(buildFor(t, here.platform || undefined).way)) continue;
+      const r = await askTool(env, db, U, { what: t.id, bots: null });
+      if (r.queued) queued.push(t.label);
+    }
+    return ok({ queued, text: queued.length ? `正在安裝：${queued.join('、')}` : '都已經裝好了' });
   }
   if (path === 'tools/remove' && m === 'POST') {
     const key = clean(body.id, 120);
