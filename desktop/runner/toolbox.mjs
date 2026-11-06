@@ -101,7 +101,8 @@ export function toolEnv(tools, base = process.env) {
 
 // ---------- downloading, checking, unpacking ----------
 export async function download(url, file, { sha256 = '', max = TOOL_LIMIT_BYTES, fetchImpl = globalThis.fetch, progress } = {}) {
-  const r = await fetchImpl(url, { redirect: 'follow', headers: { 'user-agent': 'OCTA-desktop' }, signal: AbortSignal.timeout(30 * 60000) });
+  // 4.13: big files (models of many GB) get as long as about 1 MB/s needs, at least 30 minutes
+  const r = await fetchImpl(url, { redirect: 'follow', headers: { 'user-agent': 'OCTA-desktop' }, signal: AbortSignal.timeout(Math.max(30 * 60000, Math.ceil(max / 1e3))) });
   if (!r.ok || !r.body) throw new Error(`下載失敗（${r.status}）`);
   const len = +r.headers?.get?.('content-length') || 0;
   if (len > max) throw new Error('檔案太大');
@@ -140,7 +141,7 @@ const run = (cmd, args, opts = {}) =>
 export async function unpack(file, dir, kind) {
   mkdirSync(dir, { recursive: true });
   if (kind === 'zip' && !WIN && process.platform !== 'darwin' && findBin('unzip')) return run('unzip', ['-q', '-o', file, '-d', dir]);
-  return run('tar', ['-xf', file, '-C', dir]);
+  return run('tar', ['-xf', file, '-C', dir], { timeout: 90 * 60000 });   // ComfyUI's 7z: 2 GB → 4.4 GB
 }
 
 // ---------- 4.13 擴充工具箱: model packs, room on the disk, helper commands, ComfyUI's start command ----------
@@ -189,7 +190,8 @@ async function sha256File(p) {
 function shim(binDir, name, cmd, args, env = {}) {
   mkdirSync(binDir, { recursive: true });
   const q = s => `"${s}"`;
-  if (WIN) writeFileSync(join(binDir, name + '.cmd'), `@echo off\r\n${Object.entries(env).map(([k, v]) => `set ${k}=${v}\r\n`).join('')}${q(cmd)} ${args.map(q).join(' ')} %*\r\n`);
+  // chcp 65001: the paths in it are UTF-8 (a Chinese user name in the data folder)
+  if (WIN) writeFileSync(join(binDir, name + '.cmd'), `@echo off\r\nchcp 65001 >nul\r\n${Object.entries(env).map(([k, v]) => `set ${k}=${v}\r\n`).join('')}${q(cmd)} ${args.map(q).join(' ')} %*\r\n`);
   else {
     writeFileSync(join(binDir, name), `#!/bin/sh\n${Object.entries(env).map(([k, v]) => `${k}='${v}' `).join('')}exec ${q(cmd)} ${args.map(q).join(' ')} "$@"\n`);
     chmodSync(join(binDir, name), 0o755);
