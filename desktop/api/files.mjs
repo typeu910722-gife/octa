@@ -37,6 +37,9 @@ const MIMES = {
   jpeg: 'image/jpeg',
   webp: 'image/webp',
   gif: 'image/gif',
+  mp4: 'video/mp4', // 4.12 產生影片: shown with a player
+  webm: 'video/webm',
+  mov: 'video/quicktime',
   pdf: 'application/pdf',
   txt: 'text/plain',
   csv: 'text/csv',

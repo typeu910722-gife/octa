@@ -108,7 +108,7 @@ export async function installTool(spec, opts = {}) {
   const rec = { ok: true, type: spec.type || 'catalog', by: spec.by || 'me', ts: Date.now() };
   if (spec.type === 'catalog') {
     const item = catalogItem(spec.id || key);
-    const b = buildFor(item, opts.platform || platformKey());
+    const b = opts.build || buildFor(item, opts.platform || platformKey());   // opts.build: tests
     if (b.way === 'bundled') {
       const node = cfg.nodeBin || findBin('node');
       if (!node) throw new Error('找不到 Node.js');
