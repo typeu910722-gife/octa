@@ -345,7 +345,7 @@ test('Grok Bot on Windows: the API refuses it, the runner never tries it, the AI
   for (const [p, b] of [['grokbot/list', {}], ['engine-test', { engine: 'grokbot' }], ['bots', { name: 'G', engine: 'grokbot', model: 'x' }]]) {
     const r = await jpost(L + p, b);
     assert.equal(r.status, 400, p);
-    assert.match((await r.json()).error, /Windows 不支援，請改用交接網址/);
+    assert.match((await r.json()).error, /Windows 不支援，請改用 Grok Bot（雲端）/);   // 4.14: the cloud engine replaces it
   }
   assert.equal((await (await jpost(L + 'engine-test', { engine: 'claude' })).json()).id > 0, true, 'other AIs are tested as before');
 
@@ -379,14 +379,16 @@ test('Grok Bot on Windows: the API refuses it, the runner never tries it, the AI
   // the AI page's Grok Bot section, drawn for a Windows host and for a Mac host
   const draw = hostOs => {
     const gb2 = { innerHTML: '', querySelectorAll: () => [], querySelector: () => null };
-    const S = { hostOs, bots: [{ id: 'b1', name: '助理' }], routines: [{ id: 'r1', conv: 'b1', hook: 'a'.repeat(48), name: '外部交接' }], runnerOnline: true };
+    const S = { hostOs, bots: [{ id: 'b1', name: '助理' }, { id: 'b2', name: '舊的', engine: 'grokbot' }], routines: [{ id: 'r1', conv: 'b1', hook: 'a'.repeat(48), name: '外部交接' }], runnerOnline: true };
     const f = new Function('S', 'esc', 'ic', 'hookNote', 'paintIcons', '$', 'api', 'refresh', 'toast', 'grokImport', fnSrc('grokWin') + '\n' + fnSrc('paintGrok') + '\nreturn paintGrok;');
     f(S, x => String(x), () => '', () => '', () => { }, () => null, null, null, null, null)(gb2);
     return gb2.innerHTML;
   };
   const win = draw('win32'), mac = draw('darwin');
-  assert.match(win, /Windows 不支援，請改用交接網址/);
-  assert.match(win, /取得交接網址/);
+  assert.match(win, /Windows 不支援 grok-bot-cli，請改用 Grok Bot（雲端）/);
+  assert.match(win, /id="gbGoCloud"/, '4.14: the card points to Grok Bot（雲端）');
+  assert.match(win, /data-gcuse="b2"/, 'a bot on the old engine gets a one-tap switch');
+  assert.match(win, /交接網址/);
   assert.doesNotMatch(win, /data-gbimport/, 'no import (grok-bot-cli) on Windows');
   assert.match(win, /data-hookspec="r1"/, 'the hand-off URL is right there');
   assert.doesNotMatch(mac, /Windows 不支援/);
