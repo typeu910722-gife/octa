@@ -382,3 +382,45 @@ test('Grok Bot（雲端） never quietly uses another AI: switching drops backup
   const gc = (await import('node:fs')).readFileSync(new URL('../desktop/api/grokcloud.mjs', import.meta.url), 'utf8');
   assert.match(gc, /kind !== 'not_logged_in' \? \(bot\?\.fb/);
 });
+
+test('4.15.1 a long job: the reply fields come first, the body stays small (cut → context_url); files other bots made can be downloaded', async t => {
+  // gcFit: the body never grows past the limit, the answer fields stay whole and first
+  const long = 'x'.repeat(2900);
+  const full = { job: '7', reply_url: 'https://o/api/hook/t/reply', progress_url: 'https://o/api/hook/t/progress', reply_token: 'ab'.repeat(24), context_url: 'https://o/api/hook/t/context/7', task: '剪 8 支影片'.repeat(900), files: [],
+    memory: { rules: Array(40).fill('規則'.repeat(40)), facts: [], manuals: [] }, notes: 'n'.repeat(8000), history: Array.from({ length: 30 }, (_, i) => ({ who: 'a', text: long + i })) };
+  const fit = GCM.gcFit(full);
+  const s = JSON.stringify(fit);
+  assert.ok(s.length <= GCM.GC_BODY_MAX, s.length + ' chars');
+  assert.equal(fit.cut, true);
+  assert.deepEqual(Object.keys(fit).slice(0, 5), ['job', 'reply_url', 'progress_url', 'reply_token', 'context_url']);
+  assert.equal(fit.reply_token, full.reply_token);
+  assert.equal(GCM.gcFit({ job: '1', task: 'hi', history: [] }).cut, undefined, 'a short body is sent as it is');
+
+  // a colleague's output: listed in the job and downloadable with this bot's token; the whole context by context_url
+  const x = await setup(t);
+  const { api, grok } = x;
+  const maker = await gcBot(x, '剪輯師');
+  grok.setPlan(async b => { await say(b, 'reply', { text: '剪好了\n✅ 完成：影片', files: [{ name: '成品影片01.csv', url: x.grokUrl + '/files/report.csv' }] }); });
+  await api('POST', 'messages', { conv: maker.bot, text: '剪影片' });
+  await until(async () => (await x.msgs(maker.bot)).find(m => m.by === maker.bot && m.files?.length), 20000);
+  const yt = await gcBot(x, 'YTBR');
+  const ytTok = yt.info.instruction.match(/reply_token：([0-9a-f]{48})/)[1];
+  grok.setPlan(async () => {});
+  const n0 = grok.calls.length;
+  await api('POST', 'messages', { conv: yt.bot, text: '把「成品影片01.csv」上傳到 YouTube' });
+  await until(() => grok.calls.length > n0);
+  const b = grok.calls.at(-1).body;
+  assert.deepEqual(Object.keys(b).slice(0, 4), ['job', 'reply_url', 'progress_url', 'reply_token']);
+  const f = b.files.find(x => x.name === '成品影片01.csv');
+  assert.ok(f, 'the colleague’s file is listed');
+  const got = await fetch(f.url);
+  assert.equal(got.status, 200);
+  assert.equal(await got.text(), 'a,b\n1,2\n');
+  await until(() => x.ntfy.topics.get(HL.hookTopicOf(ytTok))?.length);   // the site knows where this bot's host is
+  const ctx = await (await fetch(b.context_url)).json();
+  assert.equal(ctx.ok, true);
+  assert.match(ctx.task, /成品影片01/);
+  // another bot's token can't read this job's context
+  const other = maker.info.instruction.match(/reply_token：([0-9a-f]{48})/)[1];
+  assert.equal((await fetch(b.context_url.replace(ytTok, other))).status, 404);
+});

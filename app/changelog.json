@@ -1,5 +1,21 @@
 [
  {
+  "v": "4.15.1",
+  "date": "2026-11-07",
+  "notes": [
+   "Grok Bot（雲端）不會再因為內容太長收不到回報金鑰：回報用的資料放在最前面，內容超過上限會自動縮短，完整內容另外用連結提供",
+   "Grok Bot（雲端）拿得到其他機器人做好的檔案：工作裡提到的檔案、交代工作的同事最近的成品、同分區或同群組今天做好的檔案，都會附上下載網址"
+  ],
+  "notes_en": [
+   "Grok Bot (cloud) no longer loses its reply key on long jobs: the reply fields come first, long content is trimmed automatically, and the full context is available from a link",
+   "Grok Bot (cloud) can get files other bots made: files named in the job, the asking colleague's recent outputs, and today's files from bots in the same section or group come with download links"
+  ],
+  "notes_ja": [
+   "Grok Bot（クラウド）が長い作業で返信キーを受け取れなくなる問題を修正：返信用の項目を先頭に置き、長い内容は自動で短縮し、全文はリンクで取得できます",
+   "Grok Bot（クラウド）が他のボットの作ったファイルを取得できるように：作業で触れたファイル、依頼した同僚の最近の成果物、同じセクションやグループで今日作られたファイルにダウンロード URL を付けます"
+  ]
+ },
+ {
   "v": "4.15.0",
   "date": "2026-11-07",
   "notes": [

@@ -200,7 +200,7 @@ export const GO_URL = 'https://octa.yzprojecttw.com/go';
 // 4.5: the 交接網址 other AIs call is <HOOK_BASE>/api/hook/<token>; the OCTA site forwards it to this computer's tunnel
 // (legacy/hook-relay.mjs), which it finds through ntfy.sh (host-link.mjs publishHook)
 export const HOOK_BASE = 'https://octa.yzprojecttw.com';
-const HOOK_PATH = /^\/api\/hook\/[0-9a-zA-Z]{1,64}(\/(job\/[0-9a-zA-Z]{1,40}|inbox|feedback|teach|reply|progress|file\/[0-9a-zA-Z-]{1,60}))?\/?(\?[\w=&%.-]*)?$/;
+const HOOK_PATH = /^\/api\/hook\/[0-9a-zA-Z]{1,64}(\/(job\/[0-9a-zA-Z]{1,40}|inbox|feedback|teach|reply|progress|file\/[0-9a-zA-Z-]{1,60}|context\/[0-9a-zA-Z-]{1,40}))?\/?(\?[\w=&%.-]*)?$/;
 const PHONE_IDLE = 90 * 86400000;   // a paired phone unused this long is signed out (desktop/api/util.mjs SESSION_IDLE)
 const newCode = () => Array.from({ length: 8 }, () => CODE_CHARS[randomInt(CODE_CHARS.length)]).join('');
 

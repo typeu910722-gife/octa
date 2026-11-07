@@ -143,7 +143,7 @@ export async function hookRoute({ req, env, db, path, m, url, body, rawBody }) {
     return gcHookRoute({ env, db, m, url, body, rest, g, cors: HOOK_CORS, bad });
   }
   if ((rawBody || '').length > HOOK_MAX_BODY) return HJ({ error: '內容太大（上限 64 KB）' }, 413);
-  if (rest === 'reply' || rest === 'progress' || rest.startsWith('file/')) return HJ({ ok: false, error: '找不到這個功能' }, 404);
+  if (rest === 'reply' || rest === 'progress' || rest.startsWith('file/') || rest.startsWith('context/')) return HJ({ ok: false, error: '找不到這個功能' }, 404);
   const U = r.user_id,
     key = r.hook;
   const write = async () => {

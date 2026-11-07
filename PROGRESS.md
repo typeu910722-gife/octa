@@ -434,3 +434,8 @@
 - [x] 等級：GET overview/org 回傳每個機器人完成過的工作數（不算 待命巡查、連線測試、出錯），orgLevel = 1 + floor(sqrt(n/3))
 - [x] 聊天面板打開時圖表只在剩下的空間捲動、自動置中並捲到目前對話的名片；手機在聊天列表上方的收合區
 - [x] 測試 test/orgchart.test.mjs（4）；全套 408，404 過（同樣 4 個已知失敗）；Playwright 截圖確認桌面、手機、設定頁
+
+## 4.15.1 Grok Bot（雲端）讀不到其他機器人的成品、Webhook 被截斷（使用者截圖：YTBR 回「收到的 Webhook 內容遭截斷，回報金鑰不完整」「需要那 8 支影片的下載網址」，2026-11-07）
+- [x] gcBody：job / reply_url / progress_url / reply_token / context_url 放最前面；gcFit 把內容壓在 12000 字以內（cut:true），完整內容 GET hook/<t>/context/<job>（只限同一隻機器人，12 小時，server.mjs HOOK_PATH 放行）
+- [x] files 加上：工作或對話提到檔名的檔案（7 天）、交代工作的同事 24 小時內成品、同分區／同群組機器人 24 小時內的檔案；列出的檔案記在 gc_files，3 天內可用這隻機器人的 token 下載
+- [x] 測試 grok-cloud 第 8 項

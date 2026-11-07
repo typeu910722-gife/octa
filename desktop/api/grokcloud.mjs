@@ -102,7 +102,9 @@ export function gcInstruction(env, bot, token) {
 - from：誰交代的；standing_task：你的指定任務；group：在群組裡時的群組與成員
 - history：最近的對話（舊到新）；memory：你要遵守的規則（rules）、事實（facts）、做事手冊（manuals）；notes：共用資料
 - files：附件（url 直接下載；url_json 回傳 JSON {name, mime, data(base64)}）
-- reply_url、progress_url、reply_token：回報用（每次以 JSON 裡的為準）
+- reply_url、progress_url、reply_token：回報用（每次以 JSON 裡的為準，放在 JSON 最前面）
+- files 也包含其他機器人做好、這件工作用得到的檔案（例如同事剪好的影片），直接用 url 下載
+- cut 為 true 時，內容太長被縮短了：用 GET context_url（帶 Authorization: Bearer <reply_token>）取得完整的 task、history、memory
 
 做法：
 1. 照 memory 的規則，用你自己的電腦和工具把 task 完整做完，做到完成或確定做不到為止。
@@ -224,6 +226,52 @@ const fileUrls = (env, token, id) => {
   const b = replyBase(env, token);
   return { url: (b.direct || b.pub) + '/file/' + id, url_json: b.pub + '/file/' + id + '?b64=1' };
 };
+// 4.15.1 Grok Bot cuts long webhook bodies: the fields it needs to answer come first, the body is kept under
+// GC_BODY_MAX characters (oldest history first, then shorter texts), and the whole context can be fetched from context_url.
+export const GC_BODY_MAX = 12000;
+const GC_FILES_MAX = 20;
+const gcCtx = new Map(); // job → the full body, for context_url (kept 12 hours, this process only)
+export const gcContextOf = id => {
+  const c = gcCtx.get(String(id));
+  return c && now() - c.at < 12 * 60 * MIN ? c.body : null;
+};
+// files Grok Bot may download besides its own conversations': the ones a job's body listed (3 days)
+const GC_FILE_DAYS = 3;
+async function allowFiles(db, U, bot, ids) {
+  await db.prepare('CREATE TABLE IF NOT EXISTS gc_files (user_id TEXT NOT NULL, bot_id TEXT NOT NULL, file_id TEXT NOT NULL, at INTEGER NOT NULL)').run();
+  await db.prepare('DELETE FROM gc_files WHERE at<?').bind(now() - GC_FILE_DAYS * 24 * 60 * MIN).run();
+  for (const id of ids) await db.prepare('INSERT INTO gc_files (user_id,bot_id,file_id,at) VALUES (?,?,?,?)').bind(U, bot, id, now()).run();
+}
+async function fileAllowed(db, U, bot, id) {
+  try {
+    return !!(await db.prepare('SELECT 1 AS n FROM gc_files WHERE user_id=? AND bot_id=? AND file_id=? AND at>?').bind(U, bot, id, now() - GC_FILE_DAYS * 24 * 60 * MIN).first());
+  } catch {
+    return false;
+  }
+}
+/* the files a job may need: attachments in its history, what the colleague who asked made lately, any file of the
+   last 7 days whose name the task or the history mentions, and today's files of bots in the same 分區 or group */
+async function jobFiles(db, U, job, hist, text) {
+  const out = new Map();
+  const add = f => {
+    if (f?.id && f.path !== null && out.size < GC_FILES_MAX && !out.has(f.id)) out.set(f.id, f);
+  };
+  for (const h of hist) for (const f of h.files || []) if (f.path) add({ id: f.id, name: f.name, mime: f.mime });
+  const recent = (
+    await db.prepare("SELECT id,name,mime,conv,ts FROM files WHERE user_id=? AND loc='pc' AND ts>? ORDER BY ts DESC LIMIT 400").bind(U, now() - 7 * 24 * 60 * MIN).all()
+  ).results;
+  const asker = String(job.prompt || '').match(/^〔背景:([^:〕]+):/)?.[1];
+  if (asker) for (const f of recent) if (f.conv === asker && now() - f.ts < 24 * 60 * MIN) add(f);
+  for (const f of recent) if (f.name && f.name.length >= 3 && text.includes(f.name)) add(f);
+  // what bots in the same 分區 or group made today (newest first), e.g. 「把那 8 支影片上傳」 without their names
+  const { bots, groups } = await loadAll(db, U);
+  const me = bots.find(x => x.id === job.bot_id);
+  const mates = new Set();
+  for (const x of bots) if (me && x.id !== me.id && me.folder && x.folder === me.folder) mates.add(x.id);
+  for (const g of groups) if (g.members.includes(job.bot_id)) { mates.add(g.id); g.members.forEach(id => id !== job.bot_id && mates.add(id)); }
+  for (const f of recent) if (mates.has(f.conv) && now() - f.ts < 24 * 60 * MIN) add(f);
+  return [...out.values()];
+}
 export async function gcBody(env, db, U, job, p, r) {
   const b = replyBase(env, r.token);
   let from = '使用者';
@@ -231,33 +279,67 @@ export async function gcBody(env, db, U, job, p, r) {
   else if (p.routine) from = `例行任務「${p.routine.name}」`;
   else if (/^〔背景:/.test(job.prompt || '')) from = '同事（OCTA 的其他機器人）';
   const hist = (p.history || []).slice(-30);
-  const files = [];
-  for (const h of hist) for (const f of h.files || []) if (f.path && files.length < 12) files.push({ name: f.name, mime: f.mime || mimeOf(f.name), ...fileUrls(env, r.token, f.id) });
-  return {
-    octa: '4.14',
+  const task = String(p.prompt || '');
+  const list = await jobFiles(db, U, job, hist, task + '\n' + hist.map(h => h.text || '').join('\n'));
+  await allowFiles(db, U, r.bot_id, list.map(f => f.id));
+  const files = list.map(f => ({ name: f.name, mime: f.mime || mimeOf(f.name), ...fileUrls(env, r.token, f.id) }));
+  // what Grok Bot needs to answer: first, so a cut body still has it whole
+  const head = {
     job: String(job.id),
+    reply_url: b.main + '/reply',
+    progress_url: b.main + '/progress',
+    reply_token: r.token,
+    ...(b.direct && b.direct !== b.main ? { reply_url_alt: b.direct + '/reply' } : b.main !== b.pub ? { reply_url_alt: b.pub + '/reply' } : {}),
+    context_url: b.pub + '/context/' + job.id,
+    octa: '4.15',
     bot: p.bot.name,
-    task: String(p.prompt || '').slice(0, 20000),
-    approved: /^\s*核准[:：]/.test(p.prompt || ''),
-    from,
+    from
+  };
+  const full = {
+    ...head,
+    task: task.slice(0, 20000),
+    approved: /^\s*核准[:：]/.test(task),
+    files,
     standing_task: p.bot.task || '',
     autonomy: p.bot.autonomy,
     allowed: p.allowed || [],
     language: p.lang || 'zh-TW',
     group: p.group || null,
+    memory: { rules: p.memory || [], facts: p.facts || [], manuals: p.manuals || [] },
+    notes: [p.notes, p.folderNotes].filter(Boolean).join('\n\n').slice(0, 8000),
     history: hist.map(h => ({
       who: h.who,
       text: String(h.text || '').slice(0, 3000),
       ...(h.files?.length ? { files: h.files.map(f => f.name) } : {})
-    })),
-    memory: { rules: p.memory || [], facts: p.facts || [], manuals: p.manuals || [] },
-    notes: [p.notes, p.folderNotes].filter(Boolean).join('\n\n').slice(0, 8000),
-    files,
-    reply_url: b.main + '/reply',
-    progress_url: b.main + '/progress',
-    ...(b.direct && b.direct !== b.main ? { reply_url_alt: b.direct + '/reply' } : b.main !== b.pub ? { reply_url_alt: b.pub + '/reply' } : {}),
-    reply_token: r.token
+    }))
   };
+  gcCtx.set(String(job.id), { body: full, at: now() });
+  for (const [k, v] of gcCtx) if (now() - v.at > 12 * 60 * MIN) gcCtx.delete(k);
+  return gcFit(full);
+}
+// the body Grok Bot gets: the full one when it is short enough, else trimmed step by step (cut: true → read context_url)
+export function gcFit(full, max = GC_BODY_MAX) {
+  const len = o => JSON.stringify(o).length;
+  if (len(full) <= max) return full;
+  const o = { ...full, cut: true, memory: { ...full.memory }, history: [...full.history] };
+  const steps = [
+    () => (o.history = o.history.map(h => ({ ...h, text: h.text.slice(0, 600) }))),
+    () => (o.notes = o.notes.slice(0, 1500)),
+    () => (o.memory = { rules: o.memory.rules.slice(0, 20), facts: o.memory.facts.slice(0, 10), manuals: o.memory.manuals.slice(0, 3) }),
+    () => (o.files = o.files.map(f => ({ name: f.name, mime: f.mime, url: f.url }))),
+    () => (o.task = o.task.length > 4000 ? o.task.slice(0, 4000) + '…（完整內容在 context_url）' : o.task),
+    () => (o.memory = { rules: o.memory.rules.slice(0, 8), facts: [], manuals: [] }),
+    () => (o.notes = '')
+  ];
+  for (const s of steps) {
+    while (o.history.length > 4 && len(o) > max) o.history.shift();
+    if (len(o) <= max) return o;
+    s();
+  }
+  while (o.history.length && len(o) > max) o.history.shift();
+  while (o.files.length > 4 && len(o) > max) o.files.pop();
+  if (len(o) > max) o.task = o.task.slice(0, Math.max(500, o.task.length - (len(o) - max) - 40)) + '…（完整內容在 context_url）';
+  return o;
 }
 
 // a job that can't go to Grok Bot: it ends here, said in the chat. No other AI is tried — unless the person set a
@@ -506,7 +588,9 @@ export async function gcHookRoute({ env, db, m, url, body, rest, g, cors, bad })
     if (m !== 'GET') return R({ error: '只接受 GET' }, 405);
     const { groups } = await loadAll(db, U);
     const convs = [bot.id, ...groups.filter(x => x.members.includes(bot.id)).map(x => x.id)];
-    const f = await db.prepare(`SELECT id,name,mime,path,loc,conv FROM files WHERE id=? AND user_id=? AND conv IN (${convs.map(() => '?').join(',')})`).bind(fm[1], U, ...convs).first();
+    // its own conversations' files, and the ones a job sent it listed (made by colleagues)
+    let f = await db.prepare(`SELECT id,name,mime,path,loc,conv FROM files WHERE id=? AND user_id=? AND conv IN (${convs.map(() => '?').join(',')})`).bind(fm[1], U, ...convs).first();
+    if (!f && (await fileAllowed(db, U, bot.id, fm[1]))) f = await db.prepare('SELECT id,name,mime,path,loc,conv FROM files WHERE id=? AND user_id=?').bind(fm[1], U).first();
     const p = f?.loc === 'pc' && safePath(f.path);
     const root = env.getStore ? env.getStore() : '';
     if (!p || !root) return R({ ok: false, error: '找不到這個檔案' }, 404);
@@ -525,6 +609,15 @@ export async function gcHookRoute({ env, db, m, url, body, rest, g, cors, bad })
       status: 200,
       headers: { 'content-type': f.mime || mimeOf(f.name), 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'cache-control': 'no-store', ...cors }
     });
+  }
+  // ---------- the whole context of a job (the webhook body may have been trimmed) ----------
+  const cm = rest.match(/^context\/([0-9A-Za-z-]{1,40})$/);
+  if (cm) {
+    if (m !== 'GET') return R({ error: '只接受 GET' }, 405);
+    const ctx = gcContextOf(cm[1]);
+    const jb = ctx && (await db.prepare('SELECT bot_id FROM jobs WHERE id=? AND user_id=?').bind(cm[1], U).first());
+    if (!ctx || jb?.bot_id !== bot.id) return R({ ok: false, error: '這件工作的完整內容已過期或不存在' }, 404);
+    return R({ ok: true, ...ctx });
   }
   if (rest !== 'reply' && rest !== 'progress') return R({ ok: false, error: '找不到這個功能' }, 404);
   if (m !== 'POST') return R({ error: '只接受 POST' }, 405);
