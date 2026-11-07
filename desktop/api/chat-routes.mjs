@@ -140,6 +140,7 @@ export async function chatRoutes(c) {
       quick: st.quick || {},
       allow: st.allow || {},
       pins: st.pins || [],
+      org: st.org || { ceo: null, leads: {} },
       mute: st.mute || {},
       memory: st.memory || {},
       facts: st.facts || {},

@@ -36,6 +36,7 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
 <link rel="stylesheet" href="/css/prefs.css">
 <link rel="stylesheet" href="/css/sea.css">
 <link rel="stylesheet" href="/css/seabase.css">
+<link rel="stylesheet" href="/css/orgchart.css">
 <script src="/i18n-dict.js"></script>
 <script src="/i18n-core.js"></script>
 </head>
@@ -91,7 +92,7 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
   <section class="pane" id="pane" aria-label="對話內容">
     <!-- 4.10 a computer: the deep-sea base is the stage; the chat floats over it (folds to a bar) -->
     <div class="sea-host" id="seaHostD"></div>
-    <p class="stage-hint" id="stageHint" hidden><span data-i="sea" aria-hidden="true"></span><span>點一隻章魚，或從左邊選一個機器人開始對話</span></p>
+    <p class="stage-hint" id="stageHint" hidden><span data-i="sea" aria-hidden="true"></span><span class="sh-sea">點一隻章魚，或從左邊選一個機器人開始對話</span><span class="sh-org">點一張名片，或從左邊選一個機器人開始對話</span></p>
     <div class="chatmin" id="chatMin" hidden><button type="button" class="cm-go" id="chatMinGo" title="展開對話（Alt+M）"><span class="av" id="cmAv"></span><span class="t"><b id="cmName" data-u></b><small id="cmSub"></small></span><i class="ub" id="cmNew" hidden></i><span class="cm-open"><span data-i="up" aria-hidden="true"></span><span>展開對話</span></span></button></div>
     <div class="chatp" id="chatp">
     <div class="chat-grip" id="chatGrip" role="separator" aria-orientation="vertical" aria-label="調整對話寬度" title="拖曳調整對話寬度（點兩下恢復）" tabindex="0"></div>
@@ -228,6 +229,7 @@ if(a=L.octa_accent_css){var e=document.createElement('style');e.id='accentCss';e
 <script defer src="/js/seamodel.js"></script>
 <script defer src="/js/seascene.js"></script>
 <script defer src="/js/seabase.js"></script>
+<script defer src="/js/orgchart.js"></script>
 <script defer src="/js/memory-view.js"></script>
 <script defer src="/js/skills-ui.js"></script>
 <script defer src="/js/onboarding.js"></script>

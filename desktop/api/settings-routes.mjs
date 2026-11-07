@@ -135,6 +135,20 @@ export async function settingsRoutes(c) {
       await bump(db, U);
       return J({ ok: true });
     }
+    // 4.15 公司組織圖: who is CEO and who leads each 分區 (hub = 總部)
+    if (body.org && typeof body.org === 'object') {
+      const ceo = clean(body.org.ceo, 64) || null,
+        leads = {};
+      for (const [k, v] of Object.entries(body.org.leads || {}).slice(0, 60)) {
+        const d = clean(k, 64),
+          b = clean(v, 64);
+        if (d && b) leads[d] = b;
+      }
+      st.org = { ceo, leads };
+      await putSettings(db, U, st);
+      await bump(db, U);
+      return J({ ok: true });
+    }
     if (body.mute && typeof body.mute === 'object') {
       st.mute = st.mute || {};
       const id = clean(body.mute.bot, 64);

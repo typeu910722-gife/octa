@@ -1,5 +1,30 @@
 [
  {
+  "v": "4.15.0",
+  "date": "2026-11-07",
+  "notes": [
+   "新的主畫面樣式「公司組織圖」：設定 → 外觀與語言 → 主畫面樣式，可在「深海工作室」和「公司組織圖」之間切換",
+   "組織圖依分區排成部門，可以按「調整組織」指定 CEO 和各部門主管（存在帳號裡，每台裝置一樣）",
+   "正在工作的機器人會發光，連線有流動的光；機器人互相交辦工作時有一條動態弧線",
+   "每個機器人有等級：完成越多工作等級越高（待命巡查不算）",
+   "組織圖不用 3D，比深海工作室省電"
+  ],
+  "notes_en": [
+   "New main screen style, Org chart: Settings → Appearance & language → Main screen style switches between Deep-sea studio and Org chart",
+   "Departments follow your sections; press “Edit roles” to name a CEO and a lead for each department (saved with your account, the same on every device)",
+   "Bots at work glow and their lines carry moving light; work handed from one bot to another shows as a moving arc",
+   "Each bot has a level that rises with the work it finishes (standby checks don't count)",
+   "The org chart has no 3D, so it uses less power than the deep-sea studio"
+  ],
+  "notes_ja": [
+   "新しいメイン画面スタイル「組織図」：設定 → 外観と言語 → メイン画面のスタイルで「深海スタジオ」と「組織図」を切り替えられます",
+   "セクションごとに部署として並び、「組織を編集」で CEO と各部署のリーダーを指定できます（アカウントに保存され、どの端末でも同じ）",
+   "作業中のボットは光り、線に光が流れます。ボット同士で仕事を頼むと動く弧線で表示されます",
+   "ボットごとにレベルがあり、完了した作業が増えるほど上がります（待機巡回は数えません）",
+   "組織図は 3D を使わないので、深海スタジオより省電力です"
+  ]
+ },
+ {
   "v": "4.14.2",
   "date": "2026-11-06",
   "notes": [

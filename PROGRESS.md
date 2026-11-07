@@ -425,3 +425,12 @@
 - [x] 實測（沙箱，Playwright Chromium 390×844 觸控、淺色）：site/ 本機靜態伺服器、host 用 startServer（OCTA_TEST_TUNNEL=direct）、假 ntfy：掃 QR 連結 → 配對 →「設定好了」→ 打開 OCTA（在 /go 裡）→ 主機發「正在更新」並關閉 → 0.1 秒出現「電腦正在更新 OCTA，馬上回來…」→ 同一個資料夾、另一個埠開新主機 → 1.0–1.3 秒後 app 自己回來（網址列一直是 /go）、仍登入、沒有再跳「更新完成」；重新載入 /go 0.15 秒進 app；主機移除這支手機 →「這台手機需要重新配對」。改用**真的 ntfy.sh**：新主機開好後 3.8 秒回到 app。真的 trycloudflare 通道在沙箱連不出去（cloudflared 拿得到網址，但 Cloudflare 回 530），所以「app 啟動 → 新的 quick tunnel 網址可用」這段沒量到（4.4 前的經驗：cloudflared 約 4 秒給網址，DNS 生效再幾秒）。截圖 docs/screens/phone-go-restarting-light.png、phone-go-reconnected-light.png、phone-go-repair-light.png（拿掉兩張 4.4 的深色 /go 截圖，資料夾維持 3 MB 以下）
 - 限制：外殼裡不能跳手機通知（改畫面提示＋Telegram／LINE）；iOS Safari 對第三方 iframe 的儲存是分區且可能 7 天清掉（不影響登入，token 每次由 /go 帶）；iframe 裡的檔案下載（blob＋download）在 iOS 上可能直接開預覽；ntfy.sh 被限流時退到每 10 秒。
 - 未實測：真 iPhone／Android（iframe 內的鍵盤與 safe area、相機上傳、背景回前景時 Safari 是否重載 /go、加到主畫面的捷徑）、真的 trycloudflare 新網址生效時間、Windows 實機的 quitAndInstall 前 announce（Electron 的 before-quit 在 quitAndInstall 時的順序）、Cloudflare Pages 上 /go 的快取（go-core.js 舊版快取時 /go 仍可運作，但沒有外殼）。
+
+## 4.15.0 公司組織圖（使用者看到 Threads 上的 AI 組織圖：「加一個組織圖，讓使用者可以自行選擇要套用深海工作室還是公司組織模式」，2026-11-07）
+- [x] 設定 → 外觀與語言 → 主畫面樣式：深海工作室（3D，預設）／公司組織圖（localStorage octa_stagestyle，每台裝置各自記）
+- [x] app/js/orgchart.js + css/orgchart.css：你 → CEO → 部門（分區，沒分區的在「總部」）→ 主管 → 成員；群組是部門裡的小組按鈕；HTML + SVG，不載入 three.js（切過去會釋放 GPU）
+- [x] 「調整組織」指定 CEO／各部門主管：settings PUT {org:{ceo,leads}}，state 回傳 org（帳號共用）
+- [x] 工作中發光、上方連線流動光；背景交辦（links）畫粉色動態弧線；省電／減少動態時不動
+- [x] 等級：GET overview/org 回傳每個機器人完成過的工作數（不算 待命巡查、連線測試、出錯），orgLevel = 1 + floor(sqrt(n/3))
+- [x] 聊天面板打開時圖表只在剩下的空間捲動、自動置中並捲到目前對話的名片；手機在聊天列表上方的收合區
+- [x] 測試 test/orgchart.test.mjs（4）；全套 408，404 過（同樣 4 個已知失敗）；Playwright 截圖確認桌面、手機、設定頁

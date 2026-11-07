@@ -193,3 +193,16 @@ function seaDispose(root,extra){const seen=new Set(),n={geo:0,mat:0,tex:0};
     (Array.isArray(o.material)?o.material:[o.material]).forEach(mat);(o.children||[]).forEach(walk)};
   if(root)walk(root);(extra||[]).forEach(x=>x&&x.isTexture?tex(x):x&&x.isMaterial?mat(x):x&&x.dispose&&!seen.has(x)&&(seen.add(x),x.dispose()));
   return n}
+/* 4.15 公司組織圖: the same model drawn as a company. o: {ceo, leads: {分區 id ('hub' = 總部): bot id}, total: {bot: work ever done}}
+   → {ceo, depts, links, counters}. The CEO leaves its department; a lead must belong to the department it leads. */
+const orgLevel=n=>Math.min(99,1+Math.floor(Math.sqrt(Math.max(0,+n||0)/3)));   // 1 at the start, 2 after 3 jobs, 3 after 12, 5 after 48…
+function orgModel(m,o){o=o||{};const leads=o.leads||{},total=o.total||{},ids=new Set(m.bots.map(b=>b.id)),byId=id=>m.bots.find(b=>b.id===id);
+  const ceo=o.ceo&&ids.has(o.ceo)?o.ceo:null;
+  const card=b=>({id:b.id,name:b.name,color:b.color,state:b.state,word:b.word,bubble:b.bubble,need:b.need,fail:b.fail,paused:b.paused,
+    on:!!(b.job&&!b.paused),lv:orgLevel(total[b.id]),done:+total[b.id]||0});
+  const depts=m.pods.map(p=>{const bs=p.bots.filter(id=>id!==ceo).map(byId).filter(Boolean),lead=bs.find(b=>b.id===leads[p.id])||null;
+    const rooms=p.rooms.map(id=>m.rooms.find(r=>r.id===id)).filter(Boolean).map(r=>({id:r.id,name:r.name,busy:r.busy,need:r.need,n:r.members.length}));
+    return {id:p.id,name:p.kind==='hub'?'總部':p.name,hub:p.kind==='hub',color:p.color,lead:lead?card(lead):null,members:bs.filter(b=>b!==lead).map(card),rooms,
+      busy:bs.filter(b=>b.job&&!b.paused).length,n:bs.length,need:bs.some(b=>b.need)||rooms.some(r=>r.need)}}).filter(d=>d.n||d.rooms.length);
+  const c=ceo?byId(ceo):null;
+  return {ceo:c?card(c):null,depts,links:m.links.filter(k=>ids.has(k.from)&&ids.has(k.to)),counters:m.counters}}

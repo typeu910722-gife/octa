@@ -54,7 +54,8 @@ function seaBoot(){if(SEA.booted||$('app').hidden)return;SEA.booted=true;seaMoun
   $('seaHeadBar').onclick=()=>{store.set('octa_seafold',seaFolded()?null:'1');stageSync();if(SEA.g&&!seaFolded())requestAnimationFrame(()=>{seaResize();SEA.g.loop.kick(3)})};
   seaEnsure()}
 // load three.js and build the scene, when the base is to be shown and can be (once; later calls do nothing)
-function seaEnsure(){if(!SEA.booted||SEA.g||SEA.loading||SEA.gl===false||!seaEnabled()||!seaShown())return;
+function seaEnsure(){if(typeof orgOn==='function'&&orgOn())return;   // 公司組織圖: no 3D at all
+  if(!SEA.booted||SEA.g||SEA.loading||SEA.gl===false||!seaEnabled()||!seaShown())return;
   if(SEA.gl==null&&!seaHasGL()){seaFallback();return}SEA.gl=true;
   SEA.loading=true;
   seaLib().then(T=>{SEA.loading=false;if(seaEnabled()&&!SEA.g&&SEA.st)seaInit(T)}).catch(()=>{SEA.loading=false;seaFallback()})}
@@ -68,7 +69,7 @@ function seaFallback(){if(SEA.gl===false)return;SEA.gl=false;if(!SEA.st)return;S
 // 主畫面 3D 基地 on or off (Settings). Off: the scene and its GL context are freed, the chat fills the middle again
 function seaSet(on){store.set('octa_stage3d',on?null:'0');if(!on&&SEA.g)seaFree(SEA.g);stageSync();if(on)seaEnsure()}
 // 省電模式 or reduced motion changed
-function seaPrefs(){const G=SEA.g;$('ovWrap')?.classList.toggle('still',seaStill());if(G){G.pr=seaPR();G.q=null;G.r.setPixelRatio(G.pr);seaResize();G.loop.kick(2)}}
+function seaPrefs(){const G=SEA.g;$('ovWrap')?.classList.toggle('still',seaStill());ORG.el?.classList.toggle('still',seaStill());if(G){G.pr=seaPR();G.q=null;G.r.setPixelRatio(G.pr);seaResize();G.loop.kick(2)}}
 const seaPR=()=>Math.min(devicePixelRatio||1,seaLow()?1:1.5);
 
 /* ---------- the main screen's layout: which state the chat panel is in, where the stage and the cards live ---------- */
@@ -82,7 +83,7 @@ function stageSync(){const app=$('app');if(!app)return;
   $('chatMin').hidden=st!=='min';$('stageHint').hidden=st!=='none';
   if(st==='min')paintChatMin(c);
   // the phone: the base as a header above the list (not without WebGL or when turned off), and 聊天 | 總覽
-  const ph=phoneUI(),head=$('seaHead');head.hidden=!seaEnabled()||SEA.gl===false;head.classList.toggle('folded',seaFolded());
+  const ph=phoneUI(),head=$('seaHead');head.hidden=!seaEnabled()||(SEA.gl===false&&!orgOn());head.classList.toggle('folded',seaFolded());
   $('seaHeadBar').setAttribute('aria-expanded',String(!seaFolded()));$('seaHeadBar').title=I18N.t(seaFolded()?'展開 3D 畫面':'收起 3D 畫面');
   $('side').classList.toggle('seg-ov',ph&&LSEG.k==='ov');
   document.querySelectorAll('[data-lseg]').forEach(b=>{const s=b.dataset.lseg===LSEG.k;b.setAttribute('aria-selected',String(s));b.classList.toggle('on',s)});
@@ -90,7 +91,7 @@ function stageSync(){const app=$('app');if(!app)return;
   $('ovWrap').classList.toggle('still',seaStill());
   // the chat that is open is the one picked in the base (after the cover is known: the camera aims beside the panel)
   seaCover();if(SEA.sel!==((c&&cur)||null))seaPick((c&&cur)||null);
-  seaEnsure();if(SEA.g){seaThemeSync();SEA.g.loop.kick()}}
+  orgSync();seaEnsure();if(SEA.g){seaThemeSync();SEA.g.loop.kick()}}
 function seaPlace(){const st=SEA.st,host=phoneUI()?$('seaHostP'):$('seaHostD');if(st.parentNode!==host){host.appendChild(st);if(SEA.g)requestAnimationFrame(seaResize)}
   const ov=$('ovWrap'),oh=phoneUI()?$('lov'):$('wpOv');if(ov.parentNode!==oh)oh.appendChild(ov)}
 // the slim bar of a folded chat: who, what it is doing, 展開對話
@@ -107,7 +108,7 @@ function seaCover(){let l=0,r=0,b=phoneUI()?6:38;const st=SEA.st,a=$('app');
     const wp=$('wp');if(!wp.hidden&&getComputedStyle(wp).position==='fixed')r=wp.offsetWidth;
     // the folded chat's bar and the hint sit at the bottom: the whole base stays above them
     if(a.classList.contains('chat-min'))b=$('chatMin').offsetHeight+28;else if(a.classList.contains('stage-none'))b=104}
-  const w=st?.clientWidth||0;SEA.coverPx=l;SEA.rightPx=r;SEA.cover=w?Math.min(1,(l+r)/w):0;
+  const w=st?.clientWidth||0;SEA.coverPx=l;SEA.rightPx=r;if(ORG.el){ORG.el.style.setProperty('--org-l',l+'px');ORG.el.style.setProperty('--org-r',r+'px')}SEA.cover=w?Math.min(1,(l+r)/w):0;
   st?.classList.toggle('narrow',!!w&&w-l-r<300);   // little of the base left beside the chat: no depth gauge over it
   const G=SEA.g;if(G&&(G.l!==l||G.rr!==r||G.bb!==b)){const fresh=G.l==null;G.l=l;G.rr=r;G.bb=b;if(G.h)G.bot=G.h-b;seaAim(G);if(!fresh&&!SEA.focus&&!SEA.sel)seaFocus(null);G.loop.kick(2)}}
 // the chat panel's width: drag its edge (remembered; double-click for the default; arrow keys too)
@@ -128,7 +129,7 @@ function seaCover(){let l=0,r=0,b=phoneUI()?6:38;const st=SEA.st,a=$('app');
 function seaRefresh(force){
   const m=seaModel(seaInput()),sig=JSON.stringify(m);if(!force&&sig===SEA.sig)return;SEA.sig=sig;
   SEA.m=m;SEA.L=seaLayout(m);
-  seaDepth();if(SEA.g)seaSync();if(ovShown())paintOverview();
+  seaDepth();if(SEA.g)seaSync();if(orgOn())orgPaint();if(ovShown())paintOverview();
   const c=m.counters;setHTML($('seaHeadSum'),[c.working?`<span data-u>${c.working}</span> <span>工作中</span>`:'',c.need?`<b><span data-u>${c.need}</span> <span>需要你</span></b>`:''].filter(Boolean).join(' · '));
   if($('app').classList.contains('chat-min'))paintChatMin(cur&&conv(cur))}
 function seaDepth(){const m=SEA.m,el=$('seaDepth');if(!m||!el)return;const p=m.pods.find(x=>x.id===SEA.focus)||m.pods[0];

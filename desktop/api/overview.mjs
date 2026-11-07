@@ -3,6 +3,7 @@
 import { FAIL_KINDS, classifyJobFailure } from '../lib/model-route.mjs';
 // older rows were saved as 'unknown' (其他錯誤): read the message again with today's rules
 const kindOf = j => (!j.err_kind || j.err_kind === 'unknown' ? classifyJobFailure(j.err_msg || '') : j.err_kind);
+import { STANDBY } from './chat.mjs';
 import { bump, loadAll } from './db.mjs';
 import { REVIEW_TAG } from './memory.mjs';
 import { ALERT_KINDS, ensureAlerts, retryJob } from './notify.mjs';
@@ -155,6 +156,18 @@ export async function overviewData(env, db, U) {
 export async function overviewRoutes(c) {
   const { env, db, path, m, body, U } = c;
   if (path === 'overview' && m === 'GET') return J(await overviewData(env, db, U));
+  // 4.15 公司組織圖: work each bot has finished, ever (its level). 待命巡查 checks and connection tests don't count
+  if (path === 'overview/org' && m === 'GET') {
+    const rows = (
+      await db
+        .prepare(
+          "SELECT bot_id, COUNT(*) AS n FROM jobs WHERE user_id=? AND status='done' AND (err_kind IS NULL OR err_kind='') AND kind<>'test' AND (routine IS NULL OR routine NOT IN (SELECT id FROM routines WHERE user_id=? AND name=?)) GROUP BY bot_id"
+        )
+        .bind(U, U, STANDBY)
+        .all()
+    ).results;
+    return J({ total: Object.fromEntries(rows.filter(r => r.bot_id).map(r => [r.bot_id, +r.n || 0])) });
+  }
   if (path === 'overview/retry' && m === 'POST') {
     const r = await retryJob(db, U, body.job);
     if (r.error) return J({ error: r.error, job: r.job || null }, r.status || 400);

@@ -656,3 +656,22 @@ P4 = [
  (r'^「估計省下」是粗略估計：每件完成的工作算 (\d+) 分鐘，有用到瀏覽器的再加 (\d+) 分鐘，不是實際量測。tokens 只計算有回報用量的 AI。最多保留 60 天。$', '“Estimated time saved” is rough: $1 minutes per finished job, plus $2 when it used the browser; not measured. Tokens count only AIs that report usage. Kept for up to 60 days.', '「推定節約時間」は大まかな見積もりです。完了した作業 1 件を $1 分、ブラウザを使った場合はさらに $2 分として計算し、実測ではありません。tokens は使用量を報告する AI だけを集計します。最大 60 日保存します。'),
  (r'^(\d+) 小時內$', '$1 hours', '$1 時間'),
 ]
+
+# 4.15 公司組織圖 and 設定 → 主畫面樣式
+T4.update({
+ '公司組織圖':('Org chart','組織図'),
+ '調整組織':('Edit roles','組織を編集'),
+ '不設 CEO':('No CEO','CEO なし'),
+ '主管':('Lead','リーダー'),
+ '不設主管':('No lead','リーダーなし'),
+ '老闆':('Boss','ボス'),
+ '總部':('Head office','本部'),
+ '完成過的工作':('Work finished','完了した作業'),
+ '還沒有機器人。建立第一個機器人，它就會出現在組織圖上。':('No bots yet. Create your first bot and it shows up on the org chart.','まだボットがいません。最初のボットを作ると組織図に表示されます。'),
+ '主畫面樣式':('Main screen style','メイン画面のスタイル'),
+ '電腦的主畫面（手機在聊天列表上方）要顯示哪一種。':('What the main screen shows on a computer (on a phone, above the chat list).','パソコンのメイン画面（スマホではチャット一覧の上）に表示するもの。'),
+ '深海工作室':('Deep-sea studio','深海スタジオ'),
+ '3D 深海基地，章魚在裡面工作和玩耍':('A 3D deep-sea base where the octopuses work and play','3D の深海基地。タコたちが働いたり遊んだりします'),
+ '像公司的組織圖：部門、主管、誰在做事，省電':('Like a company org chart: departments, leads, who is working. Light on power','会社の組織図のように：部署・リーダー・作業中のボット。省電力'),
+ '點一張名片，或從左邊選一個機器人開始對話':('Click a card, or pick a bot on the left to start a chat','カードをクリックするか、左のボットを選んで会話を始めましょう'),
+})
