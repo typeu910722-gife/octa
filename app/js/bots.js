@@ -152,7 +152,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
     body+=dsec('brw','瀏覽器','globe',`<div class="bchoice" id="sf_b">
       <label class="bc"><input type="radio" name="sf_b" value="own" ${c.browser!=='mine'?'checked':''}><span><b>機器人專屬瀏覽器</b><small>${S.shareBrowser!==false?'它自己的瀏覽器，可以和其他機器人同時工作；登入共用，在任何一個機器人登入過的網站它也能用。不會動到你的 Chrome。':'這個機器人自己的瀏覽器和登入，不會動到你的 Chrome。第一次用某網站要在「瀏覽器」幫它登入一次。'}</small></span></label>
       <label class="bc"><input type="radio" name="sf_b" value="mine" ${c.browser==='mine'?'checked':''}><span><b>使用我的 Chrome</b><small>直接用你 Chrome 已登入的網站和已儲存的密碼。需要先在「設定 → 瀏覽器」連接 Chrome。</small></span></label>
-    </div>${DESK()&&c.browser!=='mine'?`<div data-bm="${id}"></div>`:''}`,false);
+    </div><div id="keepBox" data-nodirty data-conv="${esc(id)}"></div>${DESK()&&c.browser!=='mine'?`<div data-bm="${id}"></div>`:''}`,false);
   }
   const stand=(()=>{if(g)return '';const r=S.routines.find(x=>x.conv===id&&x.name==='待命巡查'),ev=r&&r.enabled?((r.times||[]).find(t=>/^\*\//.test(t))||'').slice(2):'';
     return `<label class="field"><span>24 小時待命</span><select id="sf_stand" data-nodirty>${[['','不待命'],['10','每 10 分鐘巡一次'],['30','每 30 分鐘巡一次'],['60','每小時巡一次']].map(([v,l])=>`<option value="${v}"${v===ev?' selected':''}>${l}</option>`).join('')}</select></label><p class="hmuted">開啟後它會照指定任務定時自己檢查、有事就處理，需要時在背景找其他機器人幫忙；沒事不會出聲。這台電腦要開著。</p><p class="hmuted" id="sf_standnow">${standNow(ev,!r&&!c.stood)}</p>`})();

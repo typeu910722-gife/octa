@@ -66,7 +66,7 @@ test('the setting is kept with the account, the runner is told at once, 不限�
   assert.equal((await call(db, 'PUT', 'settings', { token, body: { par: 0 } })).status, 200);
   assert.equal((await call(db, 'GET', 'state', { token })).data.par, 0);
   r = await call(db, 'POST', 'runner/next', { token, body: { slots: 3, max: 3, wait: true } });
-  assert.deepEqual(r.data, { job: null, par: 99 }, 'a runner on the old number gets the new one without waiting');
+  assert.deepEqual(r.data, { job: null, par: 99, keep: [] }, 'a runner on the old number gets the new one without waiting');
   await call(db, 'PUT', 'settings', { token, body: { par: 8 } });
   assert.equal((await call(db, 'POST', 'runner/next', { token, body: { slots: 99, max: 99, wait: false } })).data.par, 8);
   await call(db, 'PUT', 'settings', { token, body: { par: 7 } });

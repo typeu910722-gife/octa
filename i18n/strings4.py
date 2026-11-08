@@ -742,3 +742,10 @@ P4 += [
  (r'^🎧 客服模式開始：每 (\d+) 秒看一次 (\S+)，有新訊息就擬好回覆給你確認，到 (\d{1,2}:\d{2})。沒有新訊息時不會用到 AI。$', '🎧 Customer service mode on: checking $2 every $1 seconds and drafting replies for you to approve until $3. No AI is used while nothing new comes in.', '🎧 カスタマー対応モード開始：$1 秒ごとに $2 を確認し、返信を下書きして確認を求めます（$3 まで）。新着がない間は AI を使いません。'),
  (r'^🎧 客服模式開始：每 (\d+) 秒看一次 (\S+)，有新訊息就擬好回覆給你確認，直到你說停。沒有新訊息時不會用到 AI。$', '🎧 Customer service mode on: checking $2 every $1 seconds and drafting replies for you to approve until you stop it. No AI is used while nothing new comes in.', '🎧 カスタマー対応モード開始：$1 秒ごとに $2 を確認し、停止するまで返信を下書きして確認を求めます。新着がない間は AI を使いません。'),
 ]
+
+# 4.16.2 瀏覽器一直開著
+T4.update({
+ '瀏覽器一直開著':('Keep the browser open','ブラウザを開いたままにする'),
+ '客服模式進行中，瀏覽器會一直開著。':('Customer service mode is on, so the browser stays open.','カスタマー対応モード中はブラウザを開いたままにします。'),
+ '不會因為閒置自動關掉，關掉或當掉了也會自己重新打開，登入和分頁都保留，接到工作就能馬上開始。會一直佔用一些電腦記憶體。':('It is never closed for being idle, and opens again if it closes or crashes; sign-ins and tabs stay, so work starts right away. It keeps using some memory.','アイドルでも自動で閉じず、閉じたりクラッシュしたりしても自動で開き直します。ログインとタブが残るので、作業をすぐ始められます。メモリを少し使い続けます。'),
+})

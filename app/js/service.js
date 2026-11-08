@@ -7,8 +7,12 @@ const svcOn=id=>S.svc?.[id]||null;
 const svcMinTxt=v=>v?(v>=60?`<span data-u>${v/60}</span> <span>小時</span>`:`<span data-u>${v}</span> <span>分鐘</span>`):'<span>直到我停止</span>';
 function svcLeft(s){if(!s.until)return '<span>直到你停止</span>';const m=Math.max(0,Math.round((s.until-Date.now())/60000));
   return `<span>剩</span> ${m>=60?`<span data-u>${Math.floor(m/60)}</span> <span>小時</span> `:''}<span data-u>${m%60}</span> <span>分鐘</span>`}
+// 4.16.2 詳細資料 → 瀏覽器: 瀏覽器一直開著 (saved at once; 客服模式 keeps it open anyway)
+function keepPaint(){const box=$('keepBox');if(!box)return;const id=box.dataset.conv,on=!!S.keepBr?.[id],sv=!!svcOn(id);
+  setHTML(box,`<label class="prow chk"><input type="checkbox" id="keepBr" ${on||sv?'checked':''} ${sv?'disabled':''}><span><b>瀏覽器一直開著</b><small>${sv?I18N.t('客服模式進行中，瀏覽器會一直開著。'):I18N.t('不會因為閒置自動關掉，關掉或當掉了也會自己重新打開，登入和分頁都保留，接到工作就能馬上開始。會一直佔用一些電腦記憶體。')}</small></span></label>`);
+  const cb=$('keepBr');if(cb&&!sv)cb.onchange=async()=>{cb.disabled=true;try{await api('settings','PUT',{keepBr:{bot:id,on:cb.checked}});S.keepBr={...(S.keepBr||{}),[id]:cb.checked?1:undefined};toast(I18N.t('已儲存 ✓'))}catch(e){cb.checked=!cb.checked;toast(e.message)}cb.disabled=false}}
 // 詳細資料 → 客服模式
-function svcPaint(){const box=$('svcBox');if(!box)return;const id=box.dataset.conv,s=svcOn(id);
+function svcPaint(){keepPaint();const box=$('svcBox');if(!box)return;const id=box.dataset.conv,s=svcOn(id);
   if(s){setHTML(box,`<div class="svc-on"><p class="svc-st"><b>🎧 <span>客服模式進行中</span></b></p>
     <p class="svc-m"><span>正在看</span> <a href="${esc(s.url)}" target="_blank" rel="noopener" data-u>${esc(s.url)}</a></p>
     <p class="svc-m"><span>每</span> <span data-u>${s.sec}</span> <span>秒看一次</span> · ${svcLeft(s)} · <span>已回覆</span> <b data-u>${s.replies}</b> <span>次</span></p>

@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { listRecoverableStates, probeCodingHosts, runCodingTask, selectProvider } from '../lib/coding-runtime.mjs';
 import { api, saveUpload, sendCopy } from './api-client.mjs';
-import { reapBrowsers } from './browser.mjs';
+import { reapBrowsers, keepOpen, setKeepBrowsers } from './browser.mjs';
 import { chatJob } from './chat.mjs';
 import { storeDir } from './files.mjs';
 import { listJob } from './grokbot.mjs';
@@ -132,6 +132,7 @@ async function loop() {
         throw e;
       });
       failures = 0; lastPoll = Date.now();
+      if (r.keep) setKeepBrowsers(r.keep);
       if (r.par && +r.par !== MAX) log(`同時工作的機器人改為${setMax(r.par) >= 99 ? '不限制' : ' ' + MAX + ' 個'}`);
       if ('job' in r && !!r.standby !== standby) {
         standby = !!r.standby;
@@ -171,6 +172,7 @@ export function startRunner(opts) {
   const reaper = setInterval(() => reapBrowsers(false).catch(() => { }), 5 * 60000);
   const watcher = setInterval(() => checkWatches().catch(() => { }), 60000);
   const svcTimer = setInterval(() => checkService().catch(() => { }), 2000);   // 4.16 客服模式
+  const keepTimer = setInterval(() => { if (!standby && !stopped) keepOpen().catch(() => { }); }, 60000);   // 4.16.2 瀏覽器一直開著
   resetService();
   resetWatches();
   const firstWatch = setTimeout(() => checkWatches().catch(() => { }), 15000);
@@ -178,7 +180,7 @@ export function startRunner(opts) {
     // keepBrowsers: a restart (after sleep, or the server not answering) leaves the bots' browsers open for the next run
     stop: (opts = {}) => {
       stopped = true; poll?.abort();
-      clearInterval(reaper); clearInterval(watcher); clearInterval(svcTimer); clearTimeout(firstWatch);
+      clearInterval(reaper); clearInterval(watcher); clearInterval(svcTimer); clearInterval(keepTimer); clearTimeout(firstWatch);
       if (!opts.keepBrowsers) reapBrowsers(true).catch(() => { });
       for (const id of [...sessions.keys()]) closeSession(id);
       if (!opts.keepBrowsers) stopComfy().catch(() => { });   // 4.13: local ComfyUI does not outlive OCTA

@@ -1,7 +1,8 @@
 // Routes the built-in runner calls (runner/*), except runner/done.
+import { svcOf } from './service.mjs';
 import { runConnector } from '../lib/connectors.mjs';
 import { publicCodeTask } from './code-routes.mjs';
-import { addMsg, bump, getSettings, nap, putSettings, wake } from './db.mjs';
+import { addMsg, bump, getSettings, nap, putSettings, wake, loadAll } from './db.mjs';
 import { ENGINES } from './engines.mjs';
 import { mimeOf, safePath } from './files.mjs';
 import { continueJob, nextWork } from './jobs.mjs';
@@ -112,8 +113,12 @@ export async function runnerRoutes(c) {
       } catch {}
       const slots = body.slots === undefined ? 1 : +body.slots;
       // 4.15.3 同時工作的機器人: the runner works this many at once (it changes the moment you pick another)
-      const par = parOf(await getSettings(db, U));
-      if (body.max !== undefined && +body.max !== par) return J({ job: null, par });
+      const st0 = await getSettings(db, U);
+      const par = parOf(st0);
+      // 4.16.2 the browsers kept open: 瀏覽器一直開著, and every bot in 客服模式
+      const keepIds = new Set([...Object.keys(st0.keepBr || {}), ...Object.keys(await svcOf(db, U))]);
+      const keep = (await loadAll(db, U)).bots.filter(b => keepIds.has(b.id) && b.browser !== 'mine').map(b => ({ id: b.id, name: b.name }));
+      if (body.max !== undefined && +body.max !== par) return J({ job: null, par, keep });
       const t0 = now();
       let rev = null;
       for (;;) {
@@ -134,11 +139,11 @@ export async function runnerRoutes(c) {
           try {
             await grokTick(env, db, U);
           } catch {}
-          if (body.max !== undefined && parOf(await getSettings(db, U)) !== par) return J({ job: null, par: parOf(await getSettings(db, U)) });
+          if (body.max !== undefined && parOf(await getSettings(db, U)) !== par) return J({ job: null, par: parOf(await getSettings(db, U)), keep });
           const out = await nextWork(env, db, U, slots);
-          if (out) return J({ ...out, par });
+          if (out) return J({ ...out, par, keep });
         }
-        if (!body.wait || now() - t0 > WAIT_MS) return J({ job: null, par });
+        if (!body.wait || now() - t0 > WAIT_MS) return J({ job: null, par, keep });
         await nap(env, 1500);
       }
     }

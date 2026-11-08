@@ -1,5 +1,21 @@
 [
  {
+  "v": "4.16.2",
+  "date": "2026-11-08",
+  "notes": [
+   "新開關「瀏覽器一直開著」（詳細資料 → 瀏覽器）：機器人的瀏覽器不會因為閒置自動關掉，關掉或當掉會自己重新打開，登入和分頁都保留，接到工作能馬上開始",
+   "客服模式進行中的機器人，瀏覽器自動一直開著"
+  ],
+  "notes_en": [
+   "New switch “Keep the browser open” (Details → Browser): the bot's browser is never closed for being idle and reopens if it closes or crashes; sign-ins and tabs stay, so work starts right away",
+   "Bots in customer service mode keep their browser open automatically"
+  ],
+  "notes_ja": [
+   "新スイッチ「ブラウザを開いたままにする」（詳細 → ブラウザ）：ボットのブラウザをアイドルで閉じず、閉じたりクラッシュしても自動で開き直します。ログインとタブが残り、すぐ作業を始められます",
+   "カスタマー対応モード中のボットはブラウザを自動で開いたままにします"
+  ]
+ },
+ {
   "v": "4.16.1",
   "date": "2026-11-08",
   "notes": [

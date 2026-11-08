@@ -141,6 +141,7 @@ export async function chatRoutes(c) {
       quick: st.quick || {},
       allow: st.allow || {},
       pins: st.pins || [],
+      keepBr: st.keepBr || {}, // 4.16.2 瀏覽器一直開著
       svc: await svcOf(db, U), // 4.16 客服模式 on now
       org: st.org || { ceo: null, leads: {} },
       mute: st.mute || {},

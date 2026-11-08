@@ -167,3 +167,23 @@ test('4.16.1 Webhook 當門鈴: a LINE message for a bot in 客服模式 starts 
   await call(x.db, 'POST', 'hook/' + hook, { body: { from: 'Grok', task: '整理今天的訂房' } });
   assert.ok(x.db.raw.prepare("SELECT COUNT(*) AS n FROM jobs WHERE bot_id=? AND prompt LIKE '%整理今天的訂房%'").get(x.bot).n >= 1);
 });
+
+test('4.16.2 瀏覽器一直開著: kept with the account, sent to the runner with the bots in 客服模式; never reaped, reopened', async () => {
+  const x = await setup();
+  const other = (await call(x.db, 'POST', 'bots', { token: x.token, body: { name: '小幫手', task: '' } })).data.id;
+  const keepOf = async () => (await call(x.db, 'POST', 'runner/next', { token: x.token, body: { slots: 3, max: 3, wait: false } })).data.keep.map(b => b.id).sort();
+  assert.deepEqual(await keepOf(), []);
+  assert.equal((await call(x.db, 'PUT', 'settings', { token: x.token, body: { keepBr: { bot: other, on: true } } })).status, 200);
+  assert.deepEqual((await call(x.db, 'GET', 'state', { token: x.token })).data.keepBr, { [other]: 1 });
+  await call(x.db, 'POST', `svc/${x.bot}`, { token: x.token, body: { url: 'https://chat.line.biz/U1/chat', sec: 10, minutes: 0 } });
+  assert.deepEqual(await keepOf(), [x.bot, other].sort(), 'its own switch, and 客服模式');
+  await call(x.db, 'PUT', 'settings', { token: x.token, body: { keepBr: { bot: other, on: false } } });
+  assert.deepEqual(await keepOf(), [x.bot]);
+  const br = readFileSync(join(import.meta.dirname, '..', 'desktop', 'runner', 'browser.mjs'), 'utf8');
+  assert.match(br, /const inUse = busyBots\.has\(id\) \|\| sessions\.has\(id\) \|\| keepBrowsers\.has\(id\);/);
+  assert.match(br, /export async function keepOpen\(\)/);
+  const loop = readFileSync(join(import.meta.dirname, '..', 'desktop', 'runner', 'loop.mjs'), 'utf8');
+  assert.match(loop, /if \(r\.keep\) setKeepBrowsers\(r\.keep\);/);
+  assert.match(loop, /keepOpen\(\)\.catch/);
+  assert.match(scripts['service.js'], /api\('settings','PUT',\{keepBr:\{bot:id,on:cb\.checked\}\}\)/);
+});

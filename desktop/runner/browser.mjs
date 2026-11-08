@@ -221,10 +221,20 @@ export async function closeAllBrowsers() {
   for (const ws of tags.values()) { try { ws.close(); } catch { } }
   tags.clear(); browsers.clear(); onDesk.clear();
 }
+// 4.16.2 瀏覽器一直開著 (and 客服模式): these bots' browsers stay open, and are opened again if they close
+export const keepBrowsers = new Map();   // bot id → name
+export function setKeepBrowsers(list) { if (!Array.isArray(list)) return; keepBrowsers.clear(); for (const b of list) if (b?.id) keepBrowsers.set(b.id, b.name || ''); }
+export async function keepOpen() {
+  for (const [id, name] of keepBrowsers) {
+    const b = browsers.get(id);
+    if (b && (await cdpInfo(b.port))) { b.last = Date.now(); continue; }
+    try { await ensureBrowser({ id, name }, { show: false }); } catch (e) { log('瀏覽器打不開（一直開著）：' + e.message); }
+  }
+}
 export async function reapBrowsers(all) {
   if (all) return closeAllBrowsers();
   for (const [id, b] of browsers) {
-    const inUse = busyBots.has(id) || sessions.has(id);
+    const inUse = busyBots.has(id) || sessions.has(id) || keepBrowsers.has(id);
     if (!all && inUse) continue;   // in use, or an AI is waiting (待機)
     if (!all && Date.now() - b.last < 30 * 60000) continue;
     try {

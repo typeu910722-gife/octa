@@ -114,6 +114,16 @@ export async function settingsRoutes(c) {
       delete st.warm;
     }
     // per bot: 跟隨全域 (null) / 全力 / 省額度
+    // 4.16.2 瀏覽器一直開著: this bot's browser is never closed for being idle, and reopened if it closes
+    if (body.keepBr && typeof body.keepBr === 'object') {
+      const id = clean(body.keepBr.bot, 64);
+      st.keepBr = st.keepBr || {};
+      if (id && body.keepBr.on) st.keepBr[id] = 1;
+      else if (id) delete st.keepBr[id];
+      await putSettings(db, U, st);
+      await bump(db, U);
+      return J({ ok: true });
+    }
     if (body.power && typeof body.power === 'object') {
       const id = clean(body.power.bot, 64),
         mode = POWER.includes(body.power.mode) ? body.power.mode : null;
