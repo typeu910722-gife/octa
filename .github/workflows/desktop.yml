@@ -25,7 +25,14 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
       - name: Build installer
-        run: npm run dist
+        # a download of the packaging tools sometimes times out (HTTP 504): try again, up to 3 times
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            npm run dist && exit 0
+            echo "build attempt $i failed, retrying in 30 s"; sleep 30
+          done
+          exit 1
       - name: Read version
         id: v
         shell: bash
