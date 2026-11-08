@@ -24,13 +24,20 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
+      # the packaging tools (NSIS, signing kit) come from GitHub release downloads, which sometimes fail for a while:
+      # keep them between builds so a build doesn't depend on that download
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-tools-${{ hashFiles('desktop/package-lock.json') }}
+          restore-keys: electron-builder-tools-
       - name: Build installer
         # a download of the packaging tools sometimes times out (HTTP 504): try again, up to 3 times
         shell: bash
         run: |
           for i in 1 2 3; do
             npm run dist && exit 0
-            echo "build attempt $i failed, retrying in 30 s"; sleep 30
+            echo "build attempt $i failed, retrying in 90 s"; sleep 90
           done
           exit 1
       - name: Read version
