@@ -690,3 +690,13 @@ T4.update({
 P4 += [
  (r'^已取消排隊中的工作：(.+)$', 'Removed a queued job: $1', '待機中のジョブを取り消しました：$1'),
 ]
+
+# 4.15.3 同時工作的機器人
+T4.update({
+ '同時工作的機器人':('Bots working at once','同時に作業するボット'),
+ '這台電腦一次最多讓幾個機器人一起工作，其他的先排隊。每個機器人會開自己的 AI 和瀏覽器，越多越吃記憶體；超過 3 個時，電腦剩餘記憶體不夠就先不開新的。':('How many bots this computer lets work at the same time; the rest wait in the queue. Each bot runs its own AI and browser, so more bots use more memory. Above 3, a new one starts only while the computer has memory to spare.','このパソコンで同時に作業できるボットの数です。残りは待機します。ボットごとに AI とブラウザを動かすため、多いほどメモリを使います。3 体を超える分は、空きメモリが足りるときだけ開始します。'),
+ '個':('bots','体'),
+ '不限制':('No limit','制限なし'),
+ '有工作就全部一起做，記憶體不夠時才排隊':('every bot with work starts at once; they queue only when memory runs low','作業があれば全員同時に開始。メモリが足りないときだけ待機'),
+})
+T4.update({'電腦剩餘記憶體不夠，等其他機器人做完就開始':('The computer is low on free memory; it starts when another bot finishes','空きメモリが足りません。他のボットが終わると開始します')})

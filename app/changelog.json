@@ -1,5 +1,21 @@
 [
  {
+  "v": "4.15.3",
+  "date": "2026-11-08",
+  "notes": [
+   "可以調整或取消同時工作的機器人上限：設定 → AI 連線 → 同時工作的機器人，可選 3、5、8、12 個或不限制，改了馬上生效",
+   "超過 3 個同時工作時，電腦剩餘記憶體不夠就先排隊，避免電腦變慢或當掉"
+  ],
+  "notes_en": [
+   "Change or remove the limit on bots working at once: Settings → AI connections → Bots working at once offers 3, 5, 8, 12 or No limit, effective immediately",
+   "Above 3 at once, new bots wait while the computer is low on free memory, so it doesn't slow down or freeze"
+  ],
+  "notes_ja": [
+   "同時に作業するボットの上限を変更・解除できます：設定 → AI 接続 → 同時に作業するボットで 3・5・8・12 体または制限なしを選べ、すぐ反映されます",
+   "3 体を超える分は空きメモリが足りないとき待機し、パソコンが重くなったり止まったりしないようにします"
+  ]
+ },
+ {
   "v": "4.15.2",
   "date": "2026-11-08",
   "notes": [

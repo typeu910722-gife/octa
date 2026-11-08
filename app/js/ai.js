@@ -23,6 +23,10 @@ SEC.ai=focus=>{
   const warm=block('sWarm','AI 待機','機器人回覆完後，讓它的 AI 保持待機多久。待機中再傳訊息會直接接著做，回覆快很多；待機越久越省等待時間，但會一直佔用一點電腦記憶體。目前只有 Claude 支援待機。全力模式預設一直待機：同時最多 6 個機器人待機（電腦記憶體不足時 3 個），最久沒用的先休息；電腦睡眠過、換 AI 或壓縮對話後會重新開始。');
   warm.innerHTML=`<select id="warmSel" aria-label="AI 待機">${WARMS.map(v=>`<option value="${v}" ${(S.warm??(S.full!==false?-1:120))===v?'selected':''}>${warmText(v)}${v===(S.full!==false?-1:120)?' '+I18N.t('（建議）'):''}${v===0?' — '+I18N.t('每則訊息都重新啟動 AI（最省記憶體，最慢）'):v===-1?' — '+I18N.t('一直待機，回覆最快；電腦記憶體較少時不建議'):''}</option>`).join('')}</select>`;
   $('warmSel').onchange=async e=>{try{await api('settings','PUT',{warm:+e.target.value});S.warm=+e.target.value;toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}};
+  // 4.15.3 同時工作的機器人: 3 / 5 / 8 / 12 / 不限制 (kept with the account; the runner follows at once)
+  const par=block('sPar','同時工作的機器人','這台電腦一次最多讓幾個機器人一起工作，其他的先排隊。每個機器人會開自己的 AI 和瀏覽器，越多越吃記憶體；超過 3 個時，電腦剩餘記憶體不夠就先不開新的。');
+  par.innerHTML=`<select id="parSel" aria-label="${esc(I18N.t('同時工作的機器人'))}">${[3,5,8,12,0].map(v=>`<option value="${v}" ${(S.par??3)===v?'selected':''}>${v?`${v} ${esc(I18N.t('個'))}`:esc(I18N.t('不限制'))}${v===3?' '+esc(I18N.t('（建議）')):v===0?' — '+esc(I18N.t('有工作就全部一起做，記憶體不夠時才排隊')):''}</option>`).join('')}</select>`;
+  $('parSel').onchange=async e=>{try{await api('settings','PUT',{par:+e.target.value});S.par=+e.target.value;toast(I18N.t('已儲存 ✓'))}catch(x){toast(x.message)}};
   const gb=block('sGrok','Grok Bot ⇄ OCTA','Grok Bot 在 xAI 的雲端工作，可以把任務交派給 OCTA 的機器人：它呼叫一個「交接網址」，指定的 OCTA 機器人就會在你的電腦上自動開始做，結果出現在那個機器人的對話裡。');
   paintGrok(gb)};
 /* 4.5: the Grok Bot app for Windows doesn't write the sign-in file grok-bot-cli needs, so on a Windows host only the

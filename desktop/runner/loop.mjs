@@ -10,7 +10,8 @@ import { storeDir } from './files.mjs';
 import { listJob } from './grokbot.mjs';
 import { checkWatches, openJob, resetWatches } from './live.mjs';
 import { engineReport, installJob, modelReport, resetReports, usageReport } from './reports.mjs';
-import { MAX, PW_MCP, VERSION, WIN, cfg, configure, log, workDir } from './state.mjs';
+import { MAX, PW_MCP, VERSION, WIN, cfg, configure, log, setMax, workDir } from './state.mjs';
+import { freemem } from 'node:os';
 import { exportJob, importJob } from './transfer.mjs';
 import { refreshGpu, toolJob, toolsHere } from './toolbox.mjs';
 import { stopComfy } from './comfy.mjs';
@@ -91,6 +92,7 @@ function doFiles(inbox = [], pull = []) {
 }
 let poll = null, booting = true, lastPoll = 0;
 export const pollAge = () => (lastPoll ? Date.now() - lastPoll : 0);   // how long the wait-for-work loop has been stuck (desktop watchdog)
+const LOW_FREE = 1.2 * 1024 ** 3;   // 4.15.3: below this much free memory no 4th, 5th… bot starts
 const kick = () => { if (active < MAX) poll?.abort(); };   // a slot freed up: ask again right away (with the free slot)
 // 反應快: checking the AI tools, quotas and models can take many seconds (codex app-server, model lists). Asking for the
 // next job no longer waits on them: they run on the side and their result goes up with a later ask. Only the very
@@ -117,7 +119,8 @@ async function loop() {
   polling = true;
   while (!stopped) {
     try {
-      const slots = MAX - active;
+      // beyond 3 at once, a new bot starts only while the computer has memory to spare (each one runs an AI and a browser)
+      const slots = MAX > 3 && active >= 3 && freemem() < LOW_FREE ? 0 : Math.max(0, MAX - active);
       poll = new AbortController();
       const r = await api('runner/next', {
         wait: true, slots, max: MAX, running: [...holding], ...(await reports()), ...(booting ? { boot: true } : {}),
@@ -128,6 +131,7 @@ async function loop() {
         throw e;
       });
       failures = 0; lastPoll = Date.now();
+      if (r.par && +r.par !== MAX) log(`同時工作的機器人改為${setMax(r.par) >= 99 ? '不限制' : ' ' + MAX + ' 個'}`);
       if ('job' in r && !!r.standby !== standby) {
         standby = !!r.standby;
         log(standby ? '⏸ 這台電腦目前是備用電腦，由主機執行機器人。可在「設定 → 電腦」改成主機。' : '▶ 這台電腦是主機，開始接工作。');

@@ -9,7 +9,7 @@ import { skillApproval } from './skills.mjs';
 import { localNow } from './schedule.mjs';
 import { busyRows, queueInfo } from './progress.mjs';
 import { metaOf } from './reply-meta.mjs';
-import { DAY, J, WAIT_MS, clean, err, fullOn, now, warmOf } from './util.mjs';
+import { DAY, J, PAR, WAIT_MS, clean, err, fullOn, now, warmOf } from './util.mjs';
 
 // what is running now. bg: the bot is answering / doing what another bot asked (its avatar shows it chatting);
 // job: the id, for the work panel's timeline; created: when it was queued
@@ -151,6 +151,7 @@ export async function chatRoutes(c) {
         Object.entries(st.nskills || {}).map(([k, v]) => [k, [...new Set(Object.keys(v.files || {}).map(p => p.split('/')[0]))]])
       ),
       warm: warmOf(st),
+      par: PAR.includes(st.par) ? st.par : 3, // 4.15.3 同時工作的機器人 (0 = 不限制)
       full: fullOn(st),
       power: st.power || {},
       models: st._models || null,

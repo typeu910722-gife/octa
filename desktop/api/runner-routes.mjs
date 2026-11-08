@@ -10,7 +10,7 @@ import { approvalNag, weeklyReview } from './memory.mjs';
 import { fireEvent, fireRoutines, tidyOnce } from './routines.mjs';
 import { grokTick } from './grokcloud.mjs';
 import { runnerDone } from './runner-done.mjs';
-import { CHUNK, J, MIN, WAIT_MS, clean, err, jobMaxOf, now, uid } from './util.mjs';
+import { CHUNK, J, MIN, PAR_NONE, WAIT_MS, clean, err, jobMaxOf, now, parOf, uid } from './util.mjs';
 
 export async function runnerRoutes(c) {
   const { env, db, path, m, body, me, U, ok } = c;
@@ -40,7 +40,7 @@ export async function runnerRoutes(c) {
     if (Number.isInteger(+body.max) && +body.max > 0) {
       const st = await getSettings(db, U);
       if (st._slots !== +body.max) {
-        st._slots = Math.min(8, +body.max);
+        st._slots = Math.min(PAR_NONE, +body.max);
         await putSettings(db, U, st);
       }
     }
@@ -111,6 +111,9 @@ export async function runnerRoutes(c) {
         await grokTick(env, db, U);
       } catch {}
       const slots = body.slots === undefined ? 1 : +body.slots;
+      // 4.15.3 同時工作的機器人: the runner works this many at once (it changes the moment you pick another)
+      const par = parOf(await getSettings(db, U));
+      if (body.max !== undefined && +body.max !== par) return J({ job: null, par });
       const t0 = now();
       let rev = null;
       for (;;) {
@@ -131,10 +134,11 @@ export async function runnerRoutes(c) {
           try {
             await grokTick(env, db, U);
           } catch {}
+          if (body.max !== undefined && parOf(await getSettings(db, U)) !== par) return J({ job: null, par: parOf(await getSettings(db, U)) });
           const out = await nextWork(env, db, U, slots);
-          if (out) return J(out);
+          if (out) return J({ ...out, par });
         }
-        if (!body.wait || now() - t0 > WAIT_MS) return J({ job: null });
+        if (!body.wait || now() - t0 > WAIT_MS) return J({ job: null, par });
         await nap(env, 1500);
       }
     }

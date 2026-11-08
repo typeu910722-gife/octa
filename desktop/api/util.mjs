@@ -17,6 +17,10 @@ export const MIN = 60000,
 export const WARM = [0, 30, 60, 120, 300, 600, -1]; // AI 待機 seconds after a reply (0: off, -1: always)
 // 單件工作最長時間 (minutes; 0: 不限); a job still reporting is never cut short by the 20-minute silence check
 export const JOB_MAX = [0, 15, 30, 60, 120, 180];
+// 4.15.3 同時工作的機器人: how many bots work at once on this computer (0 = 不限制; the runner still keeps memory free)
+export const PAR = [3, 5, 8, 12, 0];
+export const PAR_NONE = 99;
+export const parOf = st => (PAR.includes(st?.par) ? (st.par === 0 ? PAR_NONE : st.par) : 3);
 const unset = v => v === undefined || v === null || v === '';
 export const jobMaxOk = (v, full = false) => (!unset(v) && JOB_MAX.includes(+v) ? +v : full ? 0 : 60);
 // 4.11 全力模式: no per-job time / token / turn caps, AI 待機 always on, the runner keeps going until the work is done.

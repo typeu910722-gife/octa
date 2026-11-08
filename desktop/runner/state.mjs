@@ -23,11 +23,14 @@ export const CHUNK = 900_000;
 
 // Shared runner state. Other modules read these live bindings; only configure() (called by startRunner) changes them.
 export let cfg = {}, workDir = '', MAX = 3;
+// 4.15.3 同時工作的機器人 (設定 → AI 連線): 3 / 5 / 8 / 12 / 不限制 (99). Changed while running by the server's answer.
+export const PAR_CAP = 99;
+export function setMax(n) { MAX = Math.max(1, Math.min(Math.floor(+n) || 3, PAR_CAP)); return MAX; }
 export let log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 export function configure(opts) {
   cfg = { ...opts, url: opts.url.replace(/\/+$/, '') };
   workDir = join(opts.home, 'work');
-  MAX = Math.max(1, Math.min(+opts.max || 3, 8));
+  MAX = Math.max(1, Math.min(+opts.max || 3, PAR_CAP));
   if (opts.log) log = opts.log;
 }
 

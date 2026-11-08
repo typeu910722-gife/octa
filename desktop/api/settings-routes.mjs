@@ -8,7 +8,7 @@ import { MANUAL_MAX, MEM_KEYS, boardData, weeklyReview } from './memory.mjs';
 import { noteListChange } from './memory-edit.mjs';
 import { sendNotify } from './notify.mjs';
 import { localNow } from './schedule.mjs';
-import { J, JOB_MAX, POWER, WARM, clean, err, fullOn, jobMaxOf, now, uid, warmOf } from './util.mjs';
+import { J, JOB_MAX, PAR, POWER, WARM, clean, err, fullOn, jobMaxOf, now, uid, warmOf } from './util.mjs';
 
 export async function settingsRoutes(c) {
   const { env, db, path, m, url, body, me, U, ok } = c;
@@ -122,6 +122,12 @@ export async function settingsRoutes(c) {
       else if (id) delete st.power[id];
     }
     if (body.warm !== undefined && body.warm !== null && WARM.includes(+body.warm)) st.warm = +body.warm;
+    if (body.par !== undefined && body.par !== null && PAR.includes(+body.par)) {
+      st.par = +body.par;
+      await putSettings(db, U, st);
+      await bump(db, U); // the runner hears it on its next look
+      return J({ ok: true });
+    }
     if (body.jobMax !== undefined && body.jobMax !== null && JOB_MAX.includes(+body.jobMax)) st.jobMax = +body.jobMax;
     if (body.shareBrowser !== undefined) st.shareBrowser = !!body.shareBrowser;
     if (['zh-TW', 'zh-CN', 'en', 'ja'].includes(body.lang)) st.lang = body.lang;

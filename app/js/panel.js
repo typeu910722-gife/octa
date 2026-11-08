@@ -146,7 +146,7 @@ async function jobUnqueue(id){try{await api('job/'+id+'/cancel','POST',{});toast
 function queueHtml(q){return `<div class="wsec wqs"${wsAttr('queue')}>${wsHead('queue','clock','排隊中',q.length)}${q.map(x=>{
   const v=queueView(x.job,S.busy,S.queue);if(!v)return '';
   const ahead=v.ahead.filter(a=>a.job!==x.job),names=[...new Set(ahead.map(a=>nameOf(a.bot_id)))];
-  const why=v.why==='own'?`<span>它手上還有一件在做，做完就輪到這件</span>`:v.why==='full'?`<span>同時最多</span> ${S.queue?.slots||3} <span>個機器人工作，現在都在忙</span>`:v.why==='queue'?'<span>前面還有排隊的工作</span>':'<span>馬上開始</span>';
+  const why=v.why==='own'?`<span>它手上還有一件在做，做完就輪到這件</span>`:v.why==='full'?(S.par===0||(S.queue?.slots||3)>=99?'<span>電腦剩餘記憶體不夠，等其他機器人做完就開始</span>':`<span>同時最多</span> ${S.queue?.slots||3} <span>個機器人工作，現在都在忙</span>`):v.why==='queue'?'<span>前面還有排隊的工作</span>':'<span>馬上開始</span>';
   return `<div class="wq" data-qjob="${x.job}"><div class="wqh"><span class="av xs" data-u>${avOf(x.bot_id)}</span><b data-u>${esc(nameOf(x.bot_id))}</b><span class="wqpos"><span>第</span> <b>${v.pos}</b> <span>位</span></span><span class="wqeta">${v.known?'':'<span>估計</span> '}${esc(etaText(v.eta))}</span></div>
     <div class="wqwhy">${why}</div>
     ${names.length?`<div class="wqahead"><span>前面：</span>${ahead.slice(0,6).map(a=>`<span class="wqa ${a.status==='running'?'run':''}"><span class="av xs" data-u>${avOf(a.bot_id,a.status==='running')}</span><span data-u>${esc(nameOf(a.bot_id))}</span><small>${I18N.t(a.status==='running'?'工作中':'排隊中')}</small></span>`).join('')}${ahead.length>6?`<span class="wqa">+${ahead.length-6}</span>`:''}</div>`:''}
