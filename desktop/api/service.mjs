@@ -18,13 +18,25 @@ export const SVC_MINS = [15, 30, 60, 120, 240, 480, 0]; // 0: until you stop it
 const TABLE =
   'CREATE TABLE IF NOT EXISTS svc (bot_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, url TEXT NOT NULL, sel TEXT, sec INTEGER NOT NULL, until INTEGER, rules TEXT, started INTEGER NOT NULL, replies INTEGER NOT NULL DEFAULT 0, state TEXT, rebase INTEGER, on_ INTEGER NOT NULL DEFAULT 1)';
 const ready = new WeakSet();
+// 4.16.1: ring (a webhook said a message came in: look now), wait (seconds to let a person or LINE's auto-reply go
+// first), mode (reply: answer in the chat · draft: write the answer for you to approve, never send it)
+const COLS = ['ring INTEGER', 'wait INTEGER', 'mode TEXT'];
 async function ensure(db) {
   if (ready.has(db)) return;
   await db.prepare(TABLE).run();
+  for (const c of COLS) {
+    try {
+      await db.prepare('ALTER TABLE svc ADD COLUMN ' + c).run();
+    } catch {} // already there
+  }
   ready.add(db);
 }
+export const SVC_WAITS = [0, 10, 30, 60];
+const RING_MS = 30000;
 const pub = r =>
-  r ? { on: !!r.on_, url: r.url, sel: r.sel || '', sec: r.sec, until: r.until || null, rules: r.rules || '', started: r.started, replies: r.replies || 0 } : { on: false };
+  r
+    ? { on: !!r.on_, url: r.url, sel: r.sel || '', sec: r.sec, until: r.until || null, rules: r.rules || '', started: r.started, replies: r.replies || 0, wait: r.wait || 0, mode: r.mode === 'draft' ? 'draft' : 'reply' }
+    : { on: false };
 export async function svcOf(db, U) {
   await ensure(db);
   const rows = (await db.prepare('SELECT * FROM svc WHERE user_id=? AND on_=1').bind(U).all()).results;
@@ -42,7 +54,8 @@ export function svcPlan(b) {
   }
   const sec = SVC_SECS.includes(+b?.sec) ? +b.sec : 10;
   const minutes = SVC_MINS.includes(+b?.minutes) ? +b.minutes : Number.isFinite(+b?.minutes) && +b.minutes > 0 ? Math.min(24 * 60, Math.round(+b.minutes)) : 60;
-  return { url, sel: clean(b?.sel, 200), sec, minutes, rules: clean(b?.rules, 2000) };
+  const wait = SVC_WAITS.includes(+b?.wait) ? +b.wait : 0;
+  return { url, sel: clean(b?.sel, 200), sec, minutes, rules: clean(b?.rules, 2000), wait, mode: b?.mode === 'draft' ? 'draft' : 'reply' };
 }
 const endText = (env, until) => (until ? `到 ${localNow(env, until).hm}` : '直到你說停');
 export async function svcStart(env, db, U, bot, plan) {
@@ -50,11 +63,11 @@ export async function svcStart(env, db, U, bot, plan) {
   const until = plan.minutes ? now() + plan.minutes * MIN : null;
   await db
     .prepare(
-      'INSERT INTO svc (bot_id,user_id,url,sel,sec,until,rules,started,replies,state,rebase,on_) VALUES (?,?,?,?,?,?,?,?,0,NULL,NULL,1) ON CONFLICT(bot_id) DO UPDATE SET url=excluded.url, sel=excluded.sel, sec=excluded.sec, until=excluded.until, rules=excluded.rules, started=excluded.started, replies=0, state=NULL, rebase=NULL, on_=1'
+      'INSERT INTO svc (bot_id,user_id,url,sel,sec,until,rules,started,replies,state,rebase,on_,ring,wait,mode) VALUES (?,?,?,?,?,?,?,?,0,NULL,NULL,1,NULL,?,?) ON CONFLICT(bot_id) DO UPDATE SET url=excluded.url, sel=excluded.sel, sec=excluded.sec, until=excluded.until, rules=excluded.rules, started=excluded.started, replies=0, state=NULL, rebase=NULL, on_=1, ring=NULL, wait=excluded.wait, mode=excluded.mode'
     )
-    .bind(bot.id, U, plan.url, plan.sel || null, plan.sec, until, plan.rules || null, now())
+    .bind(bot.id, U, plan.url, plan.sel || null, plan.sec, until, plan.rules || null, now(), plan.wait || 0, plan.mode || 'reply')
     .run();
-  await addMsg(db, U, bot.id, 'sys', `🎧 客服模式開始：每 ${plan.sec} 秒看一次 ${plan.url}，有新訊息就回覆，${endText(env, until)}。沒有新訊息時不會用到 AI。`);
+  await addMsg(db, U, bot.id, 'sys', `🎧 客服模式開始：每 ${plan.sec} 秒看一次 ${plan.url}，有新訊息就${plan.mode === 'draft' ? '擬好回覆給你確認' : '回覆'}，${endText(env, until)}。沒有新訊息時不會用到 AI。`);
   await bump(db, U);
 }
 export async function svcStop(env, db, U, botId, why = '') {
@@ -63,6 +76,16 @@ export async function svcStop(env, db, U, botId, why = '') {
   if (!r) return false;
   await db.prepare('UPDATE svc SET on_=0 WHERE bot_id=?').bind(botId).run();
   await addMsg(db, U, botId, 'sys', `🎧 客服模式${why || '已結束'}（回覆了 ${r.replies || 0} 次）`);
+  await bump(db, U);
+  return true;
+}
+/* 4.16.1 Webhook 當門鈴: a message event for a bot in 客服模式 doesn't start its own job (it would answer from the event
+   alone, without the chat around it, and could answer a customer a person is already talking to). It only tells the
+   computer to look at the chat now; the answer is written from the chat itself. → true when 客服模式 took it. */
+export async function svcRing(db, U, botId) {
+  await ensure(db);
+  const r = await db.prepare('UPDATE svc SET ring=? WHERE bot_id=? AND user_id=? AND on_=1 AND (until IS NULL OR until>?)').bind(now(), botId, U, now()).run();
+  if (!r?.meta?.changes) return false;
   await bump(db, U);
   return true;
 }
@@ -103,7 +126,7 @@ export async function serviceRoutes(c) {
         await svcStop(env, db, U, r.bot_id, '時間到，已結束');
         continue;
       }
-      out.push({ bot: r.bot_id, url: r.url, sel: r.sel || '', sec: r.sec });
+      out.push({ bot: r.bot_id, url: r.url, sel: r.sel || '', sec: r.sec, ...(r.ring && now() - r.ring < RING_MS ? { ring: r.ring } : {}) });
     }
     return J({ svc: out });
   }
@@ -115,7 +138,7 @@ export async function serviceRoutes(c) {
       hash = clean(body.hash, 80);
     if (!hash) return J({ ok: true });
     const old = r.state ? JSON.parse(r.state) : null;
-    const save = () => db.prepare('UPDATE svc SET state=?, rebase=NULL WHERE bot_id=?').bind(JSON.stringify({ hash, text, t: now() }), r.bot_id).run();
+    const save = () => db.prepare('UPDATE svc SET state=?, rebase=NULL, ring=NULL WHERE bot_id=?').bind(JSON.stringify({ hash, text, t: now() }), r.bot_id).run();
     // a job of this mode still waiting or running: leave the baseline as it was (its reply is not a new message)
     const busy = await db
       .prepare("SELECT 1 AS n FROM jobs WHERE user_id=? AND bot_id=? AND status IN ('pending','running') AND prompt LIKE ? LIMIT 1")
@@ -127,19 +150,27 @@ export async function serviceRoutes(c) {
       await save();
       return J({ ok: true, changed: false });
     }
-    if (old.hash === hash) return J({ ok: true, changed: false });
+    if (old.hash === hash) {
+      // rung but the chat shows nothing new yet: keep looking for a while, then give up
+      if (r.ring && now() - r.ring >= RING_MS) await db.prepare('UPDATE svc SET ring=NULL WHERE bot_id=?').bind(r.bot_id).run();
+      return J({ ok: true, changed: false });
+    }
     const before = new Set(lines(old.text));
     const added = lines(text).filter(x => !before.has(x));
     await save();
     if (!added.length) return J({ ok: true, changed: false }); // only moved around (a list re-sorted, a badge)
     const prompt =
       `${SVC_TAG}你正在客服模式，看著這個聊天畫面：${r.url}\n畫面上新出現的內容：\n${added.slice(-30).join('\n')}\n\n` +
-      '請到你的瀏覽器裡那個聊天畫面，讀完客人最新的訊息後直接回覆客人（用客人的語言，簡短、有禮貌）。' +
-      '新出現的內容也可能只是你自己剛送出的回覆、系統通知或時間：沒有客人的新訊息就不要回，最後只寫「（略過）」。' +
-      '回覆完再看一次聊天畫面，這段時間又有新訊息就一併回覆。不確定答案、要退款、要改訂單或客人生氣時，先回客人「我幫您確認一下」，再在給我的回報裡寫「❓ 問題」。' +
-      '給我的回報只要一行：回了誰、回了什麼。' +
+      '請到你的瀏覽器裡那個聊天畫面，打開那位客人的聊天室，讀完整段對話（不是只看上面這幾行）再決定。' +
+      '以下情況不要回、最後只寫「（略過）」：新出現的只是你自己剛送出的回覆、系統通知或時間；這位客人是手動聊天或真人客服已經接手（例如畫面上有「手動聊天」標籤、黑色提示條，或真人剛回過）；客人的問題已經被自動回應或別人回答了。' +
+      (r.mode === 'draft'
+        ? '這段時間是「先擬稿」：不要在聊天畫面送出任何訊息。把要回給客人的話寫好，回報裡最後單獨一行寫「✅待確認：回覆客人「要說的話」」，核准後才送出。'
+        : '要回覆時用客人的語言，簡短、有禮貌。價格、折扣、退款、改訂單或取消這類事不要直接答應：先回客人「我幫您確認一下」，再在回報最後單獨一行寫「✅待確認：要回客人的內容」等我核准。不確定答案或客人生氣時也一樣先這樣做。') +
+      '回覆完再看一次聊天畫面，這段時間又有新訊息就一併處理。給我的回報只要一行：回了誰、回了什麼（或擬了什麼）。' +
       (r.rules ? `\n\n我給你的客服規則：\n${r.rules}` : '');
-    await addJob(db, U, r.bot_id, [r.bot_id], prompt);
+    const jid = await addJob(db, U, r.bot_id, [r.bot_id], prompt);
+    // 先等幾秒: a person or LINE's auto-reply gets to answer first; the bot reads the chat again when it starts
+    if (r.wait > 0 && jid) await db.prepare('UPDATE jobs SET after=? WHERE id=?').bind(now() + r.wait * 1000, jid).run();
     await bump(db, U);
     return J({ ok: true, changed: true });
   }

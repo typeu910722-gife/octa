@@ -42,9 +42,12 @@ export async function checkService() {
   if (running || standby || stopped) return;
   running = true;
   try {
-    if (Date.now() - listAt > 15000) { listAt = Date.now(); try { list = (await api('runner/svc', {})).svc || []; } catch { } }
+    // every 3 s: a webhook may have rung (4.16.1) — then it looks at once instead of waiting for its turn
+    if (Date.now() - listAt > 3000) { listAt = Date.now(); try { list = (await api('runner/svc', {})).svc || []; } catch { } }
     for (const s of list) {
-      if (Date.now() - (lastLook.get(s.bot) || 0) < (s.sec || 10) * 1000 - 300) continue;
+      const rung = s.ring && s.ring > (lastLook.get(s.bot) || 0) - 5000;
+      if (!rung && Date.now() - (lastLook.get(s.bot) || 0) < (s.sec || 10) * 1000 - 300) continue;
+      if (rung && Date.now() - (lastLook.get(s.bot) || 0) < 1500) continue;   // rung: every 1.5 s until the message shows
       lastLook.set(s.bot, Date.now());
       touchBrowser(s.bot);
       if (busyBots.has(s.bot) || sessions.get(s.bot)?.turn) continue;   // it is answering right now

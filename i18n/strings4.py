@@ -727,3 +727,18 @@ P4 += [
  (r'^🎧 客服模式開始：每 (\d+) 秒看一次 (\S+)，有新訊息就回覆，直到你說停。沒有新訊息時不會用到 AI。$', '🎧 Customer service mode on: checking $2 every $1 seconds and answering new messages until you stop it. No AI is used while nothing new comes in.', '🎧 カスタマー対応モード開始：$1 秒ごとに $2 を確認し、停止するまで新しいメッセージに返信します。新着がない間は AI を使いません。'),
  (r'^🎧 客服模式(已停止|時間到，已結束|已結束)（回覆了 (\d+) 次）$', '🎧 Customer service mode ended (answered $2 times)', '🎧 カスタマー対応モードを終了しました（返信 $2 回）'),
 ]
+
+# 4.16.1 客服模式 + Webhook 門鈴
+T4.update({
+ '先擬稿給我確認':('Draft it for me to approve','下書きして確認してもらう'),
+ '直接回覆客人':('Reply to the customer','お客様に直接返信'),
+ '先等':('Waits','待機'),
+ '不用等':('Don’t wait','待たない'),
+ '回覆方式':('How to reply','返信方法'),
+ '先等多久再回':('Wait before replying','返信前に待つ時間'),
+ '先等幾秒，讓 LINE 自動回應或真人客服先回；它回之前會再看一次聊天室，已經有人回、或客人是手動聊天，就不會搶答。價格、折扣、退款一律先給你確認。這個機器人有 LINE Webhook 的例行任務時，Webhook 只當門鈴：訊息一來就馬上看聊天室，不會另外自己回。':('Waiting a few seconds lets LINE’s auto-reply or a person answer first. Before replying it reads the chat again and stays out if someone already answered or the customer is in manual chat. Prices, discounts and refunds always come to you first. If this bot has a LINE webhook routine, the webhook only rings the bell: it looks at the chat at once and never answers on its own.','数秒待つと、LINE の自動応答や担当者が先に返信できます。返信前にチャットをもう一度確認し、すでに誰かが返信している、またはお客様が手動チャット中なら返信しません。料金・割引・返金は必ず先に確認します。このボットに LINE Webhook の定期タスクがある場合、Webhook は呼び鈴になり、すぐチャットを確認するだけで単独では返信しません。'),
+})
+P4 += [
+ (r'^🎧 客服模式開始：每 (\d+) 秒看一次 (\S+)，有新訊息就擬好回覆給你確認，到 (\d{1,2}:\d{2})。沒有新訊息時不會用到 AI。$', '🎧 Customer service mode on: checking $2 every $1 seconds and drafting replies for you to approve until $3. No AI is used while nothing new comes in.', '🎧 カスタマー対応モード開始：$1 秒ごとに $2 を確認し、返信を下書きして確認を求めます（$3 まで）。新着がない間は AI を使いません。'),
+ (r'^🎧 客服模式開始：每 (\d+) 秒看一次 (\S+)，有新訊息就擬好回覆給你確認，直到你說停。沒有新訊息時不會用到 AI。$', '🎧 Customer service mode on: checking $2 every $1 seconds and drafting replies for you to approve until you stop it. No AI is used while nothing new comes in.', '🎧 カスタマー対応モード開始：$1 秒ごとに $2 を確認し、停止するまで返信を下書きして確認を求めます。新着がない間は AI を使いません。'),
+]

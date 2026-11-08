@@ -1,5 +1,27 @@
 [
  {
+  "v": "4.16.1",
+  "date": "2026-11-08",
+  "notes": [
+   "客服模式＋Webhook 合在一起：開客服模式的機器人，LINE Webhook 只當門鈴，訊息一來就馬上去看聊天室，不再自己另外回，不會重複回覆",
+   "不搶答：回覆前一定打開那位客人的聊天室讀完整段；手動聊天、真人已接手、或自動回應已經回過，就不回",
+   "新選項「先等多久再回」（不用等／10／30／60 秒），讓 LINE 自動回應或真人先回",
+   "新選項「回覆方式」：直接回覆客人，或先擬稿給你確認；價格、折扣、退款、改訂單一律先給你確認"
+  ],
+  "notes_en": [
+   "Customer service mode and webhooks work together: for a bot in customer service mode the LINE webhook only rings the bell — it looks at the chat at once and never answers on its own, so nothing is answered twice",
+   "No jumping in: before replying it opens that customer's chat and reads all of it; it stays out when the chat is manual, a person took over, or an auto-reply already answered",
+   "New option “Wait before replying” (no wait / 10 / 30 / 60 s) so LINE's auto-reply or a person can go first",
+   "New option “How to reply”: reply to the customer, or draft it for you to approve; prices, discounts, refunds and order changes always come to you first"
+  ],
+  "notes_ja": [
+   "カスタマー対応モードと Webhook を統合：対応モード中のボットでは LINE Webhook は呼び鈴になり、すぐチャットを確認するだけで単独では返信せず、二重返信しません",
+   "先走らない：返信前に必ずそのお客様のチャットを開いて全体を読み、手動チャット・担当者対応中・自動応答済みなら返信しません",
+   "新オプション「返信前に待つ時間」（なし／10／30／60 秒）で LINE の自動応答や担当者が先に返信できます",
+   "新オプション「返信方法」：直接返信、または下書きして確認。料金・割引・返金・注文変更は必ず先に確認します"
+  ]
+ },
+ {
   "v": "4.16.0",
   "date": "2026-11-08",
   "notes": [

@@ -1,4 +1,5 @@
 // 例行任務: routines, their schedule on this computer, event triggers (hook / watch), schedule tidy-up.
+import { svcRing } from './service.mjs';
 import { STANDBY, mentionLine, mentionsIn } from './chat.mjs';
 import { addJob, addMsg, bump, getSettings, loadAll, putSettings } from './db.mjs';
 import { REVIEW_TAG } from './memory.mjs';
@@ -507,6 +508,9 @@ export function triggerFrom(body, old) {
 }
 // a routine started by an event: if an earlier event is still waiting in line, add this one to it
 export async function fireEvent(env, db, r, what) {
+  // 4.16.1 a LINE message (or a watched page) for a bot in 客服模式 only rings the bell: it looks at the chat now and
+  // answers from there, so it never answers twice or over a person who already took the chat
+  if ((r.watch || /^LINE [^\n]*訊息/m.test(String(what || ''))) && (await svcRing(db, r.user_id, r.conv))) return 'svc';
   const all = await loadAll(db, r.user_id);
   const to = routineTarget(all, r);
   if (!to) return 'gone';

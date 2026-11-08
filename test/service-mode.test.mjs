@@ -135,3 +135,35 @@ test('the computer side: same chat page, clock times ignored; the app and the bo
   assert.match(scripts['bots.js'], /dsec\('svc','客服模式'/);
   assert.match(scripts['panel.js'], /h\+=svcCard\(id\);/);
 });
+
+test('4.16.1 Webhook 當門鈴: a LINE message for a bot in 客服模式 starts no job of its own, only “look now”; wait and draft', async () => {
+  const x = await setup();
+  // a LINE webhook routine on the same bot
+  const rt = await call(x.db, 'POST', 'routines', { token: x.token, body: { conv: x.bot, name: 'LINE 客服', prompt: '回覆 LINE 客人', trigger: 'hook' } });
+  assert.equal(rt.status, 200, JSON.stringify(rt.data));
+  const hook = x.db.raw.prepare('SELECT hook FROM routines WHERE id=?').get(rt.data.id).hook;
+  const line = { events: [{ type: 'message', source: { userId: 'U9' }, message: { type: 'text', text: '請問還有空房嗎' } }] };
+  // not in 客服模式: the webhook works as before (a job of its own)
+  await call(x.db, 'POST', 'hook/' + hook, { body: line });
+  assert.equal(x.jobs().length, 1);
+  x.db.raw.prepare("DELETE FROM jobs WHERE bot_id=?").run(x.bot);
+  await call(x.db, 'POST', `svc/${x.bot}`, { token: x.token, body: { url: 'https://chat.line.biz/U1/chat', sec: 30, minutes: 0, wait: 10, mode: 'draft' } });
+  const page = 'Yzz\n您好';
+  await x.seen(page);
+  const r = await call(x.db, 'POST', 'hook/' + hook, { body: line });
+  assert.equal(r.data.result, 'svc');
+  assert.equal(x.jobs().length, 0, 'the webhook made no job of its own');
+  const [w] = (await call(x.db, 'POST', 'runner/svc', { token: x.token })).data.svc;
+  assert.ok(w.ring > 0, 'the computer is told to look now');
+  // the chat shows it: one job, after 10 s, written as a draft
+  assert.equal((await x.seen(page + '\n請問還有空房嗎')).data.changed, true);
+  const j = x.db.raw.prepare("SELECT prompt, after FROM jobs WHERE bot_id=? AND status='pending'").get(x.bot);
+  assert.ok(j.after > Date.now() + 8000, 'waits 10 s so a person or the auto-reply can go first');
+  assert.match(j.prompt, /手動聊天/); assert.match(j.prompt, /不要在聊天畫面送出任何訊息/); assert.match(j.prompt, /✅待確認：回覆客人/);
+  assert.equal((await call(x.db, 'POST', 'runner/svc', { token: x.token })).data.svc[0].ring, undefined, 'the bell is answered');
+  const st = (await call(x.db, 'GET', 'state', { token: x.token })).data.svc[x.bot];
+  assert.equal(st.mode, 'draft'); assert.equal(st.wait, 10);
+  // a handover from another AI (not a chat message) still works as a job of its own
+  await call(x.db, 'POST', 'hook/' + hook, { body: { from: 'Grok', task: '整理今天的訂房' } });
+  assert.ok(x.db.raw.prepare("SELECT COUNT(*) AS n FROM jobs WHERE bot_id=? AND prompt LIKE '%整理今天的訂房%'").get(x.bot).n >= 1);
+});
