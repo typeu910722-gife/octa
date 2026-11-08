@@ -237,3 +237,14 @@ button.wsh:hover{color:var(--ink2);background:var(--hover)}
 /* 4.10: the phone has 總覽 on its list screen, not in this panel; a tab that needs a chat is off without one */
 @media (max-width:760px){.wp-tabs [data-wt=ov]{display:none}}
 .wp-tabs [role=tab]:disabled{opacity:.4;cursor:default}
+/* 4.15.2 進度 without a 🧭步驟 plan: the actions it finished (with when), the one it is on, and a count */
+.wsteps.trail li{display:flex;align-items:center;gap:6px}
+.wsteps.trail li>span[data-u]{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.wsteps.trail li.done{color:var(--ink2)}
+.wsteps.trail li.done::before{border-color:var(--good,#3a9a5b);background:var(--good,#3a9a5b)}
+.wsteps.trail .wck .icon{width:12px;height:12px;color:var(--good,#3a9a5b)}
+.wsteps.trail .wck,.wsteps.trail .wn{display:none}
+.wsteps.trail time{flex:none;color:var(--faint);font-size:.92em;font-variant-numeric:tabular-nums}
+.wmeta{margin:2px 0 6px;color:var(--mute);font-size:calc(12px * var(--fz))}
+.wmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
+.wq .wact{display:flex;gap:6px;flex-wrap:wrap}

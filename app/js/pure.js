@@ -145,7 +145,8 @@ function progOf(p){if(p&&typeof p==='object')return progNorm(p);const s=String(p
 function progNorm(o){const steps=Array.isArray(o.steps)?o.steps.map(x=>String(x??'').replace(/\s+/g,' ').trim()).filter(Boolean).slice(0,30):[];
   let total=Math.round(+o.total)>0?Math.round(+o.total):steps.length,step=Math.round(+o.step)>0?Math.round(+o.step):0;
   if(total&&step>total)step=total;
-  return {text:String(o.text??'').replace(/\s+/g,' ').trim(),step,total,steps,kind:['browse','think','tool','ask'].includes(o.kind)?o.kind:'',at:+o.at||0}}
+  const trail=Array.isArray(o.trail)?o.trail.filter(x=>x&&x.t).slice(-12).map(x=>({t:String(x.t).replace(/\s+/g,' ').trim(),at:+x.at||0})):[];
+  return {text:String(o.text??'').replace(/\s+/g,' ').trim(),step,total,steps,kind:['browse','think','tool','ask'].includes(o.kind)?o.kind:'',at:+o.at||0,trail,n:Math.max(0,Math.round(+o.n||0)),t0:+o.t0||0}}
 /* what the progress line, bar and step list show. step is the one being done now (1-based).
    has: a known 「步驟 2/5」 · pct: the bar · cur: the words · list: each step done / now / next */
 function progView(raw){const p=progOf(raw),has=p.total>0&&p.step>0;

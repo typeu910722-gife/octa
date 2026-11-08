@@ -675,3 +675,18 @@ T4.update({
  '像公司的組織圖：部門、主管、誰在做事，省電':('Like a company org chart: departments, leads, who is working. Light on power','会社の組織図のように：部署・リーダー・作業中のボット。省電力'),
  '點一張名片，或從左邊選一個機器人開始對話':('Click a card, or pick a bot on the left to start a chat','カードをクリックするか、左のボットを選んで会話を始めましょう'),
 })
+
+# 4.15.2 取消排隊 and 進度
+T4.update({
+ '動作':('Action','アクション'),
+ '看工作進度':('See the progress','作業の進捗を見る'),
+ '已做':('Done','完了'),
+ '個動作':('actions','件の操作'),
+ '最近更新':('Last update','最終更新'),
+ '已取消排隊':('Removed from the queue','キューから取り消しました'),
+ '取消排隊':('Remove from queue','キューから取り消す'),
+ '已取消一件排隊中的工作':('Removed a queued job','待機中のジョブを 1 件取り消しました'),
+})
+P4 += [
+ (r'^已取消排隊中的工作：(.+)$', 'Removed a queued job: $1', '待機中のジョブを取り消しました：$1'),
+]

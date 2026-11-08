@@ -104,6 +104,7 @@ export async function overviewData(env, db, U) {
         bot: j.bot_id
       })),
       queued: queued.length,
+      queue: queued.slice(0, 10).map(j => ({ id: j.id, what: jobLine(j.prompt, rname.get(j.routine)), bot: j.bot_id })), // 4.15.2 each can be cancelled
       routines: next
         .filter(r => r.at)
         .sort((a, b) => a.at - b.at)

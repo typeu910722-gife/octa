@@ -144,7 +144,7 @@ function renderChat(scroll){
   const st=g?(busyIn(cur).some(x=>x.status==='running')?'working':''):stateOf(cur);
   const rj=runOf(cur),ps=rj&&pauseOf(rj);
   // 4.8: no step count here — progress lives in the 工作 panel only (評論：「步驟 1/3 出現三次」)
-  setHTML($('psub'),st&&st!=='idle'?`<span class="pst">${ps==='paused'?'<span>已暫停</span>':`${esc(I18N.t(STATE_LABEL[st]))}…`}</span> · ${subLine(c)}`:subLine(c));
+  setHTML($('psub'),psubHtml(c,st,ps));
   const off=!S.runnerOnline;$('offb').hidden=!off;
   if(off)setHTML($('offb'),`${ic('info')}<span>${DESK()?'機器人目前沒有在工作。訊息會先排著，OCTA 準備好就會做。':CFG.via?'主機電腦上的 OCTA 沒有在執行。訊息會先排著，主機電腦開機後就會做。':'電腦上的 OCTA 沒有在執行。訊息會先排著，電腦開機後就會做。'}</span>`);
   $('msg').placeholder=I18N.t(g&&!phoneUI()?'輸入指示，可用 @ 指定誰做':'輸入指示…');

@@ -35,6 +35,8 @@ function ovStepHtml(p,paused){if(!p)return `<p class="ov-now"><span>剛開始，
   let h=`<p class="ov-now">${paused?'<i class="ov-tag warn">已暫停</i> ':''}<span data-u>${esc(String(p.text||'').slice(0,140))}</span></p>`;
   if(tot){h+=`<div class="ov-steps" role="progressbar" aria-valuemin="0" aria-valuemax="${tot}" aria-valuenow="${step}"><div class="ov-track"><i style="width:${Math.round(step/tot*100)}%"></i></div><small><b data-u>${step}/${tot}</b> <span>步</span></small></div>`;
     if(Array.isArray(p.steps)&&p.steps.length)h+=`<ol class="ov-sl">${p.steps.slice(0,8).map((s,i)=>`<li class="${i+1<step?'d':i+1===step?'c':''}" data-u>${esc(String(s).slice(0,40))}</li>`).join('')}</ol>`}
+  // 4.15.2 no 🧭步驟 plan: the last actions it finished and how many so far
+  else if(Array.isArray(p.trail)&&p.trail.length)h+=`<ol class="ov-sl ov-tr">${p.trail.slice(-3).map(s=>`<li class="d" data-u>${esc(String(s.t||'').slice(0,60))}</li>`).join('')}</ol><small class="ov-cnt"><span>已做</span> <b data-u>${+p.n||p.trail.length}</b> <span>個動作</span></small>`;
   return h}
 // what a card is about, from the API's row and the scene model (the same answers the 3D picture shows)
 function ovInfo(x,g){const m=SEA.m,mb=g?null:m?.bots.find(b=>b.id===x.id),mr=g?m?.rooms.find(r=>r.id===x.id):null;
@@ -50,7 +52,7 @@ function ovCard(x,g,i){
     <header class="ov-hd" title="${g?'在基地裡找到這個會議室':'在基地裡找到它'}">${av}<div class="ov-who"><b data-u>${esc(x.name)}</b>${x.role?`<small data-u>${esc(x.role)}</small>`:`<small class="ov-norole">${g?'還沒有協作規則':'還沒有指定任務'}</small>`}</div>${chip}</header>`;
   if(x.alert)h+=`<div class="ov-alert" role="alert">${ic('info')}<span><b data-u>${esc(x.alert.label)}</b> <span data-u>${ovWhen(x.alert.at)}</span></span><button type="button" class="btn sm" data-retry="${x.alert.job}">${ic('refresh')}<span>一鍵重試</span></button></div>`;
   for(const r of x.running)h+=`<div class="ov-run">${g&&r.bot?`<small class="ov-by" data-u>${esc(nameOf(r.bot))}</small>`:''}<p class="ov-what" data-u>${esc(r.what)}</p>${ovStepHtml(r.progress,r.paused)}</div>`;
-  if(x.queued)h+=`<p class="ov-q"><b data-u>${x.queued}</b> <span>件排隊中</span></p>`;
+  if(x.queued)h+=`<p class="ov-q"><b data-u>${x.queued}</b> <span>件排隊中</span></p>`+(x.queue?.length?`<ul class="ov-ql">${x.queue.map(q=>`<li><span data-u>${esc(q.what)}</span>${g&&q.bot?` <small data-u>· ${esc(nameOf(q.bot))}</small>`:''}<button type="button" class="ghost sm" data-ovqc="${q.id}">${ic('x')}<span>取消</span></button></li>`).join('')}</ul>`:'');
   // today
   h+=`<div class="ov-today"><div class="ov-k"><span class="ov-n ok"><b data-u>${x.doneN}</b> <span>今天完成</span></span>${x.failed.length?`<span class="ov-n err"><b data-u>${x.failed.length}</b> <span>沒做成</span></span>`:''}</div>`;
   if(x.failed.length)h+=`<ul class="ov-fl">${x.failed.map(f=>`<li><span class="ov-fx"><i class="ov-tag err" data-u>${esc(I18N.t(f.label))}</i> <span data-u>${esc(f.what)}</span>${g&&f.bot?` <small data-u>· ${esc(nameOf(f.bot))}</small>`:''}<small class="ov-tm">${ovWhen(f.at)}</small>${f.msg?`<small class="ov-msg" data-u>${esc(f.msg)}</small>`:''}</span><button type="button" class="ghost sm" data-retry="${f.id}">${ic('refresh')}<span>重試</span></button></li>`).join('')}</ul>`;
@@ -112,7 +114,7 @@ async function oneRetry(job){try{await api('alerts/retry','POST',{job});toast(I1
 $('ovBtn').onclick=()=>goOverview();
 $('ovSeg').addEventListener('click',ovFilter);
 $('ovRe').addEventListener('click',()=>loadOverview(true));
-$('ovBody').addEventListener('click',ovClick);
+$('ovBody').addEventListener('click',e=>{const b=e.target.closest('[data-ovqc]');if(b){e.stopPropagation();b.disabled=true;jobUnqueue(+b.dataset.ovqc).then(()=>loadOverview(true)).catch(()=>{b.disabled=false});return}ovClick(e)});
 $('ovBody').addEventListener('pointerover',e=>{if(e.pointerType!=='mouse')return;const c=e.target.closest('[data-oc]');seaHi(c?c.dataset.oc:null)});
 $('ovBody').addEventListener('pointerleave',()=>seaHi(null));
 

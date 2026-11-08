@@ -184,7 +184,7 @@ test('runner/progress keeps JSON (step, total, steps, kind); busy and state give
   const stored = JSON.parse(t.row(job.id).progress);
   assert.equal(stored.step, 2); assert.equal(stored.total, 3); assert.equal(stored.kind, 'browse'); assert.ok(stored.at);
   const busy = (await call(t.db, 'GET', 'busy')).data.busy.find(x => x.job === job.id);
-  assert.deepEqual({ ...busy.progress, at: 0 }, { text: '點擊「訂單」', steps: ['打開後台', '找訂單', '整理'], total: 3, step: 2, kind: 'browse', pmode: 'step', at: 0 });
+  assert.deepEqual({ ...busy.progress, at: 0, t0: 0 }, { text: '點擊「訂單」', steps: ['打開後台', '找訂單', '整理'], total: 3, step: 2, kind: 'browse', pmode: 'step', trail: [], n: 1, t0: 0, at: 0 }); // 4.15.2 trail / n / t0
   assert.equal(busy.paused, false);
   const st = (await call(t.db, 'GET', 'state')).data.busy.find(x => x.job === job.id);
   assert.equal(st.progress.step, 2);

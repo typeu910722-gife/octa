@@ -11,7 +11,11 @@ const runOf=id=>{const r=busyIn(id).filter(x=>x.status==='running');return r.fin
 function progLine(x){const v=progView(x.progress),ps=pauseOf(x);
   const st=ps==='pausing'?'<span class="jps">這一步做完會暫停</span>':ps==='paused'?'<span class="jps">已暫停</span>':ps==='resuming'?'<span class="jps">正在繼續…</span>':'';
   const txt=v.cur?`<span class="jcur" data-u>${esc(v.cur)}</span>`:`<span class="jcur">${x.kind==='open'?'打開瀏覽器':esc(STATE_LABEL[stateOf(x.bot_id)]||'工作中')}</span>`;
-  return st+(v.has?`<b class="jstep"><span>步驟</span> ${v.step}/${v.total}</b><span class="jsep">：</span>`:'')+txt}
+  return st+(v.has?`<b class="jstep"><span>步驟</span> ${v.step}/${v.total}</b><span class="jsep">：</span>`:v.n>1?`<b class="jstep"><span>動作</span> ${v.n}</b><span class="jsep">：</span>`:'')+txt}
+// 4.15.2 the chat header while it works: what it is on now (opens 工作), else its state and the usual line
+function psubHtml(c,st,ps){if(!st||st==='idle')return subLine(c);const rx=runOf(cur);
+  if(rx&&ps!=='paused'&&progView(rx.progress).cur)return `<button type="button" class="pnow" title="${esc(I18N.t('看工作進度'))}">${progLine(rx)}</button>`;
+  return `<span class="pst">${ps==='paused'?'<span>已暫停</span>':`${esc(I18N.t(STATE_LABEL[st]))}…`}</span> · ${subLine(c)}`}
 const progBar=x=>{const v=progView(x.progress);return v.has?`<i class="jbar" role="progressbar" aria-valuemin="0" aria-valuemax="${v.total}" aria-valuenow="${v.step-1}"><i style="width:${v.pct}%"></i></i>`:''};
 function pauseBtn(x){const ps=pauseOf(x),resume=ps==='paused'||ps==='pausing';
   return `<button type="button" class="jb" data-jpause="${x.job}" data-on="${resume?0:1}"${ps==='resuming'?' disabled':''} title="${resume?'繼續':'暫停'}">${ic(resume?'play':'pause')}<span>${resume?'繼續':'暫停'}</span></button>`}

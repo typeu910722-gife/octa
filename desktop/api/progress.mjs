@@ -3,7 +3,7 @@
 //   POST job/<id>/pause {on}                                            (here)
 //   POST job/<id>/bump                     4.8 插隊: to the front of the queue (jobs.prio)
 // GET state / busy give every running job `progress` (parsed object) and `paused` (boolean).
-import { bump, getSettings } from './db.mjs';
+import { addMsg, bump, getSettings } from './db.mjs';
 import { clean, err, now } from './util.mjs';
 
 const KINDS = ['browse', 'think', 'tool', 'ask'];
@@ -40,9 +40,19 @@ export function parseProgress(raw) {
 export const sameProgress = (raw, p) => {
   const o = parseProgress(raw);
   if (!o) return false;
-  const { at, ...a } = o;
+  const { at, trail, n, t0, ...a } = o;
   return JSON.stringify(a) === JSON.stringify(p);
 };
+/* 4.15.2 進度: what the job did so far, kept with its progress — trail: the last actions it finished ({t, at}),
+   n: how many actions so far, t0: when the first one was reported. The screens show these when the bot gave no 🧭步驟. */
+export const TRAIL_MAX = 12;
+export function withTrail(raw, p, at = now()) {
+  const o = parseProgress(raw) || {};
+  const trail = Array.isArray(o.trail) ? o.trail.slice(-TRAIL_MAX) : [];
+  const moved = !!p.text && p.text !== o.text;
+  if (moved && o.text) trail.push({ t: clean(o.text, 120), at: o.at || at });
+  return { ...p, trail: trail.slice(-TRAIL_MAX), n: (o.n || 0) + (moved ? 1 : 0), t0: o.t0 || at, at };
+}
 // busy rows (state / busy) as the app gets them
 // 4.8 the queue in the 工作 panel: how long a run takes here lately (ms, the last 30 finished chat runs of 3 days)
 // and how many bots the runner works at once
@@ -86,6 +96,18 @@ export async function jobRoutes(c) {
     if (!job) return err('這件工作已經開始或結束了', 404);
     const top = await db.prepare("SELECT MAX(IFNULL(prio,0)) AS p FROM jobs WHERE user_id=? AND status='pending'").bind(U).first();
     await db.prepare('UPDATE jobs SET prio=? WHERE id=?').bind((top?.p || 0) + 1, id).run();
+    await bump(db, U);
+    return ok({ ok: true });
+  }
+  // 4.15.2 取消排隊: one queued job leaves the queue (the work in progress goes on)
+  const cm = path.match(/^job\/(\d+)\/cancel$/);
+  if (cm && m === 'POST') {
+    const id = +cm[1];
+    const job = await db.prepare("SELECT id, conv, prompt FROM jobs WHERE id=? AND user_id=? AND status='pending'").bind(id, U).first();
+    if (!job) return err('這件工作已經開始或結束了', 404);
+    await db.prepare("DELETE FROM jobs WHERE id=? AND user_id=? AND status='pending'").bind(id, U).run();
+    const what = String(job.prompt || '').replace(/^〔[^〕]*〕/, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    await addMsg(db, U, job.conv, 'sys', what ? `已取消排隊中的工作：${what}` : '已取消一件排隊中的工作');
     await bump(db, U);
     return ok({ ok: true });
   }

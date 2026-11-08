@@ -125,8 +125,11 @@ function wiHtml(it){const [icon,tone,lab]=WI[it.k]||WI.sys,open=WP.keep.has(it.k
 function curCard(x){const st=stateOf(x.bot_id),steps=(WP.steps[x.job]||[]).slice(-5),c=conv(cur),v=progView(x.progress),ps=pauseOf(x);
   const eng=x.eng&&!isG(cur)&&x.eng.split('|')[0]!==(c?.engine||'claude')?` · <span>備援</span> ${esc(ENG_NAME(x.eng.split('|')[0]))}`:'';
   const plan=v.list.length?`<ol class="wsteps plan">${v.list.map((s,i)=>`<li class="${s.st}">${s.st==='done'?`<span class="wck" aria-hidden="true">${ic('check')}</span>`:`<span class="wn" aria-hidden="true">${i+1}</span>`}<span data-u>${esc(s.t)}</span>${s.st==='now'&&v.text&&v.text!==s.t?`<small data-u>${esc(v.text)}</small>`:''}</li>`).join('')}</ol>`
+    :v.trail.length||v.cur?`<ol class="wsteps trail">${v.trail.slice(-6).map(s=>`<li class="done"><span class="wck" aria-hidden="true">${ic('check')}</span><span data-u>${esc(s.t)}</span><time>${hm(s.at)}</time></li>`).join('')}${v.cur?`<li class="now"><span class="wn" aria-hidden="true">…</span><span data-u>${esc(v.cur)}</span></li>`:''}</ol>`
     :steps.length?`<ol class="wsteps">${steps.map((s,i)=>`<li${i===steps.length-1?' class="now"':''}><span data-u>${esc(s.p)}</span></li>`).join('')}</ol>`:`<p class="wsub">${I18N.t('準備中…')}</p>`;
-  const head=v.has||ps?`<div class="wprog"><div class="jl">${progLine(x)}</div>${progBar(x)}</div>`:'';
+  // 4.15.2 進度 even without a 🧭步驟 plan: what it is on, how many actions so far, how long, when it last moved
+  const meta=!v.has&&(v.n||v.at)?`<p class="wmeta">${v.n?`<span>已做</span> <b>${v.n}</b> <span>個動作</span>`:''}${v.at?`${v.n?' · ':''}<span>最近更新</span> <span data-wsince="${v.at}">${minTxt(v.at)}</span> <span>分鐘前</span>`:''}</p>`:'';
+  const head=v.has||ps?`<div class="wprog"><div class="jl">${progLine(x)}</div>${progBar(x)}</div>`:meta;
   return `<div class="wcur${ps?' '+ps:''}"><div class="wch"><span class="av" data-u>${avOf(x.bot_id,'always')}</span><div class="t"><b data-u>${esc(nameOf(x.bot_id))}</b>
     <small><span class="pst">${ps==='paused'?I18N.t('已暫停'):x.kind==='open'?I18N.t('打開瀏覽器'):x.kind==='code'?I18N.t('程式任務'):I18N.t(STATE_LABEL[st]||'工作中')}</span>${x.started?` · <span class="el" data-since="${x.started}">${elapsed(x.started)}</span>`:''}${eng}${x.ext?` · <span class="wcloud">${I18N.t('在 Grok Bot 雲端電腦上')}</span>`:''}</small></div>
     <div class="wbtns">${x.kind==='open'||x.ext?'':pauseBtn(x).replace('class="jb"','class="ghost sm jb"')}<button type="button" class="ghost sm" data-wstop>${ic('stop')}<span>停止</span></button></div></div>
@@ -137,6 +140,8 @@ function curCard(x){const st=stateOf(x.bot_id),steps=(WP.steps[x.job]||[]).slice
 let WSF=new Set();try{WSF=new Set(JSON.parse(store.get('octa_wsfold')||'[]'))}catch(e){}
 const wsAttr=k=>` data-ws="${k}"${WSF.has(k)?' data-folded="1"':''}`;
 const wsHead=(k,icon,t,n)=>`<button type="button" class="wsh" data-wsfold="${k}" aria-expanded="${!WSF.has(k)}">${ic('chev','wchv')}${ic(icon)}<span>${t}</span>${n?` <b class="wn2">${n}</b>`:''}</button>`;
+/* 4.15.2 取消排隊: one queued job leaves the queue; what is running goes on */
+async function jobUnqueue(id){try{await api('job/'+id+'/cancel','POST',{});toast(I18N.t('已取消排隊'));refresh()}catch(err){toast(err.message);throw err}}
 /* 4.8 排隊: where each queued job of this chat stands, who is ahead, about how long, and 插隊 (評論：「看不出為什麼在排隊」) */
 function queueHtml(q){return `<div class="wsec wqs"${wsAttr('queue')}>${wsHead('queue','clock','排隊中',q.length)}${q.map(x=>{
   const v=queueView(x.job,S.busy,S.queue);if(!v)return '';
@@ -145,7 +150,7 @@ function queueHtml(q){return `<div class="wsec wqs"${wsAttr('queue')}>${wsHead('
   return `<div class="wq" data-qjob="${x.job}"><div class="wqh"><span class="av xs" data-u>${avOf(x.bot_id)}</span><b data-u>${esc(nameOf(x.bot_id))}</b><span class="wqpos"><span>第</span> <b>${v.pos}</b> <span>位</span></span><span class="wqeta">${v.known?'':'<span>估計</span> '}${esc(etaText(v.eta))}</span></div>
     <div class="wqwhy">${why}</div>
     ${names.length?`<div class="wqahead"><span>前面：</span>${ahead.slice(0,6).map(a=>`<span class="wqa ${a.status==='running'?'run':''}"><span class="av xs" data-u>${avOf(a.bot_id,a.status==='running')}</span><span data-u>${esc(nameOf(a.bot_id))}</span><small>${I18N.t(a.status==='running'?'工作中':'排隊中')}</small></span>`).join('')}${ahead.length>6?`<span class="wqa">+${ahead.length-6}</span>`:''}</div>`:''}
-    ${v.pos>1||v.why!=='soon'?`<div class="wact"><button type="button" class="ghost sm" data-qbump="${x.job}"${v.pos===1?' disabled title="'+esc(I18N.t('已經在最前面'))+'"':''}>${ic('up')}<span>插隊</span></button><button type="button" class="ghost sm" data-wstop>${ic('x')}<span>取消</span></button></div>`:''}</div>`}).join('')}</div>`}
+    <div class="wact">${v.pos>1?`<button type="button" class="ghost sm" data-qbump="${x.job}">${ic('up')}<span>插隊</span></button>`:''}<button type="button" class="ghost sm" data-qcancel="${x.job}">${ic('x')}<span>取消排隊</span></button></div></div>`}).join('')}</div>`}
 /* 同事協作: who asked whom, what, waiting / answered / failed, and how long; an open one waiting > 2 minutes stands out */
 const collabTop=id=>collabItems(BS[id]?.items).sort((a,b)=>(b.st==='wait'||b.st==='run')-(a.st==='wait'||a.st==='run')||b.at-a.at).slice(0,8);
 function collabHtml(id){const xs=collabTop(id);if(!xs.length)return '';
@@ -181,6 +186,7 @@ $('wpWork').addEventListener('click',e=>{const t=e.target;
   const r=t.closest('[data-wretry]');if(r){retryFrom(r.dataset.wretry,r);return}
   const wf=t.closest('[data-wsfold]');if(wf){const k=wf.dataset.wsfold;WSF.has(k)?WSF.delete(k):WSF.add(k);store.set('octa_wsfold',JSON.stringify([...WSF]));
     const sec=wf.closest('.wsec');sec.toggleAttribute('data-folded',WSF.has(k));wf.setAttribute('aria-expanded',String(!WSF.has(k)));return}
+  const qc=t.closest('[data-qcancel]');if(qc){qc.disabled=true;jobUnqueue(+qc.dataset.qcancel).catch(()=>{qc.disabled=false});return}
   const qb=t.closest('[data-qbump]');if(qb){qb.disabled=true;api('job/'+qb.dataset.qbump+'/bump','POST',{}).then(()=>{toast(I18N.t('已插隊，下一個就做這件'));refresh()}).catch(err=>{qb.disabled=false;toast(err.message)});return}
   const lr=t.closest('[data-wlretry]');if(lr){lr.disabled=true;api('logs/retry','POST',{id:+lr.dataset.wlretry}).then(()=>{toast(I18N.t('已重新排入，會照原本的指示再做一次'));refresh()}).catch(err=>{lr.disabled=false;toast(err.message)});return}});
 // 重試: your last instruction before the failure, sent again
@@ -277,3 +283,5 @@ window.octaDesktop?.onStage?.(d=>{if(d?.act==='shown'&&d.bot&&cur&&webIds().incl
   g.addEventListener('pointerup',end);g.addEventListener('pointercancel',end);
   g.addEventListener('dblclick',()=>{app.style.removeProperty(vr());store.set(key(),null);dockSync()});
   g.addEventListener('keydown',e=>{const d={ArrowLeft:24,ArrowRight:-24}[e.key];if(!d)return;e.preventDefault();set($('wp').offsetWidth+d,true)})})();
+// 4.15.2 the chat header's 「第 N 個動作：…」 opens the 工作 tab with the whole progress
+$('psub')?.addEventListener('click',e=>{if(e.target.closest('.pnow'))openPanel('work',{user:true})});

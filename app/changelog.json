@@ -1,5 +1,24 @@
 [
  {
+  "v": "4.15.2",
+  "date": "2026-11-08",
+  "notes": [
+   "排隊中的工作可以單獨取消：工作面板每件排隊都有「取消排隊」，總覽卡片也列出每件排隊的工作和「取消」，正在做的工作不受影響",
+   "看得到工作進度：就算機器人沒有列步驟，也會顯示已經做完的動作（含時間）、正在做的事、已做幾個動作和最近更新時間",
+   "對話上方會顯示「動作 N：正在做的事」，點一下打開工作面板看完整進度"
+  ],
+  "notes_en": [
+   "Queued jobs can be cancelled one by one: each queued job in the Work panel has “Remove from queue”, and overview cards list every queued job with “Cancel”; the job in progress keeps going",
+   "See the progress: even when a bot gives no step list, you see the actions it finished (with times), what it is doing now, how many actions so far and when it last moved",
+   "The chat header shows “Action N: what it is doing”; click it to open the Work panel with the full progress"
+  ],
+  "notes_ja": [
+   "待機中のジョブを 1 件ずつ取り消せます：作業パネルの各ジョブに「キューから取り消す」、概要カードにも待機中のジョブ一覧と「取消」があり、実行中の作業はそのまま続きます",
+   "進捗が見えるように：ボットがステップを出さなくても、終わった操作（時刻つき）、今やっていること、操作の数、最終更新を表示します",
+   "会話の上部に「アクション N：今やっていること」を表示し、クリックすると作業パネルで全体の進捗を見られます"
+  ]
+ },
+ {
   "v": "4.15.1",
   "date": "2026-11-07",
   "notes": [

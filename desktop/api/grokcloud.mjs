@@ -24,6 +24,7 @@ import { GC_JOB_SQL as EXT_SQL, jobPayload } from './jobs.mjs';
 import { convFolder } from './mail-routes.mjs';
 import { alertSweep } from './notify.mjs';
 import { runnerDone } from './runner-done.mjs';
+import { withTrail } from './progress.mjs';
 import { flushAfter } from './skills.mjs';
 import { J, MIN, clean, err, fullOn, jobMaxOf, now, randTok } from './util.mjs';
 
@@ -641,7 +642,8 @@ export async function gcHookRoute({ env, db, m, url, body, rest, g, cors, bad })
   if (rest === 'progress') {
     if (!live) return R({ ok: true, stop: true });
     const text = clean(body.progress ?? body.text, 200);
-    const p = { text: text || START_TEXT, kind: 'cloud', cloud: 'started', at: now() };
+    const p = { text: text || START_TEXT, kind: 'cloud', cloud: 'started' };
+    const old = (await db.prepare('SELECT progress FROM jobs WHERE id=?').bind(job.id).first())?.progress;
     const total = Math.floor(+body.total || 0),
       step = Math.floor(+body.step || 0);
     if (total > 0 && total <= 20) {
@@ -649,7 +651,7 @@ export async function gcHookRoute({ env, db, m, url, body, rest, g, cors, bad })
       if (step > 0) p.step = Math.min(step, total);
     }
     await db.batch([
-      db.prepare('UPDATE jobs SET progress=?, beat=? WHERE id=?').bind(JSON.stringify(p), now(), job.id),
+      db.prepare('UPDATE jobs SET progress=?, beat=? WHERE id=?').bind(JSON.stringify(withTrail(old, p)), now(), job.id),
       db.prepare('UPDATE users SET prog=prog+1 WHERE id=?').bind(U)
     ]);
     await bump(db, U);

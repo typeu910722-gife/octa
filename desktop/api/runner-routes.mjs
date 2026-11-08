@@ -5,7 +5,7 @@ import { addMsg, bump, getSettings, nap, putSettings, wake } from './db.mjs';
 import { ENGINES } from './engines.mjs';
 import { mimeOf, safePath } from './files.mjs';
 import { continueJob, nextWork } from './jobs.mjs';
-import { progressOf, sameProgress } from './progress.mjs';
+import { progressOf, sameProgress, withTrail } from './progress.mjs';
 import { approvalNag, weeklyReview } from './memory.mjs';
 import { fireEvent, fireRoutines, tidyOnce } from './routines.mjs';
 import { grokTick } from './grokcloud.mjs';
@@ -211,7 +211,7 @@ export async function runnerRoutes(c) {
       if (!sameProgress(jr.progress, p)) {
         // a heartbeat with the same report changes nothing for the screens
         await db.batch([
-          db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(JSON.stringify({ ...p, at: now() }), +body.id),
+          db.prepare('UPDATE jobs SET progress=? WHERE id=?').bind(JSON.stringify(withTrail(jr.progress, p)), +body.id),
           db.prepare('UPDATE users SET prog=prog+1 WHERE id=?').bind(U)
         ]);
         wake();

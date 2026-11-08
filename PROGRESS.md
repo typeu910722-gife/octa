@@ -439,3 +439,9 @@
 - [x] gcBody：job / reply_url / progress_url / reply_token / context_url 放最前面；gcFit 把內容壓在 12000 字以內（cut:true），完整內容 GET hook/<t>/context/<job>（只限同一隻機器人，12 小時，server.mjs HOOK_PATH 放行）
 - [x] files 加上：工作或對話提到檔名的檔案（7 天）、交代工作的同事 24 小時內成品、同分區／同群組機器人 24 小時內的檔案；列出的檔案記在 gc_files，3 天內可用這隻機器人的 token 下載
 - [x] 測試 grok-cloud 第 8 項
+
+## 4.15.2 取消排隊、看得到進度（「可以取消排隊嗎？他們在工作時雖然有顯示工作目標，但能不能讓我看到工作進度」，2026-11-08）
+- [x] POST job/<id>/cancel：只取消那一件排隊的工作（正在做的不動），對話留系統訊息；工作面板每件排隊「取消排隊」（原本的「取消」會連正在做的一起停）、總覽卡片列出每件排隊（overview 回傳 queue）
+- [x] 進度紀錄 withTrail：jobs.progress 多存 trail（做完的動作＋時間，最多 12）、n（第幾個動作）、t0；本機執行器與 Grok Bot（雲端）回報都會記
+- [x] 工作面板沒有 🧭步驟 時列出做完的動作和正在做的事、「已做 N 個動作 · 最近更新」；總覽卡片列最近 3 個動作；對話標題顯示「動作 N：…」點了打開工作面板
+- [x] 測試 test/queue-progress.test.mjs（3）
