@@ -248,3 +248,13 @@ button.wsh:hover{color:var(--ink2);background:var(--hover)}
 .wmeta{margin:2px 0 6px;color:var(--mute);font-size:calc(12px * var(--fz))}
 .wmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .wq .wact{display:flex;gap:6px;flex-wrap:wrap}
+/* 4.16 客服模式: the card at the top of 工作 and the section in 詳細資料 */
+.wsvc{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+.wsvc b{font-size:calc(13px * var(--fz))}
+.wsvc small{flex:1;min-width:0;color:var(--ink2);font-size:calc(12px * var(--fz))}
+.svc-on{display:grid;gap:6px}
+.svc-st{margin:0;font-size:calc(13.5px * var(--fz))}
+.svc-m{margin:0;color:var(--ink2);font-size:calc(12.5px * var(--fz));overflow-wrap:anywhere}
+.svc-r{white-space:pre-wrap;color:var(--mute)}
+.svc-on .btn{justify-self:start}
+#svcBox .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}

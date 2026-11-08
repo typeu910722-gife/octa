@@ -12,6 +12,7 @@ import { checkWatches, openJob, resetWatches } from './live.mjs';
 import { engineReport, installJob, modelReport, resetReports, usageReport } from './reports.mjs';
 import { MAX, PW_MCP, VERSION, WIN, cfg, configure, log, setMax, workDir } from './state.mjs';
 import { freemem } from 'node:os';
+import { checkService, resetService } from './service.mjs';
 import { exportJob, importJob } from './transfer.mjs';
 import { refreshGpu, toolJob, toolsHere } from './toolbox.mjs';
 import { stopComfy } from './comfy.mjs';
@@ -169,13 +170,15 @@ export function startRunner(opts) {
   recoverCodeTasks().catch(e => log('程式任務恢復失敗：' + e.message));
   const reaper = setInterval(() => reapBrowsers(false).catch(() => { }), 5 * 60000);
   const watcher = setInterval(() => checkWatches().catch(() => { }), 60000);
+  const svcTimer = setInterval(() => checkService().catch(() => { }), 2000);   // 4.16 客服模式
+  resetService();
   resetWatches();
   const firstWatch = setTimeout(() => checkWatches().catch(() => { }), 15000);
   return {
     // keepBrowsers: a restart (after sleep, or the server not answering) leaves the bots' browsers open for the next run
     stop: (opts = {}) => {
       stopped = true; poll?.abort();
-      clearInterval(reaper); clearInterval(watcher); clearTimeout(firstWatch);
+      clearInterval(reaper); clearInterval(watcher); clearInterval(svcTimer); clearTimeout(firstWatch);
       if (!opts.keepBrowsers) reapBrowsers(true).catch(() => { });
       for (const id of [...sessions.keys()]) closeSession(id);
       if (!opts.keepBrowsers) stopComfy().catch(() => { });   // 4.13: local ComfyUI does not outlive OCTA

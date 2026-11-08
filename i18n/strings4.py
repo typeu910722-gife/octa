@@ -700,3 +700,30 @@ T4.update({
  '有工作就全部一起做，記憶體不夠時才排隊':('every bot with work starts at once; they queue only when memory runs low','作業があれば全員同時に開始。メモリが足りないときだけ待機'),
 })
 T4.update({'電腦剩餘記憶體不夠，等其他機器人做完就開始':('The computer is low on free memory; it starts when another bot finishes','空きメモリが足りません。他のボットが終わると開始します')})
+
+# 4.16 客服模式
+T4.update({
+ '客服模式':('Customer service mode','カスタマー対応モード'),
+ '直到我停止':('Until I stop it','停止するまで'),
+ '直到你停止':('until you stop it','停止するまで'),
+ '客服模式進行中':('Customer service mode is on','カスタマー対応モード実行中'),
+ '正在看':('Watching','監視中：'),
+ '秒看一次':('seconds a look','秒ごとに確認'),
+ '停止客服模式':('Stop customer service mode','カスタマー対応モードを停止'),
+ '例如：訂房問題照官網價格回答；要退款或客人生氣時先說「我幫您確認一下」再問我':('e.g. answer booking questions with the website’s prices; for refunds or an upset customer, say “Let me check that for you” and ask me','例：予約の質問は公式サイトの料金で回答。返金やお客様が怒っているときは「確認いたします」と返してから私に聞く'),
+ '它會在一段時間內一直看著一個聊天畫面（LINE 官方帳號、蝦皮聊聊、網站客服…），有新訊息就回覆。檢查畫面不用 AI、不花流量，有新訊息才會叫它。也可以直接在對話裡跟它說，例如「接下來一小時幫我顧 LINE 客服」。':('For a while it keeps an eye on one chat page (LINE Official Account, Shopee chat, a website’s support chat…) and answers every new message. Checking the page uses no AI and no quota; the bot is called only for new messages. You can also just tell it in chat, e.g. “Handle LINE support for the next hour”.','一定時間、1 つのチャット画面（LINE 公式アカウント、Shopee チャット、サイトのサポート…）を見続け、新しいメッセージに返信します。画面の確認には AI を使わず、使用量もかかりません。新しいメッセージがあるときだけボットを呼びます。会話で「これから 1 時間 LINE の対応をお願い」のように頼むこともできます。'),
+ '聊天畫面的網址':('Chat page address','チャット画面の URL'),
+ '多久看一次':('Check every','確認の間隔'),
+ '持續多久':('For how long','続ける時間'),
+ '回覆規則（可不填）':('Reply rules (optional)','返信ルール（任意）'),
+ '先在它的瀏覽器登入那個聊天後台。開始後畫面要保持打開，它會用同一個分頁回覆。':('Sign in to that chat in the bot’s browser first. Keep the page open while it runs; the bot replies in the same tab.','先にボットのブラウザでそのチャット管理画面にログインしてください。実行中は画面を開いたままにします。同じタブで返信します。'),
+ '開始客服模式':('Start customer service mode','カスタマー対応モードを開始'),
+ '客服模式開始了':('Customer service mode started','カスタマー対応モードを開始しました'),
+ '客服模式中':('Customer service mode','カスタマー対応中'),
+ '客服模式已停止':('Customer service mode stopped','カスタマー対応モードを停止しました'),
+})
+P4 += [
+ (r'^🎧 客服模式開始：每 (\d+) 秒看一次 (\S+)，有新訊息就回覆，到 (\d{1,2}:\d{2})。沒有新訊息時不會用到 AI。$', '🎧 Customer service mode on: checking $2 every $1 seconds and answering new messages until $3. No AI is used while nothing new comes in.', '🎧 カスタマー対応モード開始：$1 秒ごとに $2 を確認し、新しいメッセージに返信します（$3 まで）。新着がない間は AI を使いません。'),
+ (r'^🎧 客服模式開始：每 (\d+) 秒看一次 (\S+)，有新訊息就回覆，直到你說停。沒有新訊息時不會用到 AI。$', '🎧 Customer service mode on: checking $2 every $1 seconds and answering new messages until you stop it. No AI is used while nothing new comes in.', '🎧 カスタマー対応モード開始：$1 秒ごとに $2 を確認し、停止するまで新しいメッセージに返信します。新着がない間は AI を使いません。'),
+ (r'^🎧 客服模式(已停止|時間到，已結束|已結束)（回覆了 (\d+) 次）$', '🎧 Customer service mode ended (answered $2 times)', '🎧 カスタマー対応モードを終了しました（返信 $2 回）'),
+]

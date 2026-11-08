@@ -1,5 +1,27 @@
 [
  {
+  "v": "4.16.0",
+  "date": "2026-11-08",
+  "notes": [
+   "新功能「客服模式」：機器人在指定時間內一直看著一個聊天畫面（LINE 官方帳號、蝦皮聊聊、網站客服…），有新訊息就回覆，時間到自動結束",
+   "檢查畫面不用 AI、不花流量：電腦每 5～60 秒看一次，有新訊息才叫機器人；它自己送出的回覆不會被當成新訊息",
+   "開啟方式：詳細資料 → 客服模式，填聊天網址、多久看一次、持續多久和回覆規則；也可以直接在對話裡說「接下來一小時幫我顧客服，每十秒看一次」，說「測試結束」就停",
+   "客服模式進行中時，工作面板最上面會顯示剩餘時間、回覆次數和停止按鈕"
+  ],
+  "notes_en": [
+   "New: Customer service mode. For a set time a bot keeps watching one chat page (LINE Official Account, Shopee chat, a website’s support chat…) and answers every new message, ending by itself when the time is up",
+   "Checking the page uses no AI and no quota: the computer looks every 5–60 seconds and calls the bot only for new messages; its own replies don't count as new",
+   "Turn it on in Details → Customer service mode (chat address, how often, how long, reply rules), or just tell the bot in chat, e.g. “Handle support for the next hour, check every ten seconds”; say “test over” to stop",
+   "While it runs, the top of the Work panel shows the time left, how many replies and a Stop button"
+  ],
+  "notes_ja": [
+   "新機能「カスタマー対応モード」：指定した時間、ボットが 1 つのチャット画面（LINE 公式アカウント、Shopee チャット、サイトのサポート…）を見続け、新しいメッセージに返信し、時間になると自動で終了します",
+   "画面の確認には AI を使わず使用量もかかりません：パソコンが 5〜60 秒ごとに確認し、新着があるときだけボットを呼びます。ボット自身の返信は新着として扱いません",
+   "詳細 → カスタマー対応モードで、チャットの URL・間隔・時間・返信ルールを入れて開始。会話で「これから 1 時間、10 秒ごとに確認して対応して」と頼むこともでき、「テスト終了」で止まります",
+   "実行中は作業パネルの一番上に残り時間・返信回数・停止ボタンを表示します"
+  ]
+ },
+ {
   "v": "4.15.3",
   "date": "2026-11-08",
   "notes": [

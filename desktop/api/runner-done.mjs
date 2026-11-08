@@ -1,4 +1,5 @@
 // runner/done: a job finished. Saves the reply, memory, routines, hand-offs and the next step.
+import { SVC_END_RE, SVC_START_RE, svcDone, svcPlan, svcStart, svcStop } from './service.mjs';
 import {
   FAIL_KINDS,
   MAX_AUTO_RETRY,
@@ -406,6 +407,15 @@ export async function runnerDone(c) {
     if (userTurn(job)) applySchedules(plans, job.prompt, text);
     else plans.length = 0; // a routine run, a colleague's question or a retry doesn't make routines (they kept growing back)
   }
+  // 4.16 🎧客服模式：網址｜秒｜分鐘｜規則 / 🎧客服模式結束 — the bot starts or ends 客服模式 the person asked for
+  let svcAsk = null,
+    svcEnd = false;
+  if (good && job.kind === 'chat' && /🎧\s*客服模式/.test(text)) {
+    const sm = text.match(SVC_START_RE);
+    if (sm && userTurn(job)) svcAsk = svcPlan({ url: sm[1], sec: +sm[2], minutes: sm[3] === '不限' ? 0 : +sm[3], rules: sm[4] || '' });
+    if (SVC_END_RE.test(text)) svcEnd = true;
+    text = text.replace(SVC_START_RE, '').replace(SVC_END_RE, '').trim() || '（好的）';
+  }
   const claimedBuilt = good && job.kind === 'chat' && /排程已建好|例行任務已建好|已建立例行任務|已建好例行/.test(text);
   const tk = Number.isFinite(+body.tokens) && body.tokens !== null ? Math.max(0, Math.round(+body.tokens)) : null;
   // 4.8: how much of the plan's 5-hour window this run used (the runner asks before and after; Claude / ChatGPT only)
@@ -420,6 +430,9 @@ export async function runnerDone(c) {
     .bind(good ? 'done' : 'error', now(), tk, quse, job.hook ? text.slice(0, 8000) : job.via || BG.test(job.prompt) ? text.slice(0, 1500) : null, job.id)
     .run();
   if (!fin.meta.changes) return ok();
+  await svcDone(db, U, job, good && !/^\s*（略過）\s*$/.test(text));
+  if (svcEnd) await svcStop(env, db, U, job.bot_id, '已停止');
+  if (svcAsk && !svcAsk.error) await svcStart(env, db, U, { id: job.bot_id }, svcAsk);
   if (job.kind === 'chat' && !body.stopped) await statAdd(db, env, U, job, good, tk, !!body.browser);
 
   if (body.nskills && typeof body.nskills === 'object' && JSON.stringify(body.nskills).length < 300000) {

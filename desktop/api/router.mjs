@@ -14,6 +14,7 @@ import { jobRoutes } from './progress.mjs';
 import { rolesRoutes } from './roles.mjs';
 import { runnerRoutes } from './runner-routes.mjs';
 import { screenRoutes } from './screen-routes.mjs';
+import { serviceRoutes } from './service.mjs';
 import { settingsRoutes } from './settings-routes.mjs';
 import { flushAfter, skillRoutes } from './skills.mjs';
 import { J, err } from './util.mjs';
@@ -46,7 +47,7 @@ export async function onRequest(ctx) {
 // handlers in the order the old single router checked them; each returns a Response or nothing
 // mailRoutes before runnerRoutes: a bot's call to a mailbox (4.7) is answered there
 // skillRoutes before runnerRoutes: runner/skill and runner/genkeys (4.12) are answered there
-const HANDLERS = [fileRoutes, mailRoutes, skillRoutes, runnerRoutes, screenRoutes, chatRoutes, jobRoutes, manageRoutes, codeRoutes, settingsRoutes, overviewRoutes, memoryRoutes, alertRoutes, rolesRoutes, grokRoutes];
+const HANDLERS = [fileRoutes, mailRoutes, skillRoutes, serviceRoutes, runnerRoutes, screenRoutes, chatRoutes, jobRoutes, manageRoutes, codeRoutes, settingsRoutes, overviewRoutes, memoryRoutes, alertRoutes, rolesRoutes, grokRoutes];
 
 async function route({ request: req, env, params }) {
   const db = env.DB;

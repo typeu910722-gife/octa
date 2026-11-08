@@ -1,4 +1,5 @@
 // Routes for the open app: long-poll, state, messages, compact, live view, opening a bot's browser.
+import { svcOf } from './service.mjs';
 import { COMPACT_PROMPT, backstageItems, busyTurn, enqueueTurn } from './chat.mjs';
 import { addJob, addMsg, bump, getSettings, loadAll, nap, putSettings } from './db.mjs';
 import { cloneFile } from './files.mjs';
@@ -140,6 +141,7 @@ export async function chatRoutes(c) {
       quick: st.quick || {},
       allow: st.allow || {},
       pins: st.pins || [],
+      svc: await svcOf(db, U), // 4.16 客服模式 on now
       org: st.org || { ceo: null, leads: {} },
       mute: st.mute || {},
       memory: st.memory || {},

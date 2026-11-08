@@ -138,6 +138,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
       <p class="hmuted">時間請寫在例行任務：這裡只寫工作內容，排程時間（每天幾點、每隔多久）寫在這裡不會執行。</p>`,true);
   }
   body+=dsec('rt','例行任務','clock',`<div class="rt" id="rt" data-conv="${esc(id)}"></div>`,true);
+  if(!g)body+=dsec('svc','客服模式','users',`<div id="svcBox" data-nodirty data-conv="${esc(id)}"></div>`,!!svcOn(id));
   if(!g){
     body+=dsec('mem','記憶','brain',memHtml(c),false);
     const opts=Object.entries(ENG).filter(([k,v])=>!v.hide&&k!=='grokcloud').flatMap(([k,v])=>[[k,v.full+(k==='claude'?'（預設 sonnet，較省額度）':'（預設模型）')],...modelsFor(k).map(m=>[k+'|'+m,v.full+'・'+m])]),fb=c.fb||[];
@@ -207,7 +208,7 @@ function paintDetail(top){const c=conv(cur),box=$('detail');if(!c)return;const g
     if($('sf_al'))$('sf_al').onclick=async e=>{const x=e.target.closest('[data-unallow]');if(!x)return;const list=[...S.allow[id]];list.splice(+x.dataset.unallow,1);
       try{await api('settings','PUT',{allow:{bot:id,list}});S.allow[id]=list;x.closest('.pick').remove();toast(I18N.t('已收回'))}catch(err){toast(err.message)}};
   }else bindPicker(box);
-  renderRoutines();
+  renderRoutines();svcPaint();
   // one 儲存: an open 例行任務 form and a typed-but-not-added memory line are saved together with the rest
   const saveAll=async()=>{$('se').textContent='';if(!nameOk()){$('sn').focus();return false}
     const rf=$('rt')?.querySelector('.rform');if(rf&&rf._save&&!(await rf._save(true))){rf.scrollIntoView({block:'center'});return false}

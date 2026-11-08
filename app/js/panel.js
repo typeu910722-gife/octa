@@ -168,6 +168,7 @@ function routinesHtml(id){const rs=S.routines.filter(r=>r.conv===id&&r.name!=='�
 function paintWork(){const id=cur,c=conv(id);if(!c)return;loadLogs(id);loadBack(id);
   const bz=busyIn(id),run=bz.filter(x=>x.status==='running'),q=bz.filter(x=>x.status==='pending');
   let h='';
+  h+=svcCard(id);
   if(run.length)h+=run.map(curCard).join('');
   else h+=`<div class="wcur idle"><div class="wch"><span class="av" data-u>${isG(id)?gStack(c):avOf(id,'always')}</span><div class="t"><b>${I18N.t('目前沒有工作')}</b><small>${I18N.t(S.runnerOnline?'交代的事、背景工作和例行任務都會出現在這裡':'電腦上的 OCTA 沒有在執行，訊息會先排著')}</small></div></div></div>`;
   if(q.length)h+=queueHtml(q);
