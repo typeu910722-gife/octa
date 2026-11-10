@@ -749,3 +749,11 @@ T4.update({
  '客服模式進行中，瀏覽器會一直開著。':('Customer service mode is on, so the browser stays open.','カスタマー対応モード中はブラウザを開いたままにします。'),
  '不會因為閒置自動關掉，關掉或當掉了也會自己重新打開，登入和分頁都保留，接到工作就能馬上開始。會一直佔用一些電腦記憶體。':('It is never closed for being idle, and opens again if it closes or crashes; sign-ins and tabs stay, so work starts right away. It keeps using some memory.','アイドルでも自動で閉じず、閉じたりクラッシュしたりしても自動で開き直します。ログインとタブが残るので、作業をすぐ始められます。メモリを少し使い続けます。'),
 })
+
+# 4.16.3 客服模式的真實狀態
+T4.update({
+ '看不到聊天畫面':('Can’t see the chat','チャット画面が見えません'),
+ '正在打開聊天畫面…':('Opening the chat…','チャット画面を開いています…'),
+ '秒前':('s ago','秒前'),
+ '最後一次看':('Last look','最終確認'),
+})

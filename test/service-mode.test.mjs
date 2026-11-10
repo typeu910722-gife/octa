@@ -187,3 +187,25 @@ test('4.16.2 瀏覽器一直開著: kept with the account, sent to the runner wi
   assert.match(loop, /keepOpen\(\)\.catch/);
   assert.match(scripts['service.js'], /api\('settings','PUT',\{keepBr:\{bot:id,on:cb\.checked\}\}\)/);
 });
+
+test('4.16.3 the real state: when the computer last looked (or why it can’t), in OCTA and in what the bot is told', async () => {
+  const x = await setup();
+  await call(x.db, 'POST', `svc/${x.bot}`, { token: x.token, body: { url: 'https://chat.line.biz/U1/chat', sec: 10, minutes: 60 } });
+  assert.equal((await call(x.db, 'GET', 'state', { token: x.token })).data.svc[x.bot].seenAt, null);
+  await call(x.db, 'POST', 'runner/svc/seen', { token: x.token, body: { bot: x.bot, error: '瀏覽器沒有開著' } });
+  assert.equal((await call(x.db, 'GET', 'state', { token: x.token })).data.svc[x.bot].err, '瀏覽器沒有開著');
+  await x.seen('Yzz\n您好');
+  const s = (await call(x.db, 'GET', 'state', { token: x.token })).data.svc[x.bot];
+  assert.equal(s.err, ''); assert.ok(Date.now() - s.seenAt < 5000);
+  // a job of this bot carries it, and the bot is told what is really going on
+  x.db.raw.prepare("INSERT INTO jobs (user_id,conv,bot_id,chain,prompt,created,status,kind) VALUES ('local',?,?,'[]','客服模式有開著嗎',?,'pending','chat')").run(x.bot, x.bot, Date.now());
+  const job = (await call(x.db, 'POST', 'runner/next', { token: x.token, body: { slots: 3, max: 3, wait: false } })).data.job;
+  assert.equal(job.svc.url, 'https://chat.line.biz/U1/chat');
+  const PR = await import(pathToFileURL(join(import.meta.dirname, '..', 'desktop', 'runner', 'prompts.mjs')).href);
+  const line = PR.svcLine(job);
+  assert.match(line, /^客服模式：開著（OCTA 不用 AI，每 10 秒自動看一次 https:\/\/chat\.line\.biz\/U1\/chat/);
+  assert.match(line, /最後一次看是 \d+ 秒前/);
+  assert.match(line, /不是你自己開分頁看/);
+  assert.match(PR.svcLine({}), /^客服模式：目前沒有開/);
+  assert.match(scripts['service.js'], /function svcSeen\(s\)/);
+});

@@ -20,7 +20,8 @@ const TABLE =
 const ready = new WeakSet();
 // 4.16.1: ring (a webhook said a message came in: look now), wait (seconds to let a person or LINE's auto-reply go
 // first), mode (reply: answer in the chat · draft: write the answer for you to approve, never send it)
-const COLS = ['ring INTEGER', 'wait INTEGER', 'mode TEXT'];
+// 4.16.3 seen_at: the last time the computer looked at the chat · err: why it couldn't (shown in OCTA, told to the bot)
+const COLS = ['ring INTEGER', 'wait INTEGER', 'mode TEXT', 'seen_at INTEGER', 'err TEXT'];
 async function ensure(db) {
   if (ready.has(db)) return;
   await db.prepare(TABLE).run();
@@ -35,7 +36,7 @@ export const SVC_WAITS = [0, 10, 30, 60];
 const RING_MS = 30000;
 const pub = r =>
   r
-    ? { on: !!r.on_, url: r.url, sel: r.sel || '', sec: r.sec, until: r.until || null, rules: r.rules || '', started: r.started, replies: r.replies || 0, wait: r.wait || 0, mode: r.mode === 'draft' ? 'draft' : 'reply' }
+    ? { on: !!r.on_, url: r.url, sel: r.sel || '', sec: r.sec, until: r.until || null, rules: r.rules || '', started: r.started, replies: r.replies || 0, wait: r.wait || 0, mode: r.mode === 'draft' ? 'draft' : 'reply', seenAt: r.seen_at || null, err: r.err || '' }
     : { on: false };
 export async function svcOf(db, U) {
   await ensure(db);
@@ -63,7 +64,7 @@ export async function svcStart(env, db, U, bot, plan) {
   const until = plan.minutes ? now() + plan.minutes * MIN : null;
   await db
     .prepare(
-      'INSERT INTO svc (bot_id,user_id,url,sel,sec,until,rules,started,replies,state,rebase,on_,ring,wait,mode) VALUES (?,?,?,?,?,?,?,?,0,NULL,NULL,1,NULL,?,?) ON CONFLICT(bot_id) DO UPDATE SET url=excluded.url, sel=excluded.sel, sec=excluded.sec, until=excluded.until, rules=excluded.rules, started=excluded.started, replies=0, state=NULL, rebase=NULL, on_=1, ring=NULL, wait=excluded.wait, mode=excluded.mode'
+      'INSERT INTO svc (bot_id,user_id,url,sel,sec,until,rules,started,replies,state,rebase,on_,ring,wait,mode) VALUES (?,?,?,?,?,?,?,?,0,NULL,NULL,1,NULL,?,?) ON CONFLICT(bot_id) DO UPDATE SET url=excluded.url, sel=excluded.sel, sec=excluded.sec, until=excluded.until, rules=excluded.rules, started=excluded.started, replies=0, state=NULL, rebase=NULL, on_=1, ring=NULL, wait=excluded.wait, mode=excluded.mode, seen_at=NULL, err=NULL'
     )
     .bind(bot.id, U, plan.url, plan.sel || null, plan.sec, until, plan.rules || null, now(), plan.wait || 0, plan.mode || 'reply')
     .run();
@@ -134,6 +135,15 @@ export async function serviceRoutes(c) {
     await ensure(db);
     const r = await db.prepare('SELECT * FROM svc WHERE bot_id=? AND user_id=? AND on_=1').bind(clean(body.bot, 64), U).first();
     if (!r) return J({ ok: true, stop: true });
+    // the computer couldn't read the chat (not signed in, page gone…): remember why, nothing else
+    if (body.error) {
+      await db.prepare('UPDATE svc SET err=? WHERE bot_id=?').bind(clean(body.error, 200), r.bot_id).run();
+      await bump(db, U);
+      return J({ ok: true });
+    }
+    await db.prepare('UPDATE svc SET seen_at=?, err=NULL WHERE bot_id=?').bind(now(), r.bot_id).run();
+    // the screens show the last look: tell them every 30 s or so (not on every look), and at once when it works again
+    if (r.err || !r.seen_at || now() - r.seen_at > 30000) await bump(db, U);
     const text = clean(body.text, 12000),
       hash = clean(body.hash, 80);
     if (!hash) return J({ ok: true });

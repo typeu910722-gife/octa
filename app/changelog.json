@@ -1,5 +1,21 @@
 [
  {
+  "v": "4.16.3",
+  "date": "2026-11-10",
+  "notes": [
+   "客服模式看得到是不是真的在看：工作面板和詳細資料會顯示「最後一次看 N 秒前」；看不到聊天畫面時（沒登入、分頁不見）會顯示原因",
+   "機器人知道客服模式的真實狀態：被問到時直接照實回答，不會再自己開分頁亂找或做標記"
+  ],
+  "notes_en": [
+   "See that customer service mode is really looking: the Work panel and Details show “Last look N s ago”, and the reason when it can't see the chat (not signed in, tab gone)",
+   "The bot knows the real state of customer service mode and answers from it, instead of opening tabs or marking them on its own"
+  ],
+  "notes_ja": [
+   "カスタマー対応モードが本当に見ているか分かるように：作業パネルと詳細に「最終確認 N 秒前」を表示し、チャット画面が見えないとき（未ログイン、タブがない）は理由を表示します",
+   "ボットがカスタマー対応モードの実際の状態を知り、聞かれたらそのまま答えます。自分でタブを開いて探したり印を付けたりしません"
+  ]
+ },
+ {
   "v": "4.16.2",
   "date": "2026-11-08",
   "notes": [

@@ -4,6 +4,10 @@
 'use strict';
 const SVC_SECS=[5,10,20,30,60],SVC_MINS=[15,30,60,120,240,480,0];
 const svcOn=id=>S.svc?.[id]||null;
+// 4.16.3 is it really looking? the last look (or why it can't see the chat)
+function svcSeen(s){if(s.err)return `<span class="svc-bad">⚠ <span>看不到聊天畫面</span>：<span data-u>${esc(s.err)}</span></span>`;
+  if(!s.seenAt)return '<span>正在打開聊天畫面…</span>';const n=Math.max(0,Math.round((Date.now()-s.seenAt)/1000)),late=n>Math.max(90,s.sec*4);
+  return `<span class="${late?'svc-bad':'svc-ok'}">${late?'⚠ ':'● '}<span>最後一次看</span> <span data-u>${n<60?n:Math.round(n/60)}</span> <span>${n<60?'秒前':'分鐘前'}</span></span>`}
 const svcMinTxt=v=>v?(v>=60?`<span data-u>${v/60}</span> <span>小時</span>`:`<span data-u>${v}</span> <span>分鐘</span>`):'<span>直到我停止</span>';
 function svcLeft(s){if(!s.until)return '<span>直到你停止</span>';const m=Math.max(0,Math.round((s.until-Date.now())/60000));
   return `<span>剩</span> ${m>=60?`<span data-u>${Math.floor(m/60)}</span> <span>小時</span> `:''}<span data-u>${m%60}</span> <span>分鐘</span>`}
@@ -16,6 +20,7 @@ function svcPaint(){keepPaint();const box=$('svcBox');if(!box)return;const id=bo
   if(s){setHTML(box,`<div class="svc-on"><p class="svc-st"><b>🎧 <span>客服模式進行中</span></b></p>
     <p class="svc-m"><span>正在看</span> <a href="${esc(s.url)}" target="_blank" rel="noopener" data-u>${esc(s.url)}</a></p>
     <p class="svc-m"><span>每</span> <span data-u>${s.sec}</span> <span>秒看一次</span> · ${svcLeft(s)} · <span>已回覆</span> <b data-u>${s.replies}</b> <span>次</span></p>
+    <p class="svc-m">${svcSeen(s)}</p>
     <p class="svc-m"><span>${s.mode==='draft'?'先擬稿給我確認':'直接回覆客人'}</span>${s.wait?` · <span>先等</span> <span data-u>${s.wait}</span> <span>秒</span>`:''}</p>
     ${s.rules?`<p class="svc-m svc-r" data-u>${esc(s.rules)}</p>`:''}
     <button type="button" class="btn sm danger" data-svcstop="${esc(id)}">${ic('stop')}<span>停止客服模式</span></button></div>`);paintIcons(box);return}
@@ -35,6 +40,6 @@ function svcPaint(){keepPaint();const box=$('svcBox');if(!box)return;const id=bo
     catch(e){$('svcErr').textContent=e.message;b.disabled=false}}}
 // the 工作 tab: while it is on, a card at the top with 停止
 function svcCard(id){const s=svcOn(id);if(!s)return '';
-  return `<div class="wsvc"><b>🎧 <span>客服模式中</span></b><small><span>每</span> <span data-u>${s.sec}</span> <span>秒看一次</span> · ${svcLeft(s)} · <span>已回覆</span> <span data-u>${s.replies}</span> <span>次</span></small><button type="button" class="ghost sm" data-svcstop="${esc(id)}">${ic('stop')}<span>停止</span></button></div>`}
+  return `<div class="wsvc"><b>🎧 <span>客服模式中</span></b><small><span>每</span> <span data-u>${s.sec}</span> <span>秒看一次</span> · ${svcLeft(s)} · <span>已回覆</span> <span data-u>${s.replies}</span> <span>次</span> · ${svcSeen(s)}</small><button type="button" class="ghost sm" data-svcstop="${esc(id)}">${ic('stop')}<span>停止</span></button></div>`}
 document.addEventListener('click',async e=>{const b=e.target.closest('[data-svcstop]');if(!b)return;b.disabled=true;
   try{await api('svc/'+b.dataset.svcstop+'/stop','POST',{});toast(I18N.t('客服模式已停止'));await refresh();svcPaint()}catch(x){b.disabled=false;toast(x.message)}});

@@ -1,7 +1,7 @@
 {
   "name": "octa-desktop",
   "productName": "OCTA",
-  "version": "4.16.2",
+  "version": "4.16.3",
   "description": "用自己的 AI CLI 指揮多個機器人，全部在這台電腦上",
   "author": "歪計劃 YZ PROJECT STUDIO",
   "license": "MIT",

@@ -1,4 +1,5 @@
 // Work for the runner: what to do next, the job payload, and continuing a job that stopped halfway.
+import { svcOf } from './service.mjs';
 import { extraOn, genKeys, genLocalMode, skillSet, skillsForBot, toolsForBot } from './skills.mjs';
 import { extraForBots } from '../lib/toolbox.mjs';
 import { publicConnectors } from '../lib/connectors.mjs';
@@ -301,6 +302,7 @@ export async function jobPayload(env, db, U, job) {
     // 4.13 擴充工具箱: only when it is on — what is there to install or use, and where 【產生】 goes
     ...(extraOn(st) ? { extraTools: extraForBots(st._tools?.platform || undefined, !!st._tools?.gpu, st._tools?.installed || {}), genLocal: genLocalMode(st) } : {}),
     nskills: (st.nskills || {})[bot.id] || null,
+    svc: (await svcOf(db, U))[bot.id] || null, // 4.16.3 客服模式 as it really is (the bot answers questions about it from this)
     routines: (
       await db
         .prepare('SELECT name,times,enabled FROM routines WHERE user_id=? AND conv IN (?,?)')

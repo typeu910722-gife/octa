@@ -59,7 +59,7 @@ export async function checkService() {
         if (r.changed) log('🎧 客服模式：有新訊息，交給機器人回覆');
         if (r.stop) listAt = 0;
       } catch (e) {
-        if (Date.now() - (failed.get(s.bot) || 0) > 60000) { failed.set(s.bot, Date.now()); log('客服模式看不到聊天畫面：' + e.message); }
+        if (Date.now() - (failed.get(s.bot) || 0) > 60000) { failed.set(s.bot, Date.now()); log('客服模式看不到聊天畫面：' + e.message); api('runner/svc/seen', { bot: s.bot, error: e.message }).catch(() => { }); }
       }
     }
   } finally { running = false; }

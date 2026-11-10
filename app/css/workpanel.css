@@ -258,3 +258,5 @@ button.wsh:hover{color:var(--ink2);background:var(--hover)}
 .svc-r{white-space:pre-wrap;color:var(--mute)}
 .svc-on .btn{justify-self:start}
 #svcBox .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.svc-ok{color:var(--good,#3a9a5b)}
+.svc-bad{color:var(--warn,#b7791f);font-weight:600}
